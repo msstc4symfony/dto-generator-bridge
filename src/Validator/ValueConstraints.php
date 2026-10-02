@@ -7,6 +7,7 @@ namespace Msstc4Symfony\DtoGeneratorBridge\Validator;
 use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostics;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ArgumentValue;
 use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeArgument;
+use MSSTC4PHP\DtoGenerator\Domain\Model\ClassType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\EnumType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ScalarType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\TypeModel;
@@ -42,7 +43,7 @@ final class ValueConstraints
     public function choices(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
     {
         $enum = $keywords->enum();
-        if ($enum === null) {
+        if ($enum === null || $this->heldByClass($value, 'enum', $at)) {
             return [];
         }
 
@@ -83,13 +84,17 @@ final class ValueConstraints
     public function constants(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
     {
         $constants = $keywords->values('const');
+        if ($constants === [] || $this->heldByClass($value, 'const', $at)) {
+            return [];
+        }
+
         if (count($constants) > 1) {
             $this->diagnostics->warning('The "const" values differ, so no value is valid; they are not checked.', $at);
 
             return [];
         }
 
-        $constraint = $constants === [] ? null : $this->constant($constants[0], $value, $at);
+        $constraint = $this->constant($constants[0], $value, $at);
 
         return $constraint instanceof ConstraintSpec ? [$constraint] : [];
     }
@@ -114,6 +119,21 @@ final class ValueConstraints
         $this->diagnostics->warning('"const" with an array or object has no Symfony constraint; it is not checked.', $at);
 
         return null;
+    }
+
+    /**
+     * A class from `x-php-type` or `formats` holds the value: Choice and IdenticalTo would compare the object with the
+     * JSON value and reject every one.
+     */
+    private function heldByClass(TypeModel $value, string $keyword, SchemaLocation $at): bool
+    {
+        if (!$value instanceof ClassType) {
+            return false;
+        }
+
+        $this->diagnostics->warning(sprintf('"%s" on a value of class %s is not checked; the class has to keep to it.', $keyword, $value->className()->fqcn()), $at);
+
+        return true;
     }
 
     /**

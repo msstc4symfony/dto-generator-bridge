@@ -666,6 +666,20 @@ final class ValidatorEnricherTest extends TestCase
         self::assertSame([], $this->messages($output));
     }
 
+    public function testLeavesEnumAndConstOfAClassTypedValueToTheClass(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'currency' => ['$ref' => '#/components/schemas/Currency'],
+            'fixed' => ['type' => 'string', 'const' => 'A', 'x-php-type' => 'App\\Code'],
+        ]], ['Currency' => ['type' => 'string', 'enum' => ['USD', 'EUR'], 'x-php-type' => 'App\\Currency']]);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame([], $this->attributesOf($code, 'currency'));
+        self::assertSame([], $this->attributesOf($code, 'fixed'));
+        self::assertContains('warning /api.yaml#/components/schemas/Pet/properties/currency: "enum" on a value of class App\\Currency is not checked; the class has to keep to it.', $this->messages($output));
+        self::assertContains('warning /api.yaml#/components/schemas/Pet/properties/fixed: "const" on a value of class App\\Code is not checked; the class has to keep to it.', $this->messages($output));
+    }
+
     public function testComparesNumbersAsJsonDoes(): void
     {
         $code = $this->pet(['type' => 'object', 'properties' => [

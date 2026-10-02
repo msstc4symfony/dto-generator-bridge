@@ -19,7 +19,7 @@ final class Keywords
     /** @var list<Schema> nearest first */
     private array $schemas = [];
 
-    /** @var list<string> the locations of */
+    /** @var list<string> the locations of, each read once */
     private array $collected = [];
 
     /** @var list<string> compositions already searched for an object, against `$ref` cycles and repeated work */
@@ -121,6 +121,8 @@ final class Keywords
      */
     public function describesObject(): bool
     {
+        $this->explored = [];
+
         return $this->isObject($this->resolved);
     }
 
@@ -145,7 +147,7 @@ final class Keywords
     }
 
     /**
-     * Follows TypeMapper::bareType() of the generator: an explicit type, a class, or a typed union keeps the schema;
+     * Follows TypeMapper::bareType() of the generator: `x-php-type`, a class, or a typed union keeps the schema;
      * otherwise exactly one typed `allOf` branch gives the type, and the other branches only constrain it.
      *
      * @param list<string> $seen
