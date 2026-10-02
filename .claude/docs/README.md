@@ -16,6 +16,11 @@
 - `ConstraintBuilder` — таблица §5.1 в её порядке, ключевые слова — только для своего вида типа (`KEYWORDS_OF`); `Keywords` — значения всех звеньев `$ref` (`chain()`) и веток `allOf`, каждое место один раз (AND: строже граница, все `pattern`, пересечение `enum`), `resolved()` — через единственную типизированную ветку `allOf`, как `TypeMapper::typed()` ядра; `KeywordReader` — числовые ключевые слова с проверкой; `Interval` — есть ли значение (целое) между границами; `ValueConstraints` — `enum`/`const` в PHP-типе свойства, case PHP-enum; `Pattern` — ECMA → PCRE (`/uD`), `UnicodeEscape` — `\u` и суррогатные пары; `ConstraintSpec` — имя + аргументы → атрибут с `ImportAlias(…Constraints, 'Assert')` или `new` внутри `All`. `NotNull` ставит `ValidatorEnricher`.
 - Тесты — настоящий генератор ядра в dry-run на временном проекте с `composer.lock`; `attributesOf()` разбирает сигнатуру конструктора по запятым нулевой глубины.
 
+## Serializer (B3)
+- `Serializer\SerializerEnricher` — `ClassEnricher` + `PropertyEnricher` (один экземпляр, регистрируется дважды). `DiscriminatorMap` на классе с `discriminator()`; на свойстве: `Ignore` | `SerializedName`, `Groups`, `Context` (дата).
+- `ComponentGate` (корень) — «писать ли» и версия для validator/serializer, один раз на запуск, диагностики на корне документа. `ExtensionReader` — `x-` флаги и списки групп. `Keywords` теперь в корне пакета.
+- Тесты — трейт `Test\Unit\GeneratesDtos` (генератор в dry-run, `attributesOf()`, `classAttributesOf()`).
+
 ## Известные особенности
 - Песочница не пишет `.git/config`: автор коммитов задаётся переменными `GIT_AUTHOR_*`/`GIT_COMMITTER_*` (имя и почта — из `git -C ../../msstc4php/dto-generator config`).
 - PHP 7.4 локально: копия `src`, `tests`, `phpunit.xml.dist` и `composer.json` с path-репозиторием на `/work/msstc4php/dto-generator` и `config.platform.php 7.4.33`; установка в `composer:2` **без** `--ignore-platform-req=php` (иначе берутся версии для PHP 8 с типизированными константами), тесты в `php:7.4-cli` с `-v ~/PhpstormProjects:/work`.

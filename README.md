@@ -3,8 +3,8 @@
 Symfony Validator constraints and Symfony Serializer attributes for the DTOs that
 [`msstc4php/dto-generator`](https://github.com/msstc4php/dto-generator) generates from OpenAPI 3.1.
 
-> **Status:** in development. Done: discovery and settings (B1) and Symfony Validator constraints (B2).
-> Serializer attributes (B3), the version matrix (B4) and the bundle (B5) are ahead.
+> **Status:** in development. Done: discovery and settings (B1), Symfony Validator constraints (B2) and Serializer
+> attributes (B3). The version matrix (B4) and the bundle (B5) are ahead.
 
 ## Installation
 
@@ -73,3 +73,17 @@ The design lives in `docs/specs/2026-10-02-bridge-symfony-design.md`.
 ## License
 
 MIT.
+
+## Serializer attributes
+
+| Schema | Attribute |
+|---|---|
+| a wire name the PHP property does not have (`first_name` → `$firstName`) | `SerializedName('first_name')` |
+| a discriminated base | `DiscriminatorMap(typeProperty: …, mapping: […])` on the class |
+| `format: date` (also of list or map items) | `Context` with the `Y-m-d` date format |
+| `x-serializer-groups: [api]` | `Groups(['api'])` |
+| `x-serializer-ignore: true` | `Ignore` |
+
+`x-serializer-skip: true` leaves a property alone. Before Symfony 6.4 the attributes come from
+`Symfony\Component\Serializer\Annotation`, from 6.4 from `Symfony\Component\Serializer\Attribute`.
+

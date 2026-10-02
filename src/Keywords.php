@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Msstc4Symfony\DtoGeneratorBridge\Validator;
+namespace Msstc4Symfony\DtoGeneratorBridge;
 
 use MSSTC4PHP\DtoGenerator\Contract\SchemaReferences;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\Schema;

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Validator;
+namespace Msstc4Symfony\DtoGeneratorBridge\Test\Unit;
 
 use MSSTC4PHP\DtoGenerator\Contract\SchemaReferences;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\Extensions;
@@ -13,7 +13,7 @@ use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaGraph;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaLocation;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaType;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
-use Msstc4Symfony\DtoGeneratorBridge\Validator\Keywords;
+use Msstc4Symfony\DtoGeneratorBridge\Keywords;
 use PHPUnit\Framework\TestCase;
 
 /**
