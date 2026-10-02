@@ -59,7 +59,7 @@ final class KeywordsTest extends TestCase
     public function testDoesNotEnterACompositionItIsAlreadyIn(): void
     {
         $branch = new Schema(new SchemaLocation('api.yaml', '/loop'), [], null, null, null, false, null, null, ['name' => $this->schema()], [], null, null, [], [], [], null, [], new Extensions());
-        $loop = new Schema(new SchemaLocation('api.yaml', '/loop'), [], null, null, null, false, null, null, [], [], null, null, [], [], [$branch], null, [], new Extensions());
+        $loop = new Schema(new SchemaLocation('api.yaml', '/loop'), [], null, null, null, false, null, null, [], [], null, null, [], [], [$branch, $branch], null, [], new Extensions());
 
         self::assertFalse($this->describesObject($loop));
     }
@@ -100,8 +100,12 @@ final class KeywordsTest extends TestCase
         $untyped = $this->schema(['maxItems' => 2]);
 
         self::assertSame($typed, $this->resolvedOf($this->schema([], null, null, [], ['allOf' => [$typed, $untyped], 'anyOf' => [$untyped]])));
-        self::assertNotSame($typed, $this->resolvedOf($this->schema([], null, null, [], ['allOf' => [$typed], 'anyOf' => [$typed]])));
-        self::assertNotSame($typed, $this->resolvedOf($this->schema([], null, null, [], ['allOf' => [$typed], 'oneOf' => [$typed]])));
+        $other = new Schema(new SchemaLocation('api.yaml', '/other'), [SchemaType::from(SchemaType::STRING)], null, null, null, false, null, null, [], [], null, null, [], [], [], null, [], new Extensions());
+        self::assertSame($typed, $this->resolvedOf($this->schema([], null, null, [], ['anyOf' => [$typed, $this->nullSchema()]])));
+        self::assertSame($typed, $this->resolvedOf($this->schema([], null, null, [], ['anyOf' => [$this->nullSchema(), $typed]])));
+        self::assertSame($typed, $this->resolvedOf($this->schema([], null, null, [], ['oneOf' => [$typed]])));
+        self::assertNotSame($typed, $this->resolvedOf($this->schema([], null, null, [], ['allOf' => [$typed], 'anyOf' => [$typed, $other]])));
+        self::assertNotSame($typed, $this->resolvedOf($this->schema([], null, null, [], ['oneOf' => [$typed, $other]])));
         self::assertNotSame($typed, $this->resolvedOf($this->schema([], null, null, ['name' => $list], ['allOf' => [$typed]])));
         self::assertNotSame($typed, $this->resolvedOf($this->schema([], null, null, [], ['allOf' => [$typed, $typed]])));
         $explicit = new Schema(new SchemaLocation('api.yaml', '/explicit'), [], null, null, null, false, null, null, [], [], null, null, [$typed], [], [], null, [], new Extensions(['x-php-type' => 'App\\Tags']));
@@ -109,9 +113,38 @@ final class KeywordsTest extends TestCase
         self::assertSame([], (new Keywords($list, SchemaReferences::none()))->formats());
     }
 
+    private function nullSchema(): Schema
+    {
+        return new Schema(new SchemaLocation('api.yaml', '/null'), [SchemaType::from(SchemaType::NULL)], null, null, null, false, null, null, [], [], null, null, [], [], [], null, [], new Extensions());
+    }
+
     private function resolvedOf(Schema $schema): Schema
     {
         return (new Keywords($schema, SchemaReferences::none()))->resolved();
+    }
+
+    public function testReadsTheKeywordsOfTheOneUnionMemberBesideNull(): void
+    {
+        $member = $this->schema(['maxLength' => 3]);
+        $nullable = new Schema(new SchemaLocation('api.yaml', '/nullable'), [SchemaType::from(SchemaType::STRING), SchemaType::from(SchemaType::NULL)], null, null, null, false, null, null, [], [], null, null, [], [], [], null, ['minLength' => 1], new Extensions());
+        $composed = new Schema(new SchemaLocation('api.yaml', '/composed'), [SchemaType::from(SchemaType::NULL)], null, null, null, false, null, null, [], [], null, null, [$member], [], [], null, ['minLength' => 2], new Extensions());
+        $referenced = new Schema(new SchemaLocation('api.yaml', '/referenced'), [SchemaType::from(SchemaType::NULL)], '#/x', null, null, false, null, null, [], [], null, null, [], [], [], null, ['minLength' => 4], new Extensions());
+
+        self::assertSame([3], $this->valuesOf(['anyOf' => [$this->nullSchema(), $member]], 'maxLength'));
+        self::assertSame([], $this->valuesOf(['anyOf' => [$member, $this->schema(['maxLength' => 5])]], 'maxLength'));
+        self::assertSame([1], $this->valuesOf(['oneOf' => [$nullable, $this->nullSchema()]], 'minLength'));
+        self::assertSame([2], $this->valuesOf(['oneOf' => [$composed, $this->nullSchema()]], 'minLength'));
+        self::assertSame([4], $this->valuesOf(['oneOf' => [$referenced, $this->nullSchema()]], 'minLength'));
+    }
+
+    /**
+     * @param array{allOf?: list<Schema>, oneOf?: list<Schema>, anyOf?: list<Schema>} $compositions
+     *
+     * @return list<mixed>
+     */
+    private function valuesOf(array $compositions, string $keyword): array
+    {
+        return (new Keywords($this->schema([], null, null, [], $compositions), SchemaReferences::none()))->values($keyword);
     }
 
     public function testReadsNoSchemaTwiceOnAnAllOfCycle(): void

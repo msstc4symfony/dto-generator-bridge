@@ -29,8 +29,8 @@ use Msstc4Symfony\DtoGeneratorBridge\Settings;
 use Msstc4Symfony\DtoGeneratorBridge\SymfonyVersion;
 
 /**
- * Symfony Serializer attributes for classes and their properties (bridge spec §6). One instance serves both
- * extension points: the generator enriches a class before its properties, so the gate decides on the class.
+ * Symfony Serializer attributes for classes and their properties (bridge spec §6). One instance, and so one gate,
+ * serves both extension points: whether to write is decided once per run.
  */
 final class SerializerEnricher implements ClassEnricher, PropertyEnricher
 {
@@ -65,16 +65,28 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
     {
         $schema = $context->schema();
         $version = $this->gate->version($context->packages(), $context->target(), $context->diagnostics(), $schema->location());
-        $extensions = new ExtensionReader($schema, $context->diagnostics());
-        if (!$version instanceof SymfonyVersion || $extensions->flag('x-serializer-skip')) {
+        if (!$version instanceof SymfonyVersion) {
             return [];
         }
 
-        if ($extensions->flag('x-serializer-ignore')) {
-            return [$this->attribute($version, 'Ignore')];
+        $extensions = new ExtensionReader($schema, $context->diagnostics());
+        if ($extensions->flag('x-serializer-skip')) {
+            return [];
         }
 
         $property = $context->property();
+        if ($extensions->flag('x-serializer-ignore')) {
+            // A required property is a constructor parameter without a default, even with a schema default.
+            if ($property->isRequired()) {
+                $context->diagnostics()->warning(
+                    'x-serializer-ignore on a required property leaves the serializer nothing to pass to the constructor; denormalizing fails.',
+                    $schema->location(),
+                );
+            }
+
+            return [$this->attribute($version, 'Ignore')];
+        }
+
         $attributes = [];
         if ($property->wireName() !== $property->name()) {
             $attributes[] = $this->attribute($version, 'SerializedName', [AttributeArgument::positional(ArgumentValue::literal($property->wireName()))]);

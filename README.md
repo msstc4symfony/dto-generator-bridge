@@ -55,6 +55,28 @@ Symfony Validator 7 no longer reads — the bridge reports that instead of writi
 Keywords of one kind of value (`minLength`, `minimum`, `minItems`…) are written only for a property of that type; for a
 value of several types, a pattern PHP cannot compile or a malformed keyword the bridge warns and writes nothing.
 
+## Serializer attributes
+
+| Schema | Attribute |
+|---|---|
+| a wire name the PHP property does not have (`first_name` → `$firstName`) | `SerializedName('first_name')` |
+| a discriminated base | `DiscriminatorMap(typeProperty: …, mapping: […])` on the class |
+| `format: date` (also of list or map items) | `Context` with the `Y-m-d` date format |
+| `x-serializer-groups: [api]` | `Groups(['api'])` |
+| `x-serializer-ignore: true` | `Ignore` |
+
+`x-serializer-skip: true` leaves a property alone. Before Symfony 6.4 the attributes come from
+`Symfony\Component\Serializer\Annotation`, from 6.4 from `Symfony\Component\Serializer\Attribute`.
+
+Notes:
+
+- `SerializedName` is written only where the wire name differs from the PHP name. An application with a global name
+  converter (such as `camel_case_to_snake_case`) renames the other properties too.
+- `x-serializer-ignore` on a required property leaves the constructor without its argument, so denormalizing fails;
+  the bridge warns about it.
+- `date-time`, `readOnly` and `writeOnly` get no attribute: Symfony's defaults fit `date-time`, and the other two have
+  no single attribute.
+
 ## Requirements
 
 - PHP >= 7.4 (the bridge runs inside the generator)
@@ -73,17 +95,3 @@ The design lives in `docs/specs/2026-10-02-bridge-symfony-design.md`.
 ## License
 
 MIT.
-
-## Serializer attributes
-
-| Schema | Attribute |
-|---|---|
-| a wire name the PHP property does not have (`first_name` → `$firstName`) | `SerializedName('first_name')` |
-| a discriminated base | `DiscriminatorMap(typeProperty: …, mapping: […])` on the class |
-| `format: date` (also of list or map items) | `Context` with the `Y-m-d` date format |
-| `x-serializer-groups: [api]` | `Groups(['api'])` |
-| `x-serializer-ignore: true` | `Ignore` |
-
-`x-serializer-skip: true` leaves a property alone. Before Symfony 6.4 the attributes come from
-`Symfony\Component\Serializer\Annotation`, from 6.4 from `Symfony\Component\Serializer\Attribute`.
-

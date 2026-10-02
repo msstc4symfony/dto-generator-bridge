@@ -18,6 +18,8 @@ final class ComponentGate
 {
     private Settings $settings;
 
+    private ?bool $setting;
+
     /** @var 'validator'|'serializer' */
     private string $component;
 
@@ -29,24 +31,26 @@ final class ComponentGate
     private ?SymfonyVersion $version = null;
 
     /**
+     * @param ?bool $setting extensionConfig.symfony.<component>: null for auto
      * @param 'validator'|'serializer' $component
      * @param 'constraints'|'attributes' $writes
      */
-    private function __construct(Settings $settings, string $component, string $writes)
+    private function __construct(Settings $settings, ?bool $setting, string $component, string $writes)
     {
         $this->settings = $settings;
+        $this->setting = $setting;
         $this->component = $component;
         $this->writes = $writes;
     }
 
     public static function validator(Settings $settings): self
     {
-        return new self($settings, 'validator', 'constraints');
+        return new self($settings, $settings->validator(), 'validator', 'constraints');
     }
 
     public static function serializer(Settings $settings): self
     {
-        return new self($settings, 'serializer', 'attributes');
+        return new self($settings, $settings->serializer(), 'serializer', 'attributes');
     }
 
     /**
@@ -65,7 +69,7 @@ final class ComponentGate
     private function decide(InstalledPackages $packages, TargetProfile $target, Diagnostics $diagnostics, SchemaLocation $at): ?SymfonyVersion
     {
         $package = 'symfony/' . $this->component;
-        $setting = $this->component === 'validator' ? $this->settings->validator() : $this->settings->serializer();
+        $setting = $this->setting;
         $installed = $packages->has($package);
         if ($setting === false || $target->metadata()->isNone() || ($setting === null && !$installed)) {
             return null;

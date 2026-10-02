@@ -56,7 +56,7 @@ final class ExtensionReader
         $groups = [];
         foreach ($declared as $group) {
             if (!is_string($group) || $group === '') {
-                $this->diagnostics->warning(sprintf('%s names a group that is no name; it is left out.', $key), $this->schema->location());
+                $this->diagnostics->warning(sprintf('%s lists a value that is not a group name; it is left out.', $key), $this->schema->location());
             } elseif (!in_array($group, $groups, true)) {
                 $groups[] = $group;
             }

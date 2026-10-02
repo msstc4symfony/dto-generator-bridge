@@ -25,7 +25,7 @@ trait GeneratesDtos
 
     protected function setUp(): void
     {
-        $this->root = sys_get_temp_dir() . '/dto-bridge-validator-' . bin2hex(random_bytes(4));
+        $this->root = sys_get_temp_dir() . '/dto-bridge-' . bin2hex(random_bytes(4));
         mkdir($this->root);
     }
 
@@ -151,7 +151,7 @@ trait GeneratesDtos
     }
 
     /**
-     * The attributes written before the class declaration, without "#[" and "]".
+     * The attributes written before the class declaration, without "#[" and "]", on one line each.
      *
      * @return list<string>
      */
@@ -161,9 +161,9 @@ trait GeneratesDtos
             self::fail('No class declaration');
         }
 
-        $head = substr($code, 0, $match[0][1]);
-        preg_match_all('~^#\[(.*)\]$~m', $head, $matches);
+        $start = strrpos(substr($code, 0, $match[0][1]), "\n\n");
+        preg_match_all('~#\[((?:[^\[\]]|\[(?:[^\[\]]|\[[^\[\]]*\])*\])*)\]~', substr($code, (int) $start, $match[0][1] - (int) $start), $matches);
 
-        return array_map(static fn (string $attribute): string => (string) preg_replace('~\s+~', ' ', $attribute), $matches[1]);
+        return array_map(static fn (string $attribute): string => (string) preg_replace(['~([(\[])\s+~', '~,?\s+([)\]])~', '~\s+~'], ['$1', '$1', ' '], trim($attribute)), $matches[1]);
     }
 }

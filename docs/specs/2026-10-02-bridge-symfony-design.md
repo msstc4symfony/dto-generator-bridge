@@ -128,6 +128,9 @@ extensionConfig:
 - Namespace атрибутов: `Symfony\Component\Serializer\Attribute` с 6.4, `Symfony\Component\Serializer\Annotation` для 5.4–6.3 (в 6.4 объявлен устаревшим, в 8.0 удалён — проверить в B4). Импорт `ImportAlias(<namespace>, 'Serializer')`.
 - Писать ли и для какой версии — `ComponentGate` (общий с Validator): `extensionConfig.symfony.serializer` auto/true/false, версия `symfony/serializer`, аннотации на 7.4 + Serializer ≥ 7.0 — как §5.5. Один экземпляр `SerializerEnricher` — и `ClassEnricher`, и `PropertyEnricher`: ядро обогащает класс раньше свойств, решение принимается один раз.
 - `Context` — с 5.3; `SerializedName`, `Groups`, `Ignore`, `DiscriminatorMap` — атрибуты с 5.x.
+- Решение: `SerializedName` — только при `wireName ≠ name`; глобальный name converter приложения (`camel_case_to_snake_case`) переименует остальные свойства — это описано в README, опции «всегда» нет.
+- `x-serializer-ignore` на required-свойстве без default — warning: конструктору нечего передать, денормализация упадёт.
+- Дата через nullable-union (`anyOf: [{$ref: Date}, {type: null}]`) — тоже `Context`: `Keywords::resolved()` проходит в единственного не-null члена, как `TypeMapper::union()` ядра. То же даёт валидатору ключевые слова этого члена.
 
 ## 7. Бандл (`src/Bundle`)
 

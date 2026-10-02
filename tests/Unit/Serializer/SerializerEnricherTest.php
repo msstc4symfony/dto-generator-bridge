@@ -63,6 +63,68 @@ final class SerializerEnricherTest extends TestCase
         }
     }
 
+    public function testFormatsDatesTypedThroughANullableUnion(): void
+    {
+        $code = $this->pet(['type' => 'object', 'properties' => [
+            'due' => ['anyOf' => [['$ref' => '#/components/schemas/Day'], ['type' => 'null']]],
+            'left' => ['oneOf' => [['type' => 'string', 'format' => 'date'], ['type' => 'null']]],
+            'days' => ['type' => 'array', 'items' => ['anyOf' => [['$ref' => '#/components/schemas/Day'], ['type' => 'null']]]],
+            'weeks' => ['type' => 'array', 'items' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Day']]],
+            'either' => ['anyOf' => [['$ref' => '#/components/schemas/Day'], ['type' => 'string', 'format' => 'date-time']]],
+        ]], ['Day' => ['type' => 'string', 'format' => 'date']]);
+        $context = "Serializer\\Context(normalizationContext: ['datetime_format' => 'Y-m-d'], denormalizationContext: ['datetime_format' => '!Y-m-d'])";
+
+        foreach (['due', 'left', 'days', 'weeks'] as $property) {
+            self::assertSame([$context], $this->attributesOf($code, $property), $property);
+        }
+
+        self::assertSame([], $this->attributesOf($code, 'either'));
+    }
+
+    public function testWarnsThatAnIgnoredRequiredPropertyCannotBeDenormalized(): void
+    {
+        $output = $this->generate(['type' => 'object', 'required' => ['secret', 'token'], 'properties' => [
+            'secret' => ['type' => 'string', 'x-serializer-ignore' => true],
+            'token' => ['type' => 'string', 'default' => 'none', 'x-serializer-ignore' => true],
+            'note' => ['type' => 'string', 'x-serializer-ignore' => true],
+        ]], [], '8.2', self::ONLY_SERIALIZER, null, self::SERIALIZER);
+
+        self::assertSame(['Serializer\\Ignore'], $this->attributesOf($this->code($output, 'Pet.php'), 'secret'));
+        self::assertSame([
+            'warning /api.yaml#/components/schemas/Pet/properties/secret: x-serializer-ignore on a required property leaves the serializer nothing to pass to the constructor; denormalizing fails.',
+            'warning /api.yaml#/components/schemas/Pet/properties/token: x-serializer-ignore on a required property leaves the serializer nothing to pass to the constructor; denormalizing fails.',
+        ], $this->messages($output));
+    }
+
+    public function testMapsNumericDiscriminatorValues(): void
+    {
+        $output = $this->generate([
+            'oneOf' => [['$ref' => '#/components/schemas/Cat']],
+            'discriminator' => ['propertyName' => 'kind', 'mapping' => ['1' => '#/components/schemas/Cat']],
+        ], ['Cat' => ['type' => 'object', 'required' => ['kind'], 'properties' => ['kind' => ['type' => 'string']]]], '8.2', self::ONLY_SERIALIZER, null, self::SERIALIZER);
+
+        self::assertSame(["Serializer\\DiscriminatorMap(typeProperty: 'kind', mapping: [1 => Cat::class])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
+    public function testWritesEveryAttributeAsAnAnnotationForPhp74(): void
+    {
+        $output = $this->generate([
+            'oneOf' => [['$ref' => '#/components/schemas/Cat']],
+            'discriminator' => ['propertyName' => 'kind'],
+        ], ['Cat' => ['type' => 'object', 'required' => ['kind'], 'properties' => [
+            'kind' => ['type' => 'string'],
+            'born' => ['type' => 'string', 'format' => 'date', 'x-serializer-groups' => ['api']],
+        ]]], '7.4', self::ONLY_SERIALIZER, null, ['symfony/serializer' => 'v5.4.40', 'doctrine/annotations' => '2.0.2']);
+        $base = $this->code($output, 'Pet.php');
+        $cat = $this->code($output, 'Cat.php');
+
+        self::assertSame([], $this->messages($output));
+        self::assertStringContainsString('@Serializer\\DiscriminatorMap(typeProperty="kind", mapping={"Cat"=', $base);
+        self::assertStringContainsString('@Serializer\\Groups({"api"})', $cat);
+        $docblock = (string) preg_replace('~\s*\n\s*\*\s*~', ' ', $cat);
+        self::assertStringContainsString('@Serializer\\Context( normalizationContext={"datetime_format"="Y-m-d"}, denormalizationContext={"datetime_format"="!Y-m-d"} )', $docblock);
+    }
+
     public function testMapsTheSubclassesOfADiscriminatedBase(): void
     {
         $output = $this->generate([
@@ -78,6 +140,13 @@ final class SerializerEnricherTest extends TestCase
             $this->classAttributesOf($this->code($output, 'Pet.php')),
         );
         self::assertSame([], $this->classAttributesOf($this->code($output, 'Cat.php')));
+    }
+
+    public function testUsesTheAttributeNamespaceFromSymfony64(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => ['first_name' => ['type' => 'string']]], [], '8.2', self::ONLY_SERIALIZER, null, ['symfony/serializer' => 'v6.4.0']);
+
+        self::assertStringContainsString("use Symfony\\Component\\Serializer\\Attribute as Serializer;\n", $this->code($output, 'Pet.php'));
     }
 
     public function testUsesTheAnnotationNamespaceBeforeSymfony64(): void

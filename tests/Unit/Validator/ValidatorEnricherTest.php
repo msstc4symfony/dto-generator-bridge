@@ -116,7 +116,7 @@ final class ValidatorEnricherTest extends TestCase
         $output = $this->generate(['type' => 'object', 'properties' => ['a' => ['type' => 'string', 'maxLength' => 1, 'x-validator-groups' => ['', 'api', 3]]]]);
 
         self::assertSame(["Assert\\Length(max: 1, groups: ['api', 'Default'])"], $this->attributesOf($this->code($output, 'Pet.php'), 'a'));
-        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/a: x-validator-groups names a group that is no name; it is left out.'], $this->messages($output));
+        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/a: x-validator-groups lists a value that is not a group name; it is left out.'], $this->messages($output));
     }
 
     public function testLeavesAFormatMappedToAClassToThatClass(): void
@@ -664,6 +664,17 @@ final class ValidatorEnricherTest extends TestCase
         self::assertCount(5, $this->messages($output));
         self::assertContains('warning /api.yaml#/components/schemas/Pet/properties/currency: "enum" on a value of class App\\Currency has no constraint to check it; it is not checked.', $this->messages($output));
         self::assertContains('warning /api.yaml#/components/schemas/Pet/properties/fixed: "const" on a value of class App\\Code has no constraint to check it; it is not checked.', $this->messages($output));
+    }
+
+    public function testChecksTheOneMemberOfAUnionBesideNull(): void
+    {
+        $code = $this->pet(['type' => 'object', 'properties' => [
+            'nick' => ['anyOf' => [['type' => 'string', 'maxLength' => 3], ['type' => 'null']]],
+            'owner' => ['oneOf' => [['$ref' => '#/components/schemas/Owner'], ['type' => 'null']]],
+        ]], ['Owner' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]]]);
+
+        self::assertSame(['Assert\\Length(max: 3)'], $this->attributesOf($code, 'nick'));
+        self::assertSame(['Assert\\Valid'], $this->attributesOf($code, 'owner'));
     }
 
     public function testComparesNumbersAsJsonDoes(): void
