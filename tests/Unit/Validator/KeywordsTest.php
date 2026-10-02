@@ -11,6 +11,7 @@ use MSSTC4PHP\DtoGenerator\Domain\Schema\ResolvedSchema;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\Schema;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaGraph;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaLocation;
+use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaType;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use Msstc4Symfony\DtoGeneratorBridge\Validator\Keywords;
 use PHPUnit\Framework\TestCase;
@@ -40,7 +41,7 @@ final class KeywordsTest extends TestCase
         $keywords = new Keywords($this->schema([], ['a', 'b'], 'email'), SchemaReferences::none());
 
         self::assertSame(['a', 'b'], $keywords->enum());
-        self::assertSame('email', $keywords->format());
+        self::assertSame(['email'], $keywords->formats());
         self::assertFalse($keywords->narrowsEnum());
     }
 
@@ -61,6 +62,56 @@ final class KeywordsTest extends TestCase
         $loop = new Schema(new SchemaLocation('api.yaml', '/loop'), [], null, null, null, false, null, null, [], [], null, null, [], [], [$branch], null, [], new Extensions());
 
         self::assertFalse($this->describesObject($loop));
+    }
+
+    public function testCountsEachEnumValueOnce(): void
+    {
+        $repeated = $this->schema([], ['a', 'a', 'b']);
+        $keywords = new Keywords($this->schema([], ['b', 'a'], null, [], ['allOf' => [$repeated]]), SchemaReferences::none());
+
+        self::assertSame(['b', 'a'], $keywords->enum());
+        self::assertFalse($keywords->narrowsEnum());
+        self::assertTrue((new Keywords($this->schema([], ['a'], null, [], ['allOf' => [$repeated]]), SchemaReferences::none()))->narrowsEnum());
+    }
+
+    public function testComparesValuesAsJsonDoes(): void
+    {
+        $pairs = [
+            [1, 1.0, [1]],
+            [1.0, 1, [1.0]],
+            ['1', 1, ['1', 1]],
+            [1, '1', [1, '1']],
+            [1, true, [1, true]],
+            ['a', 'a', ['a']],
+            [9007199254740993, 9007199254740992, [9007199254740993, 9007199254740992]],
+            [2.5, 2.5, [2.5]],
+        ];
+        foreach ($pairs as [$own, $branch, $expected]) {
+            $schema = $this->schema(['const' => $own], null, null, [], ['allOf' => [$this->schema(['const' => $branch])]]);
+
+            self::assertSame($expected, (new Keywords($schema, SchemaReferences::none()))->values('const'), var_export([$own, $branch], true));
+        }
+    }
+
+    public function testTypesTheValueThroughTheOneTypedAllOfBranch(): void
+    {
+        $list = $this->schema();
+        $typed = new Schema(new SchemaLocation('api.yaml', '/typed'), [SchemaType::from(SchemaType::ARRAY)], null, null, null, false, null, null, [], [], null, null, [], [], [], null, [], new Extensions());
+        $untyped = $this->schema(['maxItems' => 2]);
+
+        self::assertSame($typed, $this->resolvedOf($this->schema([], null, null, [], ['allOf' => [$typed, $untyped], 'anyOf' => [$untyped]])));
+        self::assertNotSame($typed, $this->resolvedOf($this->schema([], null, null, [], ['allOf' => [$typed], 'anyOf' => [$typed]])));
+        self::assertNotSame($typed, $this->resolvedOf($this->schema([], null, null, [], ['allOf' => [$typed], 'oneOf' => [$typed]])));
+        self::assertNotSame($typed, $this->resolvedOf($this->schema([], null, null, ['name' => $list], ['allOf' => [$typed]])));
+        self::assertNotSame($typed, $this->resolvedOf($this->schema([], null, null, [], ['allOf' => [$typed, $typed]])));
+        $explicit = new Schema(new SchemaLocation('api.yaml', '/explicit'), [], null, null, null, false, null, null, [], [], null, null, [$typed], [], [], null, [], new Extensions(['x-php-type' => 'App\\Tags']));
+        self::assertSame($explicit, $this->resolvedOf($explicit));
+        self::assertSame([], (new Keywords($list, SchemaReferences::none()))->formats());
+    }
+
+    private function resolvedOf(Schema $schema): Schema
+    {
+        return (new Keywords($schema, SchemaReferences::none()))->resolved();
     }
 
     public function testReadsNoSchemaTwiceOnAnAllOfCycle(): void

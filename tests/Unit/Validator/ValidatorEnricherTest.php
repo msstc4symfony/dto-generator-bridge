@@ -129,7 +129,7 @@ final class ValidatorEnricherTest extends TestCase
             'odd' => ['type' => 'integer', 'minimum' => '5'],
         ]], $schemas, '8.0');
 
-        self::assertSame(["Assert\\Ip(version: '4')"], $this->attributesOf($code, 'address'));
+        self::assertSame(["Assert\\Ip(version: '4')", "Assert\\Email(mode: 'html5')"], $this->attributesOf($code, 'address'));
         self::assertSame(["Assert\\IdenticalTo(value: 'cat')"], $this->attributesOf($code, 'kind'));
         self::assertSame(["Assert\\Choice(choices: ['active'])"], $this->attributesOf($code, 'status'));
         self::assertSame([], $this->attributesOf($code, 'blank'));
@@ -651,14 +651,72 @@ final class ValidatorEnricherTest extends TestCase
         self::assertSame([], $this->messages($output));
     }
 
-    public function testWarnsAboutFormatsThatMeet(): void
+    public function testChecksEveryFormatThatApplies(): void
     {
         $output = $this->generate(['type' => 'object', 'properties' => [
             'contact' => ['allOf' => [['$ref' => '#/components/schemas/Email']], 'format' => 'uuid'],
+            'secret' => ['allOf' => [['$ref' => '#/components/schemas/Email']], 'format' => 'password'],
+            'count' => ['type' => 'integer', 'format' => 'int32', 'allOf' => [['format' => 'int64']]],
         ]], ['Email' => ['type' => 'string', 'format' => 'email']]);
+        $code = $this->code($output, 'Pet.php');
 
-        self::assertSame(['Assert\\Uuid'], $this->attributesOf($this->code($output, 'Pet.php'), 'contact'));
-        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/contact: Several formats apply (uuid, email); only "uuid" is checked.'], $this->messages($output));
+        self::assertSame(['Assert\\Uuid', "Assert\\Email(mode: 'html5')"], $this->attributesOf($code, 'contact'));
+        self::assertSame(["Assert\\Email(mode: 'html5')"], $this->attributesOf($code, 'secret'));
+        self::assertSame([], $this->attributesOf($code, 'count'));
+        self::assertSame([], $this->messages($output));
+    }
+
+    public function testComparesNumbersAsJsonDoes(): void
+    {
+        $code = $this->pet(['type' => 'object', 'properties' => [
+            'ratio' => ['$ref' => '#/components/schemas/One', 'const' => 1.0],
+            'whole' => ['$ref' => '#/components/schemas/Unit', 'const' => 1.0],
+        ]], ['One' => ['type' => 'number', 'const' => 1], 'Unit' => ['type' => 'integer', 'const' => 1]]);
+
+        self::assertSame(['Assert\\IdenticalTo(value: 1.0)'], $this->attributesOf($code, 'ratio'));
+        self::assertSame(['Assert\\IdenticalTo(value: 1)'], $this->attributesOf($code, 'whole'));
+    }
+
+    public function testIntersectsEnumsOfEqualNumbers(): void
+    {
+        $schema = ['type' => 'object', 'properties' => ['size' => ['$ref' => '#/components/schemas/Size', 'enum' => [1.0, 2.0]]]];
+        $others = ['Size' => ['type' => 'number', 'enum' => [1, 2]]];
+
+        $old = $this->generate($schema, $others, '8.0');
+        self::assertSame(['Assert\\Choice(choices: [1.0, 2.0])'], $this->attributesOf($this->code($old, 'Pet.php'), 'size'));
+        self::assertSame([], $this->messages($old));
+    }
+
+    public function testTypesThroughAnAllOfBesideAnUntypedUnion(): void
+    {
+        $code = $this->pet(['type' => 'object', 'properties' => [
+            'tags' => ['type' => 'array', 'allOf' => [['$ref' => '#/components/schemas/Tags']], 'anyOf' => [['minItems' => 1], ['maxItems' => 9]]],
+        ]], ['Tags' => ['type' => 'array', 'items' => ['type' => 'string', 'maxLength' => 4]]]);
+
+        self::assertSame(['Assert\\All(constraints: [new \\Symfony\\Component\\Validator\\Constraints\\Length(max: 4)])'], $this->attributesOf($code, 'tags'));
+    }
+
+    public function testFindsNoIntegerInAnOpenIntervalBetweenNeighbours(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'pick' => ['type' => 'integer', 'exclusiveMinimum' => 1, 'exclusiveMaximum' => 2],
+            'gap' => ['type' => 'integer', 'minimum' => 1.2, 'maximum' => 1.8],
+            'fit' => ['type' => 'integer', 'exclusiveMinimum' => 1.5, 'exclusiveMaximum' => 2.5],
+            'real' => ['type' => 'number', 'exclusiveMinimum' => 1, 'exclusiveMaximum' => 2],
+            'big' => ['type' => 'integer', 'minimum' => 9007199254740993, 'maximum' => 9007199254740992],
+            'huge' => ['type' => 'number', 'minimum' => 9007199254740993, 'maximum' => 9007199254740992],
+        ]]);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame([], $this->attributesOf($code, 'pick'));
+        self::assertSame([], $this->attributesOf($code, 'gap'));
+        self::assertSame(['Assert\\GreaterThan(value: 1.5)', 'Assert\\LessThan(value: 2.5)'], $this->attributesOf($code, 'fit'));
+        self::assertSame(['Assert\\GreaterThan(value: 1)', 'Assert\\LessThan(value: 2)'], $this->attributesOf($code, 'real'));
+        self::assertSame([], $this->attributesOf($code, 'big'));
+        self::assertSame([], $this->attributesOf($code, 'huge'));
+        foreach (['pick' => 'exclusiveMinimum" and "exclusiveMaximum', 'gap' => 'minimum" and "maximum', 'big' => 'minimum" and "maximum', 'huge' => 'minimum" and "maximum'] as $property => $keywords) {
+            self::assertContains(sprintf('warning /api.yaml#/components/schemas/Pet/properties/%s: "%s" leave no valid value; they are not checked.', $property, $keywords), $this->messages($output));
+        }
     }
 
     public function testWarnsAboutAnExclusiveFlagWithoutGroups(): void

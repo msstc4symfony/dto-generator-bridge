@@ -72,16 +72,17 @@ final class ConstraintBuilder
     {
         $keywords = new Keywords($schema, $this->references);
         $value = $type instanceof NullableType ? $type->inner() : $type;
+        $kind = $this->kindOf($value);
         $at = $schema->location();
         $reader = new KeywordReader($keywords, $this->diagnostics, $at);
 
         return array_merge(
-            $this->checks($keywords, $value, 'string', $at) ? $this->strings($keywords, $reader, $at) : [],
-            $this->checks($keywords, $value, 'number', $at) ? $this->numbers($reader, $at) : [],
-            $this->checks($keywords, $value, 'collection', $at) ? $this->collections($keywords, $reader, $value, $at) : [],
+            $this->checks($keywords, $kind, 'string', $at) ? $this->strings($keywords, $reader, $at) : [],
+            $this->checks($keywords, $kind, 'number', $at) ? $this->numbers($reader, $kind === 'integer', $at) : [],
+            $this->checks($keywords, $kind, 'collection', $at) ? $this->collections($keywords, $reader, $value, $at) : [],
             $this->values->choices($keywords, $value, $at),
             $this->values->constants($keywords, $value, $at),
-            $this->format($keywords, $value, $at),
+            $this->formats($keywords, $value),
             $this->nested($keywords, $value, $at),
         );
     }
@@ -90,12 +91,12 @@ final class ConstraintBuilder
      * Symfony checks a keyword on another kind of value anyway (Length counts the digits of a number), so a value that
      * may be of several types gets none.
      *
-     * @param 'string'|'number'|'collection' $kind
+     * @param 'string'|'integer'|'number'|'collection'|'several'|null $actual the kind of the value
+     * @param 'string'|'number'|'collection' $kind the kind the keywords apply to; an integer is a number
      */
-    private function checks(Keywords $keywords, TypeModel $value, string $kind, SchemaLocation $at): bool
+    private function checks(Keywords $keywords, ?string $actual, string $kind, SchemaLocation $at): bool
     {
         $present = array_filter(self::KEYWORDS_OF[$kind], static fn (string $name): bool => $keywords->has($name));
-        $actual = $this->kindOf($value);
         if ($actual === 'several' && $present !== []) {
             $this->diagnostics->warning(sprintf(
                 '"%s" %s only a %s, and the value may be of another type; %s not checked.',
@@ -106,16 +107,16 @@ final class ConstraintBuilder
             ), $at);
         }
 
-        return $actual === $kind;
+        return $actual === $kind || ($kind === 'number' && $actual === 'integer');
     }
 
     /**
-     * @return 'string'|'number'|'collection'|'several'|null
+     * @return 'string'|'integer'|'number'|'collection'|'several'|null
      */
     private function kindOf(TypeModel $value): ?string
     {
         if ($value instanceof ScalarType) {
-            $kinds = ['string' => 'string', 'int' => 'number', 'float' => 'number', 'bool' => null];
+            $kinds = ['string' => 'string', 'int' => 'integer', 'float' => 'number', 'bool' => null];
 
             return $kinds[$value->kind()];
         }
@@ -157,12 +158,12 @@ final class ConstraintBuilder
      *
      * @return list<ConstraintSpec>
      */
-    private function numbers(KeywordReader $reader, SchemaLocation $at): array
+    private function numbers(KeywordReader $reader, bool $integer, SchemaLocation $at): array
     {
         $lower = $this->strictest($reader, 'exclusiveMinimum', 'minimum', true);
         $upper = $this->strictest($reader, 'exclusiveMaximum', 'maximum', false);
         $constraints = [];
-        if ($lower !== null && $upper !== null && !$this->satisfiable($lower, $upper, $at)) {
+        if ($lower !== null && $upper !== null && !$this->satisfiable($lower, $upper, $integer, $at)) {
             $lower = null;
             $upper = null;
         }
@@ -212,10 +213,9 @@ final class ConstraintBuilder
      * @param array{int|float, string} $lower
      * @param array{int|float, string} $upper
      */
-    private function satisfiable(array $lower, array $upper, SchemaLocation $at): bool
+    private function satisfiable(array $lower, array $upper, bool $integer, SchemaLocation $at): bool
     {
-        $inclusive = $lower[1] === 'minimum' && $upper[1] === 'maximum';
-        if ($lower[0] < $upper[0] || ($inclusive && (float) $lower[0] === (float) $upper[0])) {
+        if (!Interval::isEmpty($lower[0], $lower[1] === 'exclusiveMinimum', $upper[0], $upper[1] === 'exclusiveMaximum', $integer)) {
             return true;
         }
 
@@ -248,25 +248,26 @@ final class ConstraintBuilder
     }
 
     /**
-     * A format the config maps to a class gives the property that type, and the class validates itself.
+     * Every format applies; one the config maps to a class gives the property that type, and the class validates
+     * itself.
      *
      * @return list<ConstraintSpec>
      */
-    private function format(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
+    private function formats(Keywords $keywords, TypeModel $value): array
     {
-        $formats = $keywords->formats();
-        if (count($formats) > 1) {
-            $this->diagnostics->warning(sprintf('Several formats apply (%s); only "%s" is checked.', implode(', ', $formats), $formats[0]), $at);
-        }
-
-        $format = $formats[0] ?? null;
-        if (!$value instanceof ScalarType || $value->kind() !== 'string' || $format === null || !isset(self::FORMATS[$format])) {
+        if (!$value instanceof ScalarType || $value->kind() !== 'string') {
             return [];
         }
 
-        [$name, $option, $setting] = self::FORMATS[$format];
+        $constraints = [];
+        foreach ($keywords->formats() as $format) {
+            if (isset(self::FORMATS[$format])) {
+                [$name, $option, $setting] = self::FORMATS[$format];
+                $constraints[] = new ConstraintSpec($name, $option === null ? [] : [AttributeArgument::named($option, ArgumentValue::literal($setting))]);
+            }
+        }
 
-        return [new ConstraintSpec($name, $option === null ? [] : [AttributeArgument::named($option, ArgumentValue::literal($setting))])];
+        return $constraints;
     }
 
     /**

@@ -10,7 +10,7 @@ use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 
 /**
  * The keywords a value must satisfy (JSON Schema 2020-12): those of its schema, of every schema its `$ref` chain passes
- * through, and of its `allOf` branches. Only `format` is taken from the nearest schema that has one.
+ * through, and of its `allOf` branches. Values compare as JSON does: 1 and 1.0 are the same number.
  *
  * @phpstan-import-type JsonValue from Json
  */
@@ -19,8 +19,11 @@ final class Keywords
     /** @var list<Schema> nearest first */
     private array $schemas = [];
 
-    /** @var list<string> locations of */
+    /** @var list<string> the locations of */
     private array $collected = [];
+
+    /** @var list<string> compositions already searched for an object, against `$ref` cycles and repeated work */
+    private array $explored = [];
 
     private Schema $resolved;
 
@@ -34,8 +37,8 @@ final class Keywords
     }
 
     /**
-     * The schema that describes the value: the end of the `$ref` chain, through an `allOf` with a single branch (an
-     * idiom for adding a description or nullability to a reference), as the generator types it.
+     * The schema that describes the value, as the generator types it: the end of the `$ref` chain, through the one
+     * typed branch of an `allOf` (an idiom for annotating or constraining a reference).
      */
     public function resolved(): Schema
     {
@@ -56,17 +59,12 @@ final class Keywords
     {
         $values = [];
         foreach ($this->schemas as $schema) {
-            if ($schema->hasKeyword($name) && !in_array($schema->keyword($name), $values, true)) {
+            if ($schema->hasKeyword($name) && !$this->contains($values, $schema->keyword($name))) {
                 $values[] = $schema->keyword($name);
             }
         }
 
         return $values;
-    }
-
-    public function format(): ?string
-    {
-        return $this->formats()[0] ?? null;
     }
 
     /**
@@ -103,7 +101,7 @@ final class Keywords
     }
 
     /**
-     * Whether more than one schema lists the values, so that one narrows the other.
+     * Whether one `enum` allows fewer values than another.
      */
     public function narrowsEnum(): bool
     {
@@ -123,7 +121,7 @@ final class Keywords
      */
     public function describesObject(): bool
     {
-        return $this->isObject($this->resolved, []);
+        return $this->isObject($this->resolved);
     }
 
     /**
@@ -147,16 +145,25 @@ final class Keywords
     }
 
     /**
-     * The generator types a value through `allOf` when exactly one branch says what the value is; the others only
-     * constrain it.
+     * Follows TypeMapper::bareType() of the generator: an explicit type, a class, or a typed union keeps the schema;
+     * otherwise exactly one typed `allOf` branch gives the type, and the other branches only constrain it.
      *
      * @param list<string> $seen
      */
     private function unwrap(Schema $schema, array $seen): Schema
     {
         $location = $schema->location()->toString();
-        $typed = array_values(array_filter($schema->allOf(), fn (Schema $branch): bool => $this->isTyped($branch)));
-        if (count($typed) !== 1 || $schema->propertyNames() !== [] || $schema->oneOf() !== [] || $schema->anyOf() !== [] || in_array($location, $seen, true)) {
+        if (
+            $schema->extensions()->has('x-php-type')
+            || $schema->propertyNames() !== []
+            || $this->typed(array_merge($schema->oneOf(), $schema->anyOf())) !== []
+            || in_array($location, $seen, true)
+        ) {
+            return $schema;
+        }
+
+        $typed = $this->typed($schema->allOf());
+        if (count($typed) !== 1) {
             return $schema;
         }
 
@@ -165,18 +172,26 @@ final class Keywords
         return $this->unwrap($this->references->resolve($typed[0]), $seen);
     }
 
-    private function isTyped(Schema $branch): bool
+    /**
+     * @param list<Schema> $members
+     *
+     * @return list<Schema> the members that say what the value is, as TypeMapper::typed() of the generator decides
+     */
+    private function typed(array $members): array
     {
-        return $branch->ref() !== null
-            || $branch->nonNullTypes() !== []
-            || $branch->enum() !== null
-            || $branch->allOf() !== [] || $branch->oneOf() !== [] || $branch->anyOf() !== []
-            || $branch->propertyNames() !== []
-            || $branch->extensions()->has('x-php-type');
+        return array_values(array_filter(
+            $members,
+            static fn (Schema $member): bool => $member->ref() !== null
+                || $member->nonNullTypes() !== []
+                || $member->enum() !== null
+                || $member->allOf() !== [] || $member->oneOf() !== [] || $member->anyOf() !== []
+                || $member->propertyNames() !== []
+                || $member->extensions()->has('x-php-type'),
+        ));
     }
 
     /**
-     * @return list<list<JsonValue>>
+     * @return list<list<JsonValue>> each without repeated values
      */
     private function enums(): array
     {
@@ -184,7 +199,7 @@ final class Keywords
         foreach ($this->schemas as $schema) {
             $enum = $schema->enum();
             if ($enum !== null) {
-                $enums[] = $enum;
+                $enums[] = $this->common($enum, $enum);
             }
         }
 
@@ -195,13 +210,13 @@ final class Keywords
      * @param list<JsonValue> $allowed
      * @param list<JsonValue> $enum
      *
-     * @return list<JsonValue>
+     * @return list<JsonValue> the distinct values of $allowed that $enum lists too
      */
     private function common(array $allowed, array $enum): array
     {
         $common = [];
         foreach ($allowed as $value) {
-            if (in_array($value, $enum, true)) {
+            if ($this->contains($enum, $value) && !$this->contains($common, $value)) {
                 $common[] = $value;
             }
         }
@@ -210,18 +225,44 @@ final class Keywords
     }
 
     /**
-     * @param list<string> $seen locations of the compositions on the way, against `$ref` cycles
+     * @param list<JsonValue> $values
+     * @param JsonValue $value
      */
-    private function isObject(Schema $schema, array $seen): bool
+    private function contains(array $values, $value): bool
+    {
+        foreach ($values as $listed) {
+            if ($this->same($listed, $value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param JsonValue $a
+     * @param JsonValue $b
+     */
+    private function same($a, $b): bool
+    {
+        $numbers = (is_int($a) || is_float($a)) && (is_int($b) || is_float($b));
+        if (!$numbers || (is_int($a) && is_int($b))) {
+            return $a === $b;
+        }
+
+        return (float) $a === (float) $b;
+    }
+
+    private function isObject(Schema $schema): bool
     {
         if ($schema->propertyNames() !== []) {
             return true;
         }
 
-        $seen[] = $schema->location()->toString();
+        $this->explored[] = $schema->location()->toString();
         foreach (array_merge($schema->allOf(), $schema->oneOf(), $schema->anyOf()) as $branch) {
             $resolved = $this->references->resolve($branch);
-            if (!in_array($resolved->location()->toString(), $seen, true) && $this->isObject($resolved, $seen)) {
+            if (!in_array($resolved->location()->toString(), $this->explored, true) && $this->isObject($resolved)) {
                 return true;
             }
         }
