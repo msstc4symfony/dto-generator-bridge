@@ -8,7 +8,6 @@ use MSSTC4PHP\DtoGenerator\Contract\SchemaReferences;
 use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostics;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ArgumentValue;
 use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeArgument;
-use MSSTC4PHP\DtoGenerator\Domain\Model\EnumType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ListType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\MapType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\MixedType;
@@ -18,14 +17,11 @@ use MSSTC4PHP\DtoGenerator\Domain\Model\TypeModel;
 use MSSTC4PHP\DtoGenerator\Domain\Model\UnionType;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\Schema;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaLocation;
-use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use MSSTC4PHP\DtoGenerator\Domain\Target\Capability;
 use MSSTC4PHP\DtoGenerator\Domain\Target\TargetProfile;
 
 /**
  * The constraints a value's schema and type call for (bridge spec §5.1), in the order of that table.
- *
- * @phpstan-import-type JsonValue from Json
  */
 final class ConstraintBuilder
 {
@@ -59,11 +55,14 @@ final class ConstraintBuilder
 
     private Diagnostics $diagnostics;
 
+    private ValueConstraints $values;
+
     public function __construct(SchemaReferences $references, TargetProfile $target, Diagnostics $diagnostics)
     {
         $this->references = $references;
         $this->target = $target;
         $this->diagnostics = $diagnostics;
+        $this->values = new ValueConstraints($target, $diagnostics);
     }
 
     /**
@@ -74,13 +73,14 @@ final class ConstraintBuilder
         $keywords = new Keywords($schema, $this->references);
         $value = $type instanceof NullableType ? $type->inner() : $type;
         $at = $schema->location();
+        $reader = new KeywordReader($keywords, $this->diagnostics, $at);
 
         return array_merge(
-            $this->checks($keywords, $value, 'string', $at) ? $this->strings($keywords, $at) : [],
-            $this->checks($keywords, $value, 'number', $at) ? $this->numbers($keywords, $at) : [],
-            $this->checks($keywords, $value, 'collection', $at) ? $this->collections($keywords, $value, $at) : [],
-            $this->choices($keywords, $value, $at),
-            $this->constants($keywords, $value, $at),
+            $this->checks($keywords, $value, 'string', $at) ? $this->strings($keywords, $reader, $at) : [],
+            $this->checks($keywords, $value, 'number', $at) ? $this->numbers($reader, $at) : [],
+            $this->checks($keywords, $value, 'collection', $at) ? $this->collections($keywords, $reader, $value, $at) : [],
+            $this->values->choices($keywords, $value, $at),
+            $this->values->constants($keywords, $value, $at),
             $this->format($keywords, $value),
             $this->nested($keywords, $value, $at),
         );
@@ -98,9 +98,11 @@ final class ConstraintBuilder
         $actual = $this->kindOf($value);
         if ($actual === 'several' && $present !== []) {
             $this->diagnostics->warning(sprintf(
-                '"%s" check only a %s, and the value may be of another type; they are not checked.',
+                '"%s" %s only a %s, and the value may be of another type; %s not checked.',
                 implode('", "', $present),
+                count($present) === 1 ? 'checks' : 'check',
                 $kind,
+                count($present) === 1 ? 'it is' : 'they are',
             ), $at);
         }
 
@@ -128,10 +130,10 @@ final class ConstraintBuilder
     /**
      * @return list<ConstraintSpec>
      */
-    private function strings(Keywords $keywords, SchemaLocation $at): array
+    private function strings(Keywords $keywords, KeywordReader $reader, SchemaLocation $at): array
     {
         $constraints = [];
-        $length = $this->bounds($keywords, 'minLength', 'maxLength', $at);
+        $length = $this->bounds($reader, 'minLength', 'maxLength', $at);
         if ($length !== []) {
             $constraints[] = new ConstraintSpec('Length', $length);
         }
@@ -153,33 +155,35 @@ final class ConstraintBuilder
     /**
      * @return list<ConstraintSpec>
      */
-    private function numbers(Keywords $keywords, SchemaLocation $at): array
+    private function numbers(KeywordReader $reader, SchemaLocation $at): array
     {
-        $minimum = $this->numbersOf($keywords, 'minimum', $at);
-        $maximum = $this->numbersOf($keywords, 'maximum', $at);
+        $minimum = $reader->numbers('minimum');
+        $maximum = $reader->numbers('maximum');
         $constraints = [];
         if ($minimum !== [] && $maximum !== []) {
-            $constraints[] = new ConstraintSpec('Range', [
-                AttributeArgument::named('min', ArgumentValue::literal(max($minimum))),
-                AttributeArgument::named('max', ArgumentValue::literal(min($maximum))),
-            ]);
+            if ($this->consistent('minimum', max($minimum), 'maximum', min($maximum), $at)) {
+                $constraints[] = new ConstraintSpec('Range', [
+                    AttributeArgument::named('min', ArgumentValue::literal(max($minimum))),
+                    AttributeArgument::named('max', ArgumentValue::literal(min($maximum))),
+                ]);
+            }
         } elseif ($minimum !== []) {
             $constraints[] = $this->comparison('GreaterThanOrEqual', max($minimum));
         } elseif ($maximum !== []) {
             $constraints[] = $this->comparison('LessThanOrEqual', min($maximum));
         }
 
-        $exclusiveMinimum = $this->numbersOf($keywords, 'exclusiveMinimum', $at);
+        $exclusiveMinimum = $reader->numbers('exclusiveMinimum');
         if ($exclusiveMinimum !== []) {
             $constraints[] = $this->comparison('GreaterThan', max($exclusiveMinimum));
         }
 
-        $exclusiveMaximum = $this->numbersOf($keywords, 'exclusiveMaximum', $at);
+        $exclusiveMaximum = $reader->numbers('exclusiveMaximum');
         if ($exclusiveMaximum !== []) {
             $constraints[] = $this->comparison('LessThan', min($exclusiveMaximum));
         }
 
-        foreach ($this->numbersOf($keywords, 'multipleOf', $at) as $multipleOf) {
+        foreach ($reader->divisors('multipleOf') as $multipleOf) {
             $constraints[] = $this->comparison('DivisibleBy', $multipleOf);
         }
 
@@ -187,107 +191,26 @@ final class ConstraintBuilder
     }
 
     /**
+     * JSON Schema applies uniqueItems to arrays only, and the properties of a map to minProperties/maxProperties.
+     *
      * @return list<ConstraintSpec>
      */
-    private function collections(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
+    private function collections(Keywords $keywords, KeywordReader $reader, TypeModel $value, SchemaLocation $at): array
     {
+        $isMap = $value instanceof MapType;
         $constraints = [];
-        $count = $value instanceof MapType
-            ? $this->bounds($keywords, 'minProperties', 'maxProperties', $at)
-            : $this->bounds($keywords, 'minItems', 'maxItems', $at);
+        $count = $isMap
+            ? $this->bounds($reader, 'minProperties', 'maxProperties', $at)
+            : $this->bounds($reader, 'minItems', 'maxItems', $at);
         if ($count !== []) {
             $constraints[] = new ConstraintSpec('Count', $count);
         }
 
-        if (in_array(true, $keywords->values('uniqueItems'), true)) {
+        if (!$isMap && in_array(true, $keywords->values('uniqueItems'), true)) {
             $constraints[] = new ConstraintSpec('Unique');
         }
 
         return $constraints;
-    }
-
-    /**
-     * A PHP enum limits the values itself; where the target has none, an enum is written as a plain string or int, and
-     * only the constraint does.
-     *
-     * @return list<ConstraintSpec>
-     */
-    private function choices(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
-    {
-        $enum = $keywords->enum();
-        if ($enum === null) {
-            return [];
-        }
-
-        if ($value instanceof EnumType && $this->target->supports(Capability::from(Capability::ENUMS))) {
-            if ($keywords->narrowsReferencedEnum()) {
-                $this->diagnostics->warning(
-                    '"enum" beside "$ref" narrows the referenced enum, which the generated enum type does not; the narrowing is not checked.',
-                    $at,
-                );
-            }
-
-            return [];
-        }
-
-        // The generator accepts only string or integer enums, which Choice compares as JSON does.
-        $choices = [];
-        foreach ($enum as $choice) {
-            if (is_int($choice) || is_string($choice)) {
-                $choices[] = ArgumentValue::literal($choice);
-            }
-        }
-
-        return [new ConstraintSpec('Choice', [AttributeArgument::named('choices', ArgumentValue::listOf(...$choices))])];
-    }
-
-    /**
-     * @return list<ConstraintSpec>
-     */
-    private function constants(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
-    {
-        $constraints = [];
-        foreach ($keywords->values('const') as $constant) {
-            if ($constant === null) {
-                $constraints[] = new ConstraintSpec('IsNull');
-            } elseif ($value instanceof EnumType && $this->target->supports(Capability::from(Capability::ENUMS))) {
-                $case = $this->enumCase($value, $constant, $at);
-                if ($case instanceof ConstraintSpec) {
-                    $constraints[] = $case;
-                }
-            } elseif (is_int($constant) && $this->isFloat($value)) {
-                // JSON has one kind of number, so 1 and 1.0 are the same constant; IdenticalTo compares with ===.
-                $constraints[] = $this->comparison('IdenticalTo', (float) $constant);
-            } elseif (is_scalar($constant)) {
-                $constraints[] = $this->comparison('IdenticalTo', $constant);
-            } else {
-                $this->diagnostics->warning('"const" with an array or object has no Symfony constraint; it is not checked.', $at);
-            }
-        }
-
-        return $constraints;
-    }
-
-    /**
-     * The property holds the enum case, not its value.
-     *
-     * @param JsonValue $constant
-     */
-    private function enumCase(EnumType $enum, $constant, SchemaLocation $at): ?ConstraintSpec
-    {
-        $case = $enum->caseFor($constant);
-        if ($case === null) {
-            $this->diagnostics->warning('"const" is none of the enum values; it is not checked.', $at);
-
-            return null;
-        }
-
-        return new ConstraintSpec('IdenticalTo', [AttributeArgument::named('value', ArgumentValue::constant($case, $enum->className()))]);
-    }
-
-    private function isFloat(TypeModel $value): bool
-    {
-        return $value instanceof ScalarType && $value->kind() === 'float';
     }
 
     /**
@@ -366,15 +289,19 @@ final class ConstraintBuilder
     /**
      * @return list<AttributeArgument>
      */
-    private function bounds(Keywords $keywords, string $minimum, string $maximum, SchemaLocation $at): array
+    private function bounds(KeywordReader $reader, string $minimum, string $maximum, SchemaLocation $at): array
     {
+        $lower = $reader->counts($minimum);
+        $upper = $reader->counts($maximum);
+        if ($lower !== [] && $upper !== [] && !$this->consistent($minimum, max($lower), $maximum, min($upper), $at)) {
+            return [];
+        }
+
         $bounds = [];
-        $lower = $this->countsOf($keywords, $minimum, $at);
         if ($lower !== []) {
             $bounds[] = AttributeArgument::named('min', ArgumentValue::literal(max($lower)));
         }
 
-        $upper = $this->countsOf($keywords, $maximum, $at);
         if ($upper !== []) {
             $bounds[] = AttributeArgument::named('max', ArgumentValue::literal(min($upper)));
         }
@@ -383,57 +310,18 @@ final class ConstraintBuilder
     }
 
     /**
-     * @return list<int>
+     * @param int|float $lower
+     * @param int|float $upper
      */
-    private function countsOf(Keywords $keywords, string $name, SchemaLocation $at): array
+    private function consistent(string $minimum, $lower, string $maximum, $upper, SchemaLocation $at): bool
     {
-        $counts = [];
-        foreach ($keywords->values($name) as $value) {
-            $count = $this->asCount($value);
-            if ($count === null) {
-                $this->diagnostics->warning(sprintf('"%s" must be a non-negative integer; it is not checked.', $name), $at);
-            } else {
-                $counts[] = $count;
-            }
+        if ($lower <= $upper) {
+            return true;
         }
 
-        return $counts;
-    }
+        $this->diagnostics->warning(sprintf('"%s" is above "%s", so no value is valid; they are not checked.', $minimum, $maximum), $at);
 
-    /**
-     * JSON Schema counts 2.0 as an integer.
-     *
-     * @param JsonValue $value
-     */
-    private function asCount($value): ?int
-    {
-        if (is_int($value)) {
-            return $value >= 0 ? $value : null;
-        }
-
-        // A fraction, or a float beyond the int range, does not survive the round trip through int.
-        if (is_float($value) && $value >= 0 && (float) (int) $value === $value) {
-            return (int) $value;
-        }
-
-        return null;
-    }
-
-    /**
-     * @return list<int|float>
-     */
-    private function numbersOf(Keywords $keywords, string $name, SchemaLocation $at): array
-    {
-        $numbers = [];
-        foreach ($keywords->values($name) as $number) {
-            if (is_int($number) || is_float($number)) {
-                $numbers[] = $number;
-            } else {
-                $this->diagnostics->warning(sprintf('"%s" must be a number; it is not checked.', $name), $at);
-            }
-        }
-
-        return $numbers;
+        return false;
     }
 
     /**

@@ -8,6 +8,7 @@ use MSSTC4PHP\DtoGenerator\Contract\PropertyContext;
 use MSSTC4PHP\DtoGenerator\Contract\PropertyEnricher;
 use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostics;
 use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeModel;
+use MSSTC4PHP\DtoGenerator\Domain\Model\MixedType;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\Schema;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaLocation;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
@@ -37,7 +38,7 @@ final class ValidatorEnricher implements PropertyEnricher
     public function enrichProperty(PropertyContext $context): array
     {
         $schema = $context->schema();
-        if (!$this->writes($context) || $this->extension($schema, 'x-validator-skip') === true) {
+        if (!$this->writes($context) || $this->flag($schema, 'x-validator-skip', $context->diagnostics())) {
             return [];
         }
 
@@ -46,9 +47,10 @@ final class ValidatorEnricher implements PropertyEnricher
         $builder = new ConstraintBuilder($context->references(), $context->target(), $diagnostics);
         $groups = $this->groups($schema, $diagnostics);
 
-        // The generator makes a nullable property optional, so a required one is never null.
+        // A required property is non-nullable, except a mixed one (null among its values): the generator makes a
+        // nullable property optional otherwise.
         $constraints = array_merge(
-            $property->isRequired() ? [new ConstraintSpec('NotNull')] : [],
+            $property->isRequired() && !$property->type() instanceof MixedType ? [new ConstraintSpec('NotNull')] : [],
             $builder->build($schema, $property->type()),
         );
 
@@ -135,7 +137,7 @@ final class ValidatorEnricher implements PropertyEnricher
             $groups = $this->declaredGroups($declared, $schema->location(), $diagnostics);
         }
 
-        if ($groups === [] || $this->extension($schema, 'x-validator-groups-exclusive') === true || in_array('Default', $groups, true)) {
+        if ($groups === [] || $this->flag($schema, 'x-validator-groups-exclusive', $diagnostics) || in_array('Default', $groups, true)) {
             return $groups;
         }
 
@@ -167,6 +169,16 @@ final class ValidatorEnricher implements PropertyEnricher
         }
 
         return $groups;
+    }
+
+    private function flag(Schema $schema, string $key, Diagnostics $diagnostics): bool
+    {
+        $flag = $this->extension($schema, $key);
+        if ($flag !== null && !is_bool($flag)) {
+            $diagnostics->warning(sprintf('%s must be true or false; it is ignored.', $key), $schema->location());
+        }
+
+        return $flag === true;
     }
 
     /**

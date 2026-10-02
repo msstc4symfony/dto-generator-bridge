@@ -9,14 +9,15 @@ use MSSTC4PHP\DtoGenerator\Domain\Schema\Schema;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 
 /**
- * The keywords of a schema that may be a `$ref`. A value must satisfy both the keywords beside the `$ref` and those of
- * the schema it ends at (JSON Schema 2020-12), so both are read; only `format` beside a `$ref` replaces the target's.
+ * The keywords a value must satisfy (JSON Schema 2020-12): those of its schema, of every schema its `$ref` chain passes
+ * through, and of its `allOf` branches. Only `format` is taken from the nearest schema that has one.
  *
  * @phpstan-import-type JsonValue from Json
  */
 final class Keywords
 {
-    private Schema $own;
+    /** @var list<Schema> nearest first */
+    private array $schemas;
 
     private Schema $resolved;
 
@@ -24,11 +25,15 @@ final class Keywords
 
     public function __construct(Schema $own, SchemaReferences $references)
     {
-        $this->own = $own;
-        $this->resolved = $references->resolve($own);
         $this->references = $references;
+        $this->schemas = $this->collect($own, []);
+        $this->resolved = $this->unwrap($references->resolve($own), []);
     }
 
+    /**
+     * The schema that describes the value: the end of the `$ref` chain, through an `allOf` with a single branch (an
+     * idiom for adding a description or nullability to a reference), as the generator types it.
+     */
     public function resolved(): Schema
     {
         return $this->resolved;
@@ -40,14 +45,14 @@ final class Keywords
     }
 
     /**
-     * The distinct values of a keyword, the one beside the `$ref` first.
+     * The distinct values of a keyword, the nearest first.
      *
      * @return list<JsonValue>
      */
     public function values(string $name): array
     {
         $values = [];
-        foreach ([$this->own, $this->resolved] as $schema) {
+        foreach ($this->schemas as $schema) {
             if ($schema->hasKeyword($name) && !in_array($schema->keyword($name), $values, true)) {
                 $values[] = $schema->keyword($name);
             }
@@ -58,39 +63,36 @@ final class Keywords
 
     public function format(): ?string
     {
-        return $this->own->format() ?? $this->resolved->format();
+        foreach ($this->schemas as $schema) {
+            if ($schema->format() !== null) {
+                return $schema->format();
+            }
+        }
+
+        return null;
     }
 
     /**
-     * The values both schemas allow.
+     * The values every schema with an `enum` allows; null when none has one.
      *
      * @return list<JsonValue>|null
      */
     public function enum(): ?array
     {
-        $own = $this->own->enum();
-        $resolved = $this->resolved->enum();
-        if ($own === null) {
-            return $resolved;
+        $allowed = null;
+        foreach ($this->enums() as $enum) {
+            $allowed = $allowed === null ? $enum : $this->common($allowed, $enum);
         }
 
-        if ($resolved === null) {
-            return $own;
-        }
-
-        $both = [];
-        foreach ($own as $value) {
-            if (in_array($value, $resolved, true)) {
-                $both[] = $value;
-            }
-        }
-
-        return $both;
+        return $allowed;
     }
 
-    public function narrowsReferencedEnum(): bool
+    /**
+     * Whether more than one schema lists the values, so that one narrows the other.
+     */
+    public function narrowsEnum(): bool
     {
-        return $this->own->ref() !== null && $this->own->enum() !== null;
+        return count($this->enums()) > 1;
     }
 
     /**
@@ -100,6 +102,82 @@ final class Keywords
     public function describesObject(): bool
     {
         return $this->isObject($this->resolved, []);
+    }
+
+    /**
+     * @param list<string> $seen locations already collected, against `$ref` and `allOf` cycles
+     *
+     * @return list<Schema>
+     */
+    private function collect(Schema $schema, array $seen): array
+    {
+        $schemas = [];
+        foreach ($this->references->chain($schema) as $link) {
+            $location = $link->location()->toString();
+            // The rest of the chain was collected where this link was.
+            if (in_array($location, $seen, true)) {
+                return $schemas;
+            }
+
+            $seen[] = $location;
+            $schemas[] = $link;
+            // A schema reached through two branches is read twice, which changes nothing: values() drops repeats.
+            foreach ($link->allOf() as $branch) {
+                $schemas = array_merge($schemas, $this->collect($branch, $seen));
+            }
+        }
+
+        return $schemas;
+    }
+
+    /**
+     * @param list<string> $seen
+     */
+    private function unwrap(Schema $schema, array $seen): Schema
+    {
+        $branches = $schema->allOf();
+        $location = $schema->location()->toString();
+        if (count($branches) !== 1 || $schema->types() !== [] || $schema->propertyNames() !== [] || in_array($location, $seen, true)) {
+            return $schema;
+        }
+
+        $seen[] = $location;
+
+        return $this->unwrap($this->references->resolve($branches[0]), $seen);
+    }
+
+    /**
+     * @return list<list<JsonValue>>
+     */
+    private function enums(): array
+    {
+        $enums = [];
+        foreach ($this->schemas as $schema) {
+            $enum = $schema->enum();
+            if ($enum !== null) {
+                $enums[] = $enum;
+            }
+        }
+
+        return $enums;
+    }
+
+    /**
+     * @param list<JsonValue> $allowed
+     * @param list<JsonValue> $enum
+     *
+     * @return list<JsonValue>
+     */
+    private function common(array $allowed, array $enum): array
+    {
+        $common = [];
+        foreach ($allowed as $value) {
+            if (in_array($value, $enum, true)) {
+                $common[] = $value;
+            }
+        }
+
+        return $common;
     }
 
     /**

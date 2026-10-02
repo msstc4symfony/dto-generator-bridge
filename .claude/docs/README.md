@@ -13,7 +13,7 @@
 
 ## Validator (B2)
 - `Validator\ValidatorEnricher` (регистрируется `SymfonyExtension`): решает «писать ли» один раз на запуск по первому свойству (предупреждения — на корне его документа): `validator: false`/`auto` без пакета → нет; `true` без пакета → warning; версия < 5.4 → warning, нет; `metadata: annotations` + validator ≥ 7.0 → strict: error / warning, нет; 5.4/6.4 без `doctrine/annotations` → warning.
-- `ConstraintBuilder` — таблица §5.1 в её порядке, ключевые слова — только для своего вида типа (`KEYWORDS_OF`); `Keywords` — значения и свойства, и цели `$ref` (AND: строже граница, оба `pattern`, пересечение `enum`); `Pattern` — ECMA → PCRE; `ConstraintSpec` — имя + аргументы → атрибут с `ImportAlias(…Constraints, 'Assert')` или `new` внутри `All`. `NotNull` ставит `ValidatorEnricher`.
+- `ConstraintBuilder` — таблица §5.1 в её порядке, ключевые слова — только для своего вида типа (`KEYWORDS_OF`); `Keywords` — значения всех звеньев `$ref` (`chain()`) и веток `allOf` (AND: строже граница, все `pattern`, пересечение `enum`), `resolved()` разворачивает `allOf` из одной ветки; `KeywordReader` — числовые ключевые слова с проверкой; `ValueConstraints` — `enum`/`const` в PHP-типе свойства, case PHP-enum; `Pattern` — ECMA → PCRE (`/uD`), `UnicodeEscape` — `\u` и суррогатные пары; `ConstraintSpec` — имя + аргументы → атрибут с `ImportAlias(…Constraints, 'Assert')` или `new` внутри `All`. `NotNull` ставит `ValidatorEnricher`.
 - Тесты — настоящий генератор ядра в dry-run на временном проекте с `composer.lock`; `attributesOf()` разбирает сигнатуру конструктора по запятым нулевой глубины.
 
 ## Известные особенности
@@ -29,3 +29,6 @@
 - `json_encode` в тестах пишет `2.0` как `2`: для дробных значений — `JSON_PRESERVE_ZERO_FRACTION`. Строки с `\u` + hex в вводе инструментов декодируются в символ — в тестах собирать `'\\' . 'u00e9'`.
 - PCRE2 в PHP 7.4 принимает `\u12` как литерал, в 8.x — ошибка; `Pattern` отклоняет такой `\u` сам.
 - Ядро печатает атрибуты promoted-параметра в одну строку перед `public`, длинные — с переносом аргументов.
+- Ядро: `required` у `mixed` (`{}`, `type: null`) остаётся — `null` допустим, `NotNull` нельзя. Enum из `float`/`bool` ядро в PHP-enum не превращает (warning ядра), тип остаётся скалярным.
+- Ядро само предупреждает о `minimum` > `maximum` в одной схеме («no range is applied»).
+- `infection.json5` — точная копия шаблона bundle-standard: игнорировать мутантов нельзя, эквивалентных убирать перестройкой кода (вынести проверку в класс с прямыми тестами).

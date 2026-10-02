@@ -35,23 +35,24 @@ final class Pattern
             }
 
             $escaped = $pattern[++$i];
-            // PCRE has no \uXXXX; \x{XXXX} is the same code point under the /u modifier. Older PCRE2 builds take a
-            // malformed \u as a literal "u", so it is rejected here rather than by the compiler.
-            if ($escaped === 'u') {
-                if (preg_match('~\G(?|([0-9A-Fa-f]{4})|\{([0-9A-Fa-f]{1,6})\})~', $pattern, $code, 0, $i + 1) !== 1) {
-                    return null;
-                }
-
-                $pcre .= '\x{' . $code[1] . '}';
-                $i += strlen($code[0]);
+            if ($escaped !== 'u') {
+                $pcre .= '\\' . $escaped;
 
                 continue;
             }
 
-            $pcre .= '\\' . $escaped;
+            $unicode = UnicodeEscape::read($pattern, $i + 1);
+            if ($unicode === null) {
+                return null;
+            }
+
+            [$point, $consumed] = $unicode;
+            $pcre .= sprintf('\x{%X}', $point);
+            $i += $consumed;
         }
 
-        $regex = '/' . $pcre . '/u';
+        // D: "$" ends the subject, as in ECMA-262, rather than also matching before a final newline.
+        $regex = '/' . $pcre . '/uD';
 
         return @preg_match($regex, '') === false ? null : $regex;
     }

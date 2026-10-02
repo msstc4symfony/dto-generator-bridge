@@ -52,3 +52,14 @@ PHP ≥ 7.4 (профиль `php74` bundle-standard); только SPI ядра;
 - CR-014…017: типизация `FORMATS`, `KEYWORDS_OF`; длинные строки; порядок числовых ограничений (включительные, затем исключающие); `Constraint` → `ConstraintSpec`, `NotNull` ставит `ValidatorEnricher` (без флага в `build()`).
 - CR-018: диагностики решения — на корне документа (`/api.yaml#`), а не на случайном свойстве. Ядро складывает одинаковые сообщения в одном месте; решение всё равно принимается один раз — иначе каждый документ получил бы свой warning.
 - CR-019: deptrac — `TypeAlias` перечисляет namespace'ы.
+
+## Повторное ревью medium (CR-B01…B09, S-1…S-6) — исправления
+- CR-B01: `Choice` из всех скалярных значений в PHP-типе свойства; пустой список — warning, без `Choice`.
+- CR-B02: `NotNull` не ставится на `mixed` (`{}`, `type: null`): ядро оставляет его обязательным, хотя `null` допустим.
+- CR-B03: целый `float` в `const`/`enum` на `int`-свойстве — `int` (`ValueConstraints::asTypeOf`).
+- CR-B04: ядро — `SchemaReferences::chain()` (минор, слито в `main` ядра после ревью low); `Keywords` читает все звенья и ветки `allOf`.
+- CR-B05…B08: `multipleOf` ≤ 0, не-bool флаги, пустое пересечение `enum` — warnings; `Unique` только для списков.
+- CR-B09: суррогатные пары склеиваются (`UnicodeEscape`), одиночный суррогат отклоняется сам: PCRE2 в PHP 7.4 его компилирует.
+- S-1: модификатор `D`. S-2: противоречивые границы — warning и пропуск. S-3: обёртка `allOf` из одной ветки. S-4: «checks»/«check». S-5: `KeywordReader` (числа), `ValueConstraints` (`enum`/`const`), `UnicodeEscape` вынесены из `ConstraintBuilder`/`Pattern`. S-6: deptrac — `(Validator|Serializer)`.
+- Ruling: проверка суррогатов вынесена в `UnicodeEscape` с прямыми тестами, а не в ignore infection: `infection.json5` — точная копия шаблона стандарта, а на PHP 8 компилятор PCRE отвергает суррогат сам, и мутанты проверки иначе эквивалентны — стоимость ошибки: один лишний маленький класс.
+- Найдено в ядре: `{X: {type: object, allOf: [{$ref: X}]}}` роняет генератор исключением `InvalidModel` («cannot extend itself») вместо диагностики — отдельная итерация ядра.

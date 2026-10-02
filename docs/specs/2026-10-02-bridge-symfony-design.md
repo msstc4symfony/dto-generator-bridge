@@ -57,15 +57,15 @@ extensionConfig:
 
 | Схема | Constraint | Примечание |
 |---|---|---|
-| свойство в `required`, тип не nullable | `NotNull` | Конструктор и так требует значение; constraint нужен для денормализации в существующий объект и для `mutable`. |
+| свойство в `required`, тип не nullable и не `mixed` (`{}`, `type: null`) | `NotNull` | Конструктор и так требует значение; constraint нужен для денормализации в существующий объект и для `mutable`. |
 | `minLength`/`maxLength` | `Length(min:, max:)` | Один constraint на оба. |
-| `pattern` | `Regex(pattern: '/…/u')` | Неэкранированный `/` экранируется; `\uXXXX`/`\u{…}` → `\x{…}`; паттерн, который PCRE не компилирует (или с неверным `\u`), — warning и пропуск. |
+| `pattern` | `Regex(pattern: '/…/u')` | Модификаторы `uD` (`$` — конец строки, как в ECMA). Неэкранированный `/` экранируется; `\uXXXX`/`\u{…}` → `\x{…}`, суррогатная пара — одна кодовая точка, одиночный суррогат отклоняется; паттерн, который PCRE не компилирует (или с неверным `\u`), — warning и пропуск. |
 | `minimum`/`maximum` (оба включительно) | `Range(min:, max:)` | |
 | одна включительная граница, затем `exclusiveMinimum`, `exclusiveMaximum` | `GreaterThanOrEqual` / `LessThanOrEqual`, затем `GreaterThan`, `LessThan` (`value:`) | |
-| `multipleOf` | `DivisibleBy(value:)` | |
+| `multipleOf` | `DivisibleBy(value:)` | Не больше нуля — warning и пропуск. |
 | `minItems`/`maxItems`, `minProperties`/`maxProperties` (map) | `Count(min:, max:)` | |
-| `uniqueItems: true` | `Unique` | См. §5.6: объекты сравниваются по идентичности. |
-| `enum`, если тип свойства — не PHP-enum (цель 7.4/8.0, или `enum` рядом с `$ref` на не-enum) | `Choice(choices:)` | На 8.1+ значения ограничивает сам тип enum; `enum` рядом с `$ref` на enum — warning (сужение не проверяется). Ядро принимает только строковые и целые enum, поэтому `strict` не нужен; `null` в `enum` в `choices` не входит. |
+| `uniqueItems: true` (только список) | `Unique` | См. §5.6: объекты сравниваются по идентичности. |
+| `enum`, если тип свойства — не PHP-enum (цель 7.4/8.0; `enum` рядом с `$ref` на не-enum; enum из `float`/`bool`, для которых ядро не делает PHP-enum) | `Choice(choices:)` | Значения — в PHP-типе свойства (`1` на `float` → `1.0`). На 8.1+ значения PHP-enum ограничивает сам тип; второй `enum` в цепочке — warning (сужение не проверяется). Пустое пересечение `enum` — warning, без `Choice`; `null` в `choices` не входит, `enum: [null]` — ничего. |
 | `const`: скаляр | `IdenticalTo(value:)` | Целое на `float`-свойстве — `1.0` (`===`); на свойстве-enum (8.1+) — case enum'а (`Pet::VALUE_2`), значение вне enum — warning. |
 | `const: null` | `IsNull` | |
 | `const`: массив или объект | — | Warning и пропуск: `AbstractComparison` принимает массив за опции. |
@@ -78,7 +78,8 @@ extensionConfig:
 | ограничения `items` (список), схема `additionalProperties` (map) | `All(constraints: [...])` | Вложенные `new` в атрибуте — PHP ≥ 8.1; на цели 8.0 мост сам пропускает `All` с warning (ядро в strict сочло бы атрибут ошибкой); на 7.4 — аннотация `@Assert\All({@Assert\Length(...)})`. `Valid` элементов любой глубины поднимается на свойство: Symfony запрещает `Valid` внутри `All`. |
 
 - Ключевые слова строки, числа и коллекции ставятся, только если тип свойства — именно такой (`string`; `int`/`float`; список/map). Для значения нескольких типов (union, `mixed`) — warning и пропуск: Symfony проверил бы их и на другом типе (`Length` считает цифры числа). Для класса (дата, класс формата) — молча пропуск.
-- Неверные значения (`minimum: '5'`, `maxLength: -1`, дробный счётчик) — warning и пропуск; `2.0` — целое.
+- Неверные значения (`minimum: '5'`, `maxLength: -1`, дробный счётчик) — warning и пропуск; `2.0` — целое. Противоречивые границы (`min*` > `max*`, в том числе через `$ref`) — warning и пропуск пары; ядро о противоречии внутри одной схемы для `minimum`/`maximum` сообщает и само.
+- `x-validator-skip`, `x-validator-groups-exclusive` не `true`/`false` — warning, флаг не действует.
 
 - `format` формата, замапленного на класс (`formats` ядра), constraint не получает.
 - В 2020-12 `format` — аннотация, а не утверждение. Решение: мост проверяет форматы из таблицы, как это делает большинство валидаторов OpenAPI; `x-validator-skip` отключает.
@@ -104,7 +105,7 @@ extensionConfig:
 - Symfony 5.4/6.4 + аннотации: потребителю нужен `doctrine/annotations` — мост проверяет `InstalledPackages` и выдаёт warning, если пакета нет.
 
 ### 5.6 Известные расхождения с JSON Schema
-- Ключевые слова рядом с `$ref` действуют вместе с ключевыми словами цели (2020-12): из границ берётся более строгая, `pattern`/`multipleOf`/`const` — оба, `enum` — пересечение; только `format` рядом с `$ref` заменяет формат цели. Промежуточные звенья цепочки `$ref` не читаются — только исходная схема и конечная цель.
+- Ключевые слова всех звеньев цепочки `$ref` (`SchemaReferences::chain()` ядра) и веток `allOf` действуют вместе (2020-12): из границ берётся более строгая, `pattern`/`multipleOf`/`const` — все, `enum` — пересечение; `format` — ближайший. `allOf` из одной ветки без своего типа (обёртка ради `description`) — схема значения для `items`/`additionalProperties`, как и у ядра.
 - Ограничения веток `anyOf`/`oneOf` не переносятся; `Valid` ставится, если хотя бы одна ветка — объект со свойствами.
 - ECMA-262 и PCRE: `\d`, `\w`, `\b` в PCRE без `(*UCP)` — только ASCII, как и в ECMA без флага `u`; именованные группы и lookbehind совместимы; остальные расхождения проявятся ошибкой компиляции (warning).
 - `Unique` сравнивает объекты по идентичности: `uniqueItems` для списка DTO фактически не проверяется. Документируется.

@@ -6,7 +6,10 @@ namespace Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Validator;
 
 use MSSTC4PHP\DtoGenerator\Contract\SchemaReferences;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\Extensions;
+use MSSTC4PHP\DtoGenerator\Domain\Schema\ReferenceUse;
+use MSSTC4PHP\DtoGenerator\Domain\Schema\ResolvedSchema;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\Schema;
+use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaGraph;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaLocation;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use Msstc4Symfony\DtoGeneratorBridge\Validator\Keywords;
@@ -38,7 +41,7 @@ final class KeywordsTest extends TestCase
 
         self::assertSame(['a', 'b'], $keywords->enum());
         self::assertSame('email', $keywords->format());
-        self::assertFalse($keywords->narrowsReferencedEnum());
+        self::assertFalse($keywords->narrowsEnum());
     }
 
     public function testCountsACompositionAsAnObjectOnlyWithABranchThatHasProperties(): void
@@ -58,6 +61,37 @@ final class KeywordsTest extends TestCase
         $loop = new Schema(new SchemaLocation('api.yaml', '/loop'), [], null, null, null, false, null, null, [], [], null, null, [], [], [$branch], null, [], new Extensions());
 
         self::assertFalse($this->describesObject($loop));
+    }
+
+    public function testReadsNoSchemaTwiceOnAnAllOfCycle(): void
+    {
+        $again = new Schema(new SchemaLocation('api.yaml', '/loop'), [], null, null, null, false, null, null, [], [], null, null, [], [], [], null, ['maxLength' => 9], new Extensions());
+        $loop = new Schema(new SchemaLocation('api.yaml', '/loop'), [], null, null, null, false, null, null, [], [], null, null, [$again], [], [], null, [], new Extensions());
+
+        self::assertSame([], (new Keywords($loop, SchemaReferences::none()))->values('maxLength'));
+    }
+
+    public function testKeepsTheLinksOfAnAllOfBranchUpToTheSchemaItLeadsBackTo(): void
+    {
+        $branch = $this->linked('/A/allOf/0', '#/C', ['maxLength' => 5]);
+        $c = $this->linked('/C', '#/A', ['minLength' => 2]);
+        $a = new Schema(new SchemaLocation('api.yaml', '/A'), [], null, null, null, false, null, null, [], [], null, null, [$branch], [], [], null, [], new Extensions());
+        $graph = new SchemaGraph(
+            [new ResolvedSchema($a, 0, 'A', true), new ResolvedSchema($c, 0, 'C', true)],
+            [(new ReferenceUse('#/C', $branch->location()))->key() => $c->location()->toString(), (new ReferenceUse('#/A', $c->location()))->key() => $a->location()->toString()],
+        );
+        $keywords = new Keywords($a, new SchemaReferences($graph));
+
+        self::assertSame([5], $keywords->values('maxLength'));
+        self::assertSame([2], $keywords->values('minLength'));
+    }
+
+    /**
+     * @param array<string, JsonValue> $keywords
+     */
+    private function linked(string $pointer, string $ref, array $keywords): Schema
+    {
+        return new Schema(new SchemaLocation('api.yaml', $pointer), [], $ref, null, null, false, null, null, [], [], null, null, [], [], [], null, $keywords, new Extensions());
     }
 
     private function describesObject(Schema $schema): bool
