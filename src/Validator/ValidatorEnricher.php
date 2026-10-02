@@ -137,7 +137,8 @@ final class ValidatorEnricher implements PropertyEnricher
             $groups = $this->declaredGroups($declared, $schema->location(), $diagnostics);
         }
 
-        if ($groups === [] || $this->flag($schema, 'x-validator-groups-exclusive', $diagnostics) || in_array('Default', $groups, true)) {
+        $exclusive = $this->flag($schema, 'x-validator-groups-exclusive', $diagnostics);
+        if ($groups === [] || $exclusive || in_array('Default', $groups, true)) {
             return $groups;
         }
 

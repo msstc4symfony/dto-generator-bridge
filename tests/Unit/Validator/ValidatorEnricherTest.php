@@ -63,7 +63,7 @@ final class ValidatorEnricherTest extends TestCase
         ]]);
 
         self::assertSame(['Assert\\Range(min: 0, max: 30)'], $this->attributesOf($code, 'age'));
-        self::assertSame(['Assert\\LessThanOrEqual(value: 99.5)', 'Assert\\GreaterThan(value: 0)', 'Assert\\DivisibleBy(value: 0.5)'], $this->attributesOf($code, 'weight'));
+        self::assertSame(['Assert\\GreaterThan(value: 0)', 'Assert\\LessThanOrEqual(value: 99.5)', 'Assert\\DivisibleBy(value: 0.5)'], $this->attributesOf($code, 'weight'));
         self::assertSame(['Assert\\GreaterThanOrEqual(value: 2)'], $this->attributesOf($code, 'legs'));
         self::assertSame(['Assert\\LessThan(value: 3)'], $this->attributesOf($code, 'tail'));
     }
@@ -416,10 +416,10 @@ final class ValidatorEnricherTest extends TestCase
             'wide' => ['$ref' => '#/components/schemas/Code', 'maxLength' => 200, 'pattern' => '^a'],
             'broken' => ['$ref' => '#/components/schemas/Code', 'pattern' => '(a'],
             'narrow' => ['$ref' => '#/components/schemas/Code', 'maxLength' => 4, 'minLength' => 2],
-            'step' => ['$ref' => '#/components/schemas/Step', 'multipleOf' => 3, 'minimum' => 1, 'const' => 6],
+            'step' => ['$ref' => '#/components/schemas/Step', 'multipleOf' => 3, 'minimum' => 1],
         ]], [
             'Code' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 64, 'pattern' => '^[a-z]+$'],
-            'Step' => ['type' => 'integer', 'multipleOf' => 2, 'minimum' => 0, 'const' => 4],
+            'Step' => ['type' => 'integer', 'multipleOf' => 2, 'minimum' => 0],
         ]);
 
         self::assertSame(['Assert\\Length(min: 1, max: 64)', "Assert\\Regex(pattern: '/^a/uD')", "Assert\\Regex(pattern: '/^[a-z]+\$/uD')"], $this->attributesOf($code, 'wide'));
@@ -429,8 +429,6 @@ final class ValidatorEnricherTest extends TestCase
             'Assert\\GreaterThanOrEqual(value: 1)',
             'Assert\\DivisibleBy(value: 3)',
             'Assert\\DivisibleBy(value: 2)',
-            'Assert\\IdenticalTo(value: 6)',
-            'Assert\\IdenticalTo(value: 4)',
         ], $this->attributesOf($code, 'step'));
     }
 
@@ -562,7 +560,7 @@ final class ValidatorEnricherTest extends TestCase
         self::assertSame([
             'warning /api.yaml#/components/schemas/Pet/properties/age: The minimum is greater than the maximum, so no range is applied.',
             'warning /api.yaml#/components/schemas/Pet/properties/name: "minLength" is above "maxLength", so no value is valid; they are not checked.',
-            'warning /api.yaml#/components/schemas/Pet/properties/age: "minimum" is above "maximum", so no value is valid; they are not checked.',
+            'warning /api.yaml#/components/schemas/Pet/properties/age: "minimum" and "maximum" leave no valid value; they are not checked.',
             'warning /api.yaml#/components/schemas/Pet/properties/age: "multipleOf" must be a number above zero; it is not checked.',
             'warning /api.yaml#/components/schemas/Pet/properties/tags: "minItems" is above "maxItems", so no value is valid; they are not checked.',
             'warning /api.yaml#/components/schemas/Pet/properties/step: "multipleOf" must be a number above zero; it is not checked.',
@@ -590,6 +588,86 @@ final class ValidatorEnricherTest extends TestCase
             'warning /api.yaml#/components/schemas/Pet/properties/name: x-validator-skip must be true or false; it is ignored.',
             'warning /api.yaml#/components/schemas/Pet/properties/name: x-validator-groups-exclusive must be true or false; it is ignored.',
         ], $this->messages($output));
+    }
+
+    public function testUsesTheStrictestOfInclusiveAndExclusiveBounds(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'tie' => ['type' => 'integer', 'minimum' => 3, 'exclusiveMinimum' => 3, 'maximum' => 9],
+            'inner' => ['type' => 'number', 'minimum' => 4, 'exclusiveMinimum' => 2, 'exclusiveMaximum' => 8, 'maximum' => 6],
+            'point' => ['type' => 'integer', 'minimum' => 5, 'maximum' => 5],
+            'open' => ['type' => 'integer', 'exclusiveMinimum' => 5, 'maximum' => 5],
+            'apart' => ['type' => 'integer', 'minimum' => 5, 'exclusiveMaximum' => 5],
+            'cap' => ['type' => 'integer', 'exclusiveMaximum' => 9, 'maximum' => 9],
+            'low' => ['$ref' => '#/components/schemas/Cap', 'maximum' => 4],
+        ]], ['Cap' => ['type' => 'integer', 'maximum' => 9]]);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame(['Assert\\GreaterThan(value: 3)', 'Assert\\LessThanOrEqual(value: 9)'], $this->attributesOf($code, 'tie'));
+        self::assertSame(['Assert\\Range(min: 4, max: 6)'], $this->attributesOf($code, 'inner'));
+        self::assertSame(['Assert\\Range(min: 5, max: 5)'], $this->attributesOf($code, 'point'));
+        self::assertSame(['Assert\\LessThan(value: 9)'], $this->attributesOf($code, 'cap'));
+        self::assertSame(['Assert\\LessThanOrEqual(value: 4)'], $this->attributesOf($code, 'low'));
+        self::assertSame([], $this->attributesOf($code, 'open'));
+        self::assertSame([], $this->attributesOf($code, 'apart'));
+        self::assertContains('warning /api.yaml#/components/schemas/Pet/properties/open: "exclusiveMinimum" and "maximum" leave no valid value; they are not checked.', $this->messages($output));
+        self::assertContains('warning /api.yaml#/components/schemas/Pet/properties/apart: "minimum" and "exclusiveMaximum" leave no valid value; they are not checked.', $this->messages($output));
+    }
+
+    public function testWarnsAboutDifferentConstantsAndAnEnumOfArrays(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'kind' => ['$ref' => '#/components/schemas/Cat', 'const' => 'dog'],
+            'same' => ['$ref' => '#/components/schemas/Cat', 'const' => 'cat'],
+            'shape' => ['enum' => [1.5, [1, 2]]],
+        ]], ['Cat' => ['type' => 'string', 'const' => 'cat']]);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame([], $this->attributesOf($code, 'kind'));
+        self::assertSame(["Assert\\IdenticalTo(value: 'cat')"], $this->attributesOf($code, 'same'));
+        self::assertSame([], $this->attributesOf($code, 'shape'));
+        self::assertContains('warning /api.yaml#/components/schemas/Pet/properties/kind: The "const" values differ, so no value is valid; they are not checked.', $this->messages($output));
+        self::assertContains('warning /api.yaml#/components/schemas/Pet/properties/shape: "enum" lists an array or object, which a Choice attribute cannot hold; it is not checked.', $this->messages($output));
+    }
+
+    public function testTypesThroughTheOneTypedAllOfBranchAsTheGeneratorDoes(): void
+    {
+        $code = $this->pet(['type' => 'object', 'properties' => [
+            'short' => ['allOf' => [['$ref' => '#/components/schemas/Tags'], ['maxItems' => 2]]],
+            'maybe' => ['allOf' => [['$ref' => '#/components/schemas/Tags']], 'type' => ['null']],
+        ]], ['Tags' => ['type' => 'array', 'items' => ['type' => 'string', 'maxLength' => 4]]]);
+        $all = 'Assert\\All(constraints: [new \\Symfony\\Component\\Validator\\Constraints\\Length(max: 4)])';
+
+        self::assertSame(['Assert\\Count(max: 2)', $all], $this->attributesOf($code, 'short'));
+        self::assertSame([$all], $this->attributesOf($code, 'maybe'));
+    }
+
+    public function testWarnsAboutAnEnumOnlyWhenItNarrowsAnother(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'same' => ['$ref' => '#/components/schemas/Status', 'enum' => ['b', 'a']],
+        ]], ['Status' => ['type' => 'string', 'enum' => ['a', 'b']]]);
+
+        self::assertSame([], $this->messages($output));
+    }
+
+    public function testWarnsAboutFormatsThatMeet(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'contact' => ['allOf' => [['$ref' => '#/components/schemas/Email']], 'format' => 'uuid'],
+        ]], ['Email' => ['type' => 'string', 'format' => 'email']]);
+
+        self::assertSame(['Assert\\Uuid'], $this->attributesOf($this->code($output, 'Pet.php'), 'contact'));
+        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/contact: Several formats apply (uuid, email); only "uuid" is checked.'], $this->messages($output));
+    }
+
+    public function testWarnsAboutAnExclusiveFlagWithoutGroups(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'name' => ['type' => 'string', 'maxLength' => 3, 'x-validator-groups-exclusive' => 1],
+        ]]);
+
+        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/name: x-validator-groups-exclusive must be true or false; it is ignored.'], $this->messages($output));
     }
 
     /**

@@ -62,7 +62,13 @@ final class ValueConstraints
 
         $choices = [];
         foreach ($enum as $choice) {
-            if (is_scalar($choice)) {
+            if (is_array($choice)) {
+                $this->diagnostics->warning('"enum" lists an array or object, which a Choice attribute cannot hold; it is not checked.', $at);
+
+                return [];
+            }
+
+            if ($choice !== null) {
                 $choices[] = ArgumentValue::literal($this->asTypeOf($choice, $value));
             }
         }
@@ -76,23 +82,38 @@ final class ValueConstraints
      */
     public function constants(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
     {
-        $constraints = [];
-        foreach ($keywords->values('const') as $constant) {
-            if ($constant === null) {
-                $constraints[] = new ConstraintSpec('IsNull');
-            } elseif ($value instanceof EnumType && $this->hasEnums()) {
-                $case = $this->enumCase($value, $constant, $at);
-                if ($case instanceof ConstraintSpec) {
-                    $constraints[] = $case;
-                }
-            } elseif (is_scalar($constant)) {
-                $constraints[] = $this->identicalTo(ArgumentValue::literal($this->asTypeOf($constant, $value)));
-            } else {
-                $this->diagnostics->warning('"const" with an array or object has no Symfony constraint; it is not checked.', $at);
-            }
+        $constants = $keywords->values('const');
+        if (count($constants) > 1) {
+            $this->diagnostics->warning('The "const" values differ, so no value is valid; they are not checked.', $at);
+
+            return [];
         }
 
-        return $constraints;
+        $constraint = $constants === [] ? null : $this->constant($constants[0], $value, $at);
+
+        return $constraint instanceof ConstraintSpec ? [$constraint] : [];
+    }
+
+    /**
+     * @param JsonValue $constant
+     */
+    private function constant($constant, TypeModel $value, SchemaLocation $at): ?ConstraintSpec
+    {
+        if ($constant === null) {
+            return new ConstraintSpec('IsNull');
+        }
+
+        if ($value instanceof EnumType && $this->hasEnums()) {
+            return $this->enumCase($value, $constant, $at);
+        }
+
+        if (is_scalar($constant)) {
+            return $this->identicalTo(ArgumentValue::literal($this->asTypeOf($constant, $value)));
+        }
+
+        $this->diagnostics->warning('"const" with an array or object has no Symfony constraint; it is not checked.', $at);
+
+        return null;
     }
 
     /**

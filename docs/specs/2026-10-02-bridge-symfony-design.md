@@ -61,7 +61,7 @@ extensionConfig:
 | `minLength`/`maxLength` | `Length(min:, max:)` | Один constraint на оба. |
 | `pattern` | `Regex(pattern: '/…/u')` | Модификаторы `uD` (`$` — конец строки, как в ECMA). Неэкранированный `/` экранируется; `\uXXXX`/`\u{…}` → `\x{…}`, суррогатная пара — одна кодовая точка, одиночный суррогат отклоняется; паттерн, который PCRE не компилирует (или с неверным `\u`), — warning и пропуск. |
 | `minimum`/`maximum` (оба включительно) | `Range(min:, max:)` | |
-| одна включительная граница, затем `exclusiveMinimum`, `exclusiveMaximum` | `GreaterThanOrEqual` / `LessThanOrEqual`, затем `GreaterThan`, `LessThan` (`value:`) | |
+| иначе — одна нижняя, затем одна верхняя граница | `GreaterThanOrEqual`/`GreaterThan`, затем `LessThanOrEqual`/`LessThan` (`value:`) | Из включительной и исключающей границы берётся строгая (при равенстве — исключающая); `Range` — если обе итоговые включительные. Границы без допустимого значения — warning и пропуск. |
 | `multipleOf` | `DivisibleBy(value:)` | Не больше нуля — warning и пропуск. |
 | `minItems`/`maxItems`, `minProperties`/`maxProperties` (map) | `Count(min:, max:)` | |
 | `uniqueItems: true` (только список) | `Unique` | См. §5.6: объекты сравниваются по идентичности. |
@@ -105,7 +105,7 @@ extensionConfig:
 - Symfony 5.4/6.4 + аннотации: потребителю нужен `doctrine/annotations` — мост проверяет `InstalledPackages` и выдаёт warning, если пакета нет.
 
 ### 5.6 Известные расхождения с JSON Schema
-- Ключевые слова всех звеньев цепочки `$ref` (`SchemaReferences::chain()` ядра) и веток `allOf` действуют вместе (2020-12): из границ берётся более строгая, `pattern`/`multipleOf`/`const` — все, `enum` — пересечение; `format` — ближайший. `allOf` из одной ветки без своего типа (обёртка ради `description`) — схема значения для `items`/`additionalProperties`, как и у ядра.
+- Ключевые слова всех звеньев цепочки `$ref` (`SchemaReferences::chain()` ядра) и веток `allOf` действуют вместе (2020-12): из границ берётся более строгая, `pattern`/`multipleOf`/`const` — все, `enum` — пересечение; `format` — ближайший (несколько разных — warning). `const` с разными значениями — warning и пропуск. `enum` с массивом или объектом — warning, без `Choice`. Схема значения для `items`/`additionalProperties` — через единственную типизированную ветку `allOf` (`$ref`, тип, `enum`, композиция, свойства, `x-php-type`), как `TypeMapper` ядра; нетипизированные ветки и `type: null` обёртки этому не мешают.
 - Ограничения веток `anyOf`/`oneOf` не переносятся; `Valid` ставится, если хотя бы одна ветка — объект со свойствами.
 - ECMA-262 и PCRE: `\d`, `\w`, `\b` в PCRE без `(*UCP)` — только ASCII, как и в ECMA без флага `u`; именованные группы и lookbehind совместимы; остальные расхождения проявятся ошибкой компиляции (warning).
 - `Unique` сравнивает объекты по идентичности: `uniqueItems` для списка DTO фактически не проверяется. Документируется.

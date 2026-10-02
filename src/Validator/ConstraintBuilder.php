@@ -81,7 +81,7 @@ final class ConstraintBuilder
             $this->checks($keywords, $value, 'collection', $at) ? $this->collections($keywords, $reader, $value, $at) : [],
             $this->values->choices($keywords, $value, $at),
             $this->values->constants($keywords, $value, $at),
-            $this->format($keywords, $value),
+            $this->format($keywords, $value, $at),
             $this->nested($keywords, $value, $at),
         );
     }
@@ -153,34 +153,33 @@ final class ConstraintBuilder
     }
 
     /**
+     * One lower and one upper bound: the strictest of the inclusive and exclusive keywords, exclusive on a tie.
+     *
      * @return list<ConstraintSpec>
      */
     private function numbers(KeywordReader $reader, SchemaLocation $at): array
     {
-        $minimum = $reader->numbers('minimum');
-        $maximum = $reader->numbers('maximum');
+        $lower = $this->strictest($reader, 'exclusiveMinimum', 'minimum', true);
+        $upper = $this->strictest($reader, 'exclusiveMaximum', 'maximum', false);
         $constraints = [];
-        if ($minimum !== [] && $maximum !== []) {
-            if ($this->consistent('minimum', max($minimum), 'maximum', min($maximum), $at)) {
-                $constraints[] = new ConstraintSpec('Range', [
-                    AttributeArgument::named('min', ArgumentValue::literal(max($minimum))),
-                    AttributeArgument::named('max', ArgumentValue::literal(min($maximum))),
-                ]);
+        if ($lower !== null && $upper !== null && !$this->satisfiable($lower, $upper, $at)) {
+            $lower = null;
+            $upper = null;
+        }
+
+        if ($lower !== null && $upper !== null && $lower[1] === 'minimum' && $upper[1] === 'maximum') {
+            $constraints[] = new ConstraintSpec('Range', [
+                AttributeArgument::named('min', ArgumentValue::literal($lower[0])),
+                AttributeArgument::named('max', ArgumentValue::literal($upper[0])),
+            ]);
+        } else {
+            if ($lower !== null) {
+                $constraints[] = $this->comparison($lower[1] === 'minimum' ? 'GreaterThanOrEqual' : 'GreaterThan', $lower[0]);
             }
-        } elseif ($minimum !== []) {
-            $constraints[] = $this->comparison('GreaterThanOrEqual', max($minimum));
-        } elseif ($maximum !== []) {
-            $constraints[] = $this->comparison('LessThanOrEqual', min($maximum));
-        }
 
-        $exclusiveMinimum = $reader->numbers('exclusiveMinimum');
-        if ($exclusiveMinimum !== []) {
-            $constraints[] = $this->comparison('GreaterThan', max($exclusiveMinimum));
-        }
-
-        $exclusiveMaximum = $reader->numbers('exclusiveMaximum');
-        if ($exclusiveMaximum !== []) {
-            $constraints[] = $this->comparison('LessThan', min($exclusiveMaximum));
+            if ($upper !== null) {
+                $constraints[] = $this->comparison($upper[1] === 'maximum' ? 'LessThanOrEqual' : 'LessThan', $upper[0]);
+            }
         }
 
         foreach ($reader->divisors('multipleOf') as $multipleOf) {
@@ -188,6 +187,41 @@ final class ConstraintBuilder
         }
 
         return $constraints;
+    }
+
+    /**
+     * @param bool $lower whether the greatest bound is the strictest
+     *
+     * @return array{int|float, string}|null the bound and its keyword
+     */
+    private function strictest(KeywordReader $reader, string $exclusive, string $inclusive, bool $lower): ?array
+    {
+        $strictest = null;
+        foreach ([$exclusive, $inclusive] as $keyword) {
+            foreach ($reader->numbers($keyword) as $bound) {
+                if ($strictest === null || ($lower ? $bound > $strictest[0] : $bound < $strictest[0])) {
+                    $strictest = [$bound, $keyword];
+                }
+            }
+        }
+
+        return $strictest;
+    }
+
+    /**
+     * @param array{int|float, string} $lower
+     * @param array{int|float, string} $upper
+     */
+    private function satisfiable(array $lower, array $upper, SchemaLocation $at): bool
+    {
+        $inclusive = $lower[1] === 'minimum' && $upper[1] === 'maximum';
+        if ($lower[0] < $upper[0] || ($inclusive && (float) $lower[0] === (float) $upper[0])) {
+            return true;
+        }
+
+        $this->diagnostics->warning(sprintf('"%s" and "%s" leave no valid value; they are not checked.', $lower[1], $upper[1]), $at);
+
+        return false;
     }
 
     /**
@@ -218,9 +252,14 @@ final class ConstraintBuilder
      *
      * @return list<ConstraintSpec>
      */
-    private function format(Keywords $keywords, TypeModel $value): array
+    private function format(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
     {
-        $format = $keywords->format();
+        $formats = $keywords->formats();
+        if (count($formats) > 1) {
+            $this->diagnostics->warning(sprintf('Several formats apply (%s); only "%s" is checked.', implode(', ', $formats), $formats[0]), $at);
+        }
+
+        $format = $formats[0] ?? null;
         if (!$value instanceof ScalarType || $value->kind() !== 'string' || $format === null || !isset(self::FORMATS[$format])) {
             return [];
         }
@@ -309,11 +348,7 @@ final class ConstraintBuilder
         return $bounds;
     }
 
-    /**
-     * @param int|float $lower
-     * @param int|float $upper
-     */
-    private function consistent(string $minimum, $lower, string $maximum, $upper, SchemaLocation $at): bool
+    private function consistent(string $minimum, int $lower, string $maximum, int $upper, SchemaLocation $at): bool
     {
         if ($lower <= $upper) {
             return true;

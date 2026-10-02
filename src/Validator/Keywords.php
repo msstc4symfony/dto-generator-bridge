@@ -17,7 +17,10 @@ use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 final class Keywords
 {
     /** @var list<Schema> nearest first */
-    private array $schemas;
+    private array $schemas = [];
+
+    /** @var list<string> locations of */
+    private array $collected = [];
 
     private Schema $resolved;
 
@@ -26,7 +29,7 @@ final class Keywords
     public function __construct(Schema $own, SchemaReferences $references)
     {
         $this->references = $references;
-        $this->schemas = $this->collect($own, []);
+        $this->collect($own);
         $this->resolved = $this->unwrap($references->resolve($own), []);
     }
 
@@ -63,13 +66,25 @@ final class Keywords
 
     public function format(): ?string
     {
+        return $this->formats()[0] ?? null;
+    }
+
+    /**
+     * The distinct formats, the nearest first.
+     *
+     * @return list<string>
+     */
+    public function formats(): array
+    {
+        $formats = [];
         foreach ($this->schemas as $schema) {
-            if ($schema->format() !== null) {
-                return $schema->format();
+            $format = $schema->format();
+            if ($format !== null && !in_array($format, $formats, true)) {
+                $formats[] = $format;
             }
         }
 
-        return null;
+        return $formats;
     }
 
     /**
@@ -92,7 +107,14 @@ final class Keywords
      */
     public function narrowsEnum(): bool
     {
-        return count($this->enums()) > 1;
+        $allowed = $this->enum() ?? [];
+        foreach ($this->enums() as $enum) {
+            if (count($allowed) < count($enum)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -105,45 +127,52 @@ final class Keywords
     }
 
     /**
-     * @param list<string> $seen locations already collected, against `$ref` and `allOf` cycles
-     *
-     * @return list<Schema>
+     * Every location is read once: values() would drop repeats anyway, and a link already read had the rest of its
+     * chain read with it.
      */
-    private function collect(Schema $schema, array $seen): array
+    private function collect(Schema $schema): void
     {
-        $schemas = [];
         foreach ($this->references->chain($schema) as $link) {
             $location = $link->location()->toString();
-            // The rest of the chain was collected where this link was.
-            if (in_array($location, $seen, true)) {
-                return $schemas;
+            if (in_array($location, $this->collected, true)) {
+                return;
             }
 
-            $seen[] = $location;
-            $schemas[] = $link;
-            // A schema reached through two branches is read twice, which changes nothing: values() drops repeats.
+            $this->collected[] = $location;
+            $this->schemas[] = $link;
             foreach ($link->allOf() as $branch) {
-                $schemas = array_merge($schemas, $this->collect($branch, $seen));
+                $this->collect($branch);
             }
         }
-
-        return $schemas;
     }
 
     /**
+     * The generator types a value through `allOf` when exactly one branch says what the value is; the others only
+     * constrain it.
+     *
      * @param list<string> $seen
      */
     private function unwrap(Schema $schema, array $seen): Schema
     {
-        $branches = $schema->allOf();
         $location = $schema->location()->toString();
-        if (count($branches) !== 1 || $schema->types() !== [] || $schema->propertyNames() !== [] || in_array($location, $seen, true)) {
+        $typed = array_values(array_filter($schema->allOf(), fn (Schema $branch): bool => $this->isTyped($branch)));
+        if (count($typed) !== 1 || $schema->propertyNames() !== [] || $schema->oneOf() !== [] || $schema->anyOf() !== [] || in_array($location, $seen, true)) {
             return $schema;
         }
 
         $seen[] = $location;
 
-        return $this->unwrap($this->references->resolve($branches[0]), $seen);
+        return $this->unwrap($this->references->resolve($typed[0]), $seen);
+    }
+
+    private function isTyped(Schema $branch): bool
+    {
+        return $branch->ref() !== null
+            || $branch->nonNullTypes() !== []
+            || $branch->enum() !== null
+            || $branch->allOf() !== [] || $branch->oneOf() !== [] || $branch->anyOf() !== []
+            || $branch->propertyNames() !== []
+            || $branch->extensions()->has('x-php-type');
     }
 
     /**
