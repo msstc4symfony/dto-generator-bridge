@@ -18,6 +18,9 @@ final class SymfonyVersion
     /** The newest version whose rules the bridge knows; assumed when the project has no Symfony component. */
     public const LATEST = '7.4';
 
+    /** Symfony 7.0 dropped annotations: the version assumed for a target that writes them. */
+    public const LATEST_READING_ANNOTATIONS = '6.4';
+
     /** InstalledPackages cannot list packages, so these stand for "the project's Symfony". */
     private const COMPONENTS = [
         'symfony/validator',
@@ -70,19 +73,15 @@ final class SymfonyVersion
         return self::match('~^v?' . self::NUMBER . '\.' . self::NUMBER . '\.~', $version);
     }
 
-    public static function latest(): self
-    {
-        return self::fromString(self::LATEST);
-    }
-
     /**
      * The version to write a component's attributes for: the configured one, else the project's version of that
-     * component, else the newest of its other main Symfony packages (they come in step), else LATEST. A locked version
-     * may be older than MINIMUM: the caller checks isSupported().
+     * component, else the newest of its other main Symfony packages (they come in step), else LATEST, or
+     * LATEST_READING_ANNOTATIONS for a target that writes annotations. A locked version may be older than MINIMUM: the
+     * caller checks isSupported().
      *
      * @param 'symfony/validator'|'symfony/serializer' $component
      */
-    public static function resolve(Settings $settings, InstalledPackages $packages, string $component): self
+    public static function resolve(Settings $settings, InstalledPackages $packages, string $component, bool $annotations): self
     {
         $configured = $settings->version();
         if ($configured instanceof self) {
@@ -102,7 +101,7 @@ final class SymfonyVersion
             }
         }
 
-        return $newest ?? self::latest();
+        return $newest ?? self::fromString($annotations ? self::LATEST_READING_ANNOTATIONS : self::LATEST);
     }
 
     public function isAtLeast(self $other): bool

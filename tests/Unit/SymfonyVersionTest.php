@@ -24,7 +24,6 @@ final class SymfonyVersionTest extends TestCase
         self::assertFalse($version->isAtLeast(SymfonyVersion::fromString('7.0')));
         self::assertSame('10.12', SymfonyVersion::fromString('10.12')->toString());
         self::assertSame('7.0', SymfonyVersion::fromString('7.0')->toString());
-        self::assertSame(SymfonyVersion::LATEST, SymfonyVersion::latest()->toString());
         self::assertTrue(SymfonyVersion::fromString('5.4')->isSupported());
         self::assertFalse(SymfonyVersion::fromString('5.3')->isSupported());
     }
@@ -70,32 +69,41 @@ final class SymfonyVersionTest extends TestCase
     {
         $packages = new InstalledPackages(['symfony/validator' => 'v7.1.0']);
 
-        self::assertSame('5.4', SymfonyVersion::resolve(Settings::fromConfig(['version' => '5.4']), $packages, 'symfony/validator')->toString());
+        self::assertSame('5.4', SymfonyVersion::resolve(Settings::fromConfig(['version' => '5.4']), $packages, 'symfony/validator', false)->toString());
     }
 
     public function testResolvesTheVersionOfTheComponentItself(): void
     {
         $packages = new InstalledPackages(['symfony/validator' => 'v5.4.40', 'symfony/serializer' => 'v7.1.2']);
 
-        self::assertSame('5.4', SymfonyVersion::resolve(Settings::fromConfig([]), $packages, 'symfony/validator')->toString());
-        self::assertSame('7.1', SymfonyVersion::resolve(Settings::fromConfig([]), $packages, 'symfony/serializer')->toString());
+        self::assertSame('5.4', SymfonyVersion::resolve(Settings::fromConfig([]), $packages, 'symfony/validator', false)->toString());
+        self::assertSame('7.1', SymfonyVersion::resolve(Settings::fromConfig([]), $packages, 'symfony/serializer', false)->toString());
     }
 
     public function testFallsBackToTheNewestOtherComponent(): void
     {
         $settings = Settings::fromConfig([]);
 
-        self::assertSame('6.4', SymfonyVersion::resolve($settings, new InstalledPackages(['symfony/serializer' => 'v6.4.1']), 'symfony/validator')->toString());
-        self::assertSame('7.1', SymfonyVersion::resolve($settings, new InstalledPackages(['symfony/serializer' => 'v7.1.2', 'symfony/validator' => 'dev-main']), 'symfony/validator')->toString());
-        self::assertSame('7.1', SymfonyVersion::resolve($settings, new InstalledPackages(['symfony/validator' => 'v7.1.2', 'symfony/serializer' => 'dev-main']), 'symfony/serializer')->toString());
-        self::assertSame('5.4', SymfonyVersion::resolve($settings, new InstalledPackages(['symfony/http-kernel' => 'v5.4.40']), 'symfony/validator')->toString());
-        self::assertSame('7.1', SymfonyVersion::resolve($settings, new InstalledPackages(['symfony/console' => 'v6.4.1', 'symfony/framework-bundle' => 'v7.1.2']), 'symfony/serializer')->toString());
-        self::assertSame('6.4', SymfonyVersion::resolve($settings, new InstalledPackages(['symfony/dependency-injection' => 'v6.4.1', 'symfony/property-access' => 'v5.4.1']), 'symfony/serializer')->toString());
+        self::assertSame('6.4', SymfonyVersion::resolve($settings, new InstalledPackages(['symfony/serializer' => 'v6.4.1']), 'symfony/validator', false)->toString());
+        self::assertSame('7.1', SymfonyVersion::resolve($settings, new InstalledPackages(['symfony/serializer' => 'v7.1.2', 'symfony/validator' => 'dev-main']), 'symfony/validator', false)->toString());
+        self::assertSame('7.1', SymfonyVersion::resolve($settings, new InstalledPackages(['symfony/validator' => 'v7.1.2', 'symfony/serializer' => 'dev-main']), 'symfony/serializer', false)->toString());
+        self::assertSame('5.4', SymfonyVersion::resolve($settings, new InstalledPackages(['symfony/http-kernel' => 'v5.4.40']), 'symfony/validator', false)->toString());
+        self::assertSame('7.1', SymfonyVersion::resolve($settings, new InstalledPackages(['symfony/console' => 'v6.4.1', 'symfony/framework-bundle' => 'v7.1.2']), 'symfony/serializer', false)->toString());
+        self::assertSame('6.4', SymfonyVersion::resolve($settings, new InstalledPackages(['symfony/dependency-injection' => 'v6.4.1', 'symfony/property-access' => 'v5.4.1']), 'symfony/serializer', false)->toString());
     }
 
     public function testResolvesTheNewestKnownVersionWithoutComponents(): void
     {
-        self::assertSame(SymfonyVersion::LATEST, SymfonyVersion::resolve(Settings::fromConfig([]), new InstalledPackages(), 'symfony/validator')->toString());
+        self::assertSame(SymfonyVersion::LATEST, SymfonyVersion::resolve(Settings::fromConfig([]), new InstalledPackages(), 'symfony/validator', false)->toString());
+    }
+
+    public function testAssumesTheNewestVersionReadingAnnotationsForATargetThatWritesThem(): void
+    {
+        $packages = new InstalledPackages();
+
+        self::assertSame('6.4', SymfonyVersion::resolve(Settings::fromConfig([]), $packages, 'symfony/validator', true)->toString());
+        self::assertSame('7.1', SymfonyVersion::resolve(Settings::fromConfig(['version' => '7.1']), $packages, 'symfony/validator', true)->toString());
+        self::assertSame('7.1', SymfonyVersion::resolve(Settings::fromConfig([]), new InstalledPackages(['symfony/console' => 'v7.1.0']), 'symfony/validator', true)->toString());
     }
 
     private function package(string $version): ?string

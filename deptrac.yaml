@@ -15,7 +15,7 @@ deptrac:
     - name: TypeAlias
       collectors:
         - type: classNameRegex
-          value: '#^Msstc4Symfony\\DtoGeneratorBridge\\(.+\\)?Json(Value|Scalar)$#'
+          value: '#^Msstc4Symfony\\DtoGeneratorBridge\\(Validator\\)?Json(Value|Scalar)$#'
   ruleset:
     Bridge: [CoreSpi, TypeAlias]
     CoreSpi: ~

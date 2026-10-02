@@ -11,9 +11,9 @@ use MSSTC4PHP\DtoGenerator\Domain\Model\ClassName;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ImportAlias;
 
 /**
- * One Symfony Validator constraint, written as an attribute of a property or as `new` inside `All`.
+ * One Symfony Validator constraint to write: as an attribute of a property, or as `new` inside `All`.
  */
-final class Constraint
+final class ConstraintSpec
 {
     private const NAMESPACE = 'Symfony\Component\Validator\Constraints';
 
@@ -31,6 +31,14 @@ final class Constraint
     {
         $this->name = $name;
         $this->arguments = $arguments;
+    }
+
+    /**
+     * @param non-empty-string $name
+     */
+    public function is(string $name): bool
+    {
+        return $this->name === $name;
     }
 
     /**

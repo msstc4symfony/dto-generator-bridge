@@ -12,8 +12,8 @@
 - deptrac: `Bridge` → только `CoreSpi` (Contract, Domain\{Model,Schema,Diagnostic,Target,Shared}) и `TypeAlias` (импортированный `JsonValue`).
 
 ## Validator (B2)
-- `Validator\ValidatorEnricher` (регистрируется `SymfonyExtension`): решает «писать ли» один раз на запуск по первому свойству (предупреждения — на нём): `validator: false`/`auto` без пакета → нет; `true` без пакета → warning; версия < 5.4 → warning, нет; `metadata: annotations` + validator ≥ 7.0 → strict: error / warning, нет; 5.4/6.4 без `doctrine/annotations` → warning.
-- `ConstraintBuilder` — таблица §5.1 в её порядке; `Keywords` — ключевое слово свойства важнее цели `$ref` (`references()->resolve()`); `Constraint` — имя + аргументы → атрибут с `ImportAlias(…Constraints, 'Assert')` или `new` внутри `All`.
+- `Validator\ValidatorEnricher` (регистрируется `SymfonyExtension`): решает «писать ли» один раз на запуск по первому свойству (предупреждения — на корне его документа): `validator: false`/`auto` без пакета → нет; `true` без пакета → warning; версия < 5.4 → warning, нет; `metadata: annotations` + validator ≥ 7.0 → strict: error / warning, нет; 5.4/6.4 без `doctrine/annotations` → warning.
+- `ConstraintBuilder` — таблица §5.1 в её порядке, ключевые слова — только для своего вида типа (`KEYWORDS_OF`); `Keywords` — значения и свойства, и цели `$ref` (AND: строже граница, оба `pattern`, пересечение `enum`); `Pattern` — ECMA → PCRE; `ConstraintSpec` — имя + аргументы → атрибут с `ImportAlias(…Constraints, 'Assert')` или `new` внутри `All`. `NotNull` ставит `ValidatorEnricher`.
 - Тесты — настоящий генератор ядра в dry-run на временном проекте с `composer.lock`; `attributesOf()` разбирает сигнатуру конструктора по запятым нулевой глубины.
 
 ## Известные особенности
@@ -24,4 +24,8 @@
 - YAML читает `version: 6.4` как число; версия принимается только строкой.
 - `Schema::keyword()` не содержит `enum`, `format`, `type`, `$ref` — у них свои методы (`enum()`, `format()`…); `Extensions::get()` бросает, если ключа нет — сначала `has()`.
 - Ядро: enum на 7.4/8.0 — класс с константами, свойство `string`/`int`; дробные enum — ошибка ядра; объект без свойств — массив; вложенный `new` в атрибуте — полное имя класса, без алиаса.
+- Диагностики ядра складывают одинаковые сообщения в одном месте: тест «один раз» должен использовать два документа.
+- Ядро типизирует `$ref` по цели и игнорирует `enum` рядом с ним — проверяет только `Choice` моста.
+- `json_encode` в тестах пишет `2.0` как `2`: для дробных значений — `JSON_PRESERVE_ZERO_FRACTION`. Строки с `\u` + hex в вводе инструментов декодируются в символ — в тестах собирать `'\\' . 'u00e9'`.
+- PCRE2 в PHP 7.4 принимает `\u12` как литерал, в 8.x — ошибка; `Pattern` отклоняет такой `\u` сам.
 - Ядро печатает атрибуты promoted-параметра в одну строку перед `public`, длинные — с переносом аргументов.

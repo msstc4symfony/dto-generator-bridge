@@ -59,14 +59,14 @@ extensionConfig:
 |---|---|---|
 | свойство в `required`, тип не nullable | `NotNull` | Конструктор и так требует значение; constraint нужен для денормализации в существующий объект и для `mutable`. |
 | `minLength`/`maxLength` | `Length(min:, max:)` | Один constraint на оба. |
-| `pattern` | `Regex(pattern: '/…/u')` | Разделитель `/` экранируется; ECMA-конструкции, которых нет в PCRE, — warning и пропуск. |
+| `pattern` | `Regex(pattern: '/…/u')` | Неэкранированный `/` экранируется; `\uXXXX`/`\u{…}` → `\x{…}`; паттерн, который PCRE не компилирует (или с неверным `\u`), — warning и пропуск. |
 | `minimum`/`maximum` (оба включительно) | `Range(min:, max:)` | |
-| одна граница или `exclusiveMinimum`/`exclusiveMaximum` | `GreaterThanOrEqual` / `GreaterThan` / `LessThanOrEqual` / `LessThan` (`value:`) | |
+| одна включительная граница, затем `exclusiveMinimum`, `exclusiveMaximum` | `GreaterThanOrEqual` / `LessThanOrEqual`, затем `GreaterThan`, `LessThan` (`value:`) | |
 | `multipleOf` | `DivisibleBy(value:)` | |
 | `minItems`/`maxItems`, `minProperties`/`maxProperties` (map) | `Count(min:, max:)` | |
 | `uniqueItems: true` | `Unique` | См. §5.6: объекты сравниваются по идентичности. |
-| `enum` на цели без нативных enum (PHP 7.4/8.0: свойство — `string`/`int`) | `Choice(choices:)` | На 8.1+ значения ограничивает сам тип enum. Ядро принимает только строковые и целые enum, поэтому `strict` не нужен. |
-| `const`: скаляр | `IdenticalTo(value:)` | |
+| `enum`, если тип свойства — не PHP-enum (цель 7.4/8.0, или `enum` рядом с `$ref` на не-enum) | `Choice(choices:)` | На 8.1+ значения ограничивает сам тип enum; `enum` рядом с `$ref` на enum — warning (сужение не проверяется). Ядро принимает только строковые и целые enum, поэтому `strict` не нужен; `null` в `enum` в `choices` не входит. |
+| `const`: скаляр | `IdenticalTo(value:)` | Целое на `float`-свойстве — `1.0` (`===`); на свойстве-enum (8.1+) — case enum'а (`Pet::VALUE_2`), значение вне enum — warning. |
 | `const: null` | `IsNull` | |
 | `const`: массив или объект | — | Warning и пропуск: `AbstractComparison` принимает массив за опции. |
 | `format: email` | `Email(mode:)` | Режим явно (`html5`): режим по умолчанию зависит от версии. |
@@ -75,14 +75,17 @@ extensionConfig:
 | `format: uuid` | `Uuid` | См. §5.6 (версии UUID, nil). |
 | `format: uri` | — | Решение: не маппить. `Url` принимает только http(s) с хостом, а `uri` из JSON Schema — любой URI (`urn:`, `mailto:`). |
 | значение или элементы — объект со свойствами или композиция (`allOf`/`oneOf`/`anyOf`) | `Valid` | Каскад во вложенные DTO; решается по схеме, а не по типу: дата — тоже класс, но строка в схеме; объект без свойств ядро делает массивом. |
-| ограничения `items` (список), схема `additionalProperties` (map) | `All(constraints: [...])` | Вложенные `new` в атрибуте — PHP ≥ 8.1; на цели 8.0 — warning и пропуск `All` (ядро отбрасывает такие атрибуты и само, §6.1 ядра); на 7.4 — аннотация `@Assert\All({@Assert\Length(...)})`. |
+| ограничения `items` (список), схема `additionalProperties` (map) | `All(constraints: [...])` | Вложенные `new` в атрибуте — PHP ≥ 8.1; на цели 8.0 мост сам пропускает `All` с warning (ядро в strict сочло бы атрибут ошибкой); на 7.4 — аннотация `@Assert\All({@Assert\Length(...)})`. `Valid` элементов любой глубины поднимается на свойство: Symfony запрещает `Valid` внутри `All`. |
+
+- Ключевые слова строки, числа и коллекции ставятся, только если тип свойства — именно такой (`string`; `int`/`float`; список/map). Для значения нескольких типов (union, `mixed`) — warning и пропуск: Symfony проверил бы их и на другом типе (`Length` считает цифры числа). Для класса (дата, класс формата) — молча пропуск.
+- Неверные значения (`minimum: '5'`, `maxLength: -1`, дробный счётчик) — warning и пропуск; `2.0` — целое.
 
 - `format` формата, замапленного на класс (`formats` ядра), constraint не получает.
 - В 2020-12 `format` — аннотация, а не утверждение. Решение: мост проверяет форматы из таблицы, как это делает большинство валидаторов OpenAPI; `x-validator-skip` отключает.
 - Nullable-свойства: constraint'ы не меняются — Validator пропускает `null` в большинстве constraint'ов; `NotNull` не ставится.
 
 ### 5.2 Группы
-- `x-validator-groups: [..]` на свойстве — группы его constraint'ов (иначе `extensionConfig.symfony.groups`, иначе без групп); нестроковые и пустые имена отбрасываются. Группы на уровне класса — после B2.
+- `x-validator-groups: [..]` на свойстве — группы его constraint'ов (иначе `extensionConfig.symfony.groups`, иначе без групп); нестроковые и пустые имена отбрасываются с warning, повторы схлопываются; не список — warning и без групп. Группы на уровне класса — после B2.
 - Constraint с явными группами выпадает из группы `Default`: `validate($dto)` без групп его не проверит. Решение: мост добавляет `Default` к явно заданным группам, если её там нет; `x-validator-groups-exclusive: true` это отключает.
 - `x-validator-skip: true` — свойство (или класс) без constraint'ов моста; `x-php-attributes` ядра работают как прежде.
 - Произвольные constraint'ы — через `x-php-attributes`/`attributeAliases` ядра; отдельного синтаксиса мост не вводит. Решение: не дублировать грамматику ядра.
@@ -101,7 +104,9 @@ extensionConfig:
 - Symfony 5.4/6.4 + аннотации: потребителю нужен `doctrine/annotations` — мост проверяет `InstalledPackages` и выдаёт warning, если пакета нет.
 
 ### 5.6 Известные расхождения с JSON Schema
-- Ключевые слова рядом с `$ref` (`{$ref: Email, maxLength: 64}`) важнее ключевых слов цели (`SchemaReferences` ядра их не объединяет).
+- Ключевые слова рядом с `$ref` действуют вместе с ключевыми словами цели (2020-12): из границ берётся более строгая, `pattern`/`multipleOf`/`const` — оба, `enum` — пересечение; только `format` рядом с `$ref` заменяет формат цели. Промежуточные звенья цепочки `$ref` не читаются — только исходная схема и конечная цель.
+- Ограничения веток `anyOf`/`oneOf` не переносятся; `Valid` ставится, если хотя бы одна ветка — объект со свойствами.
+- ECMA-262 и PCRE: `\d`, `\w`, `\b` в PCRE без `(*UCP)` — только ASCII, как и в ECMA без флага `u`; именованные группы и lookbehind совместимы; остальные расхождения проявятся ошибкой компиляции (warning).
 - `Unique` сравнивает объекты по идентичности: `uniqueItems` для списка DTO фактически не проверяется. Документируется.
 - `Uuid`: поддержка версий 7/8 появилась позже 5.4 (проверить в B4, вероятно 6.2); nil-UUID отклоняется всеми версиями. Документируется; при `version < поддерживающей` — `Uuid(versions: [...])` без 7/8.
 

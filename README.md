@@ -31,7 +31,7 @@ The Symfony version is read per component from the project's `composer.lock`.
 
 ## Validator constraints
 
-From the schema of each property (and of the schema its `$ref` points to; keywords beside a `$ref` win):
+From the schema of each property and of the schema its `$ref` points to (both apply, as in JSON Schema 2020-12):
 
 | Schema | Constraint |
 |---|---|
@@ -42,15 +42,18 @@ From the schema of each property (and of the schema its `$ref` points to; keywor
 | `multipleOf` | `DivisibleBy` |
 | `minItems` / `maxItems`, `minProperties` / `maxProperties` | `Count` |
 | `uniqueItems` | `Unique` |
-| `enum` (PHP 7.4/8.0 targets, where the property is a plain string or int) | `Choice` |
+| `enum`, unless the property is a PHP enum | `Choice` |
 | `const` | `IdenticalTo`, `IsNull` |
 | `format`: `email`, `ipv4`, `ipv6`, `hostname`, `uuid` | `Email(mode: 'html5')`, `Ip`, `Hostname(requireTld: false)`, `Uuid` |
 | an object or a collection of objects | `Valid` |
-| constraints of `items` / `additionalProperties` | `All` |
+| constraints of `items` / `additionalProperties` | `All` (not on PHP 8.0, whose attributes allow no `new`) |
 
 `x-validator-groups: [api]` sets the groups (plus `Default`, unless `x-validator-groups-exclusive: true`);
 `x-validator-skip: true` leaves a property alone. On PHP 7.4 the constraints are annotations, which
 Symfony Validator 7 no longer reads — the bridge reports that instead of writing them.
+
+Keywords of one kind of value (`minLength`, `minimum`, `minItems`…) are written only for a property of that type; for a
+value of several types, a pattern PHP cannot compile or a malformed keyword the bridge warns and writes nothing.
 
 ## Requirements
 
