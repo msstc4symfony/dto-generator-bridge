@@ -41,15 +41,21 @@ final class SettingsTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{array<string, mixed>, string}>
+     * @return iterable<string, array{array<string, array<array-key, int|string>|bool|float|int|string|null>, string}>
      */
     public function invalidConfigs(): iterable
     {
         yield 'unknown key' => [['colour' => 'red'], 'extensionConfig.symfony.colour is not a setting of the Symfony bridge.'];
         yield 'validator' => [['validator' => 'yes'], 'extensionConfig.symfony.validator must be auto, true or false.'];
         yield 'serializer' => [['serializer' => 1], 'extensionConfig.symfony.serializer must be auto, true or false.'];
-        yield 'version format' => [['version' => '7'], 'extensionConfig.symfony.version must be auto or a version like "6.4".'];
-        yield 'version type' => [['version' => 6.4], 'extensionConfig.symfony.version must be auto or a version like "6.4".'];
+        yield 'version format' => [['version' => '7'], 'extensionConfig.symfony.version must be auto or a version like "6.4" (quote it in YAML: \'6.4\').'];
+        yield 'version type' => [['version' => 6.4], 'extensionConfig.symfony.version must be auto or a version like "6.4" (quote it in YAML: \'6.4\').'];
+        yield 'version too old' => [['version' => '4.4'], 'extensionConfig.symfony.version must be 5.4 or newer.'];
+        yield 'validator null' => [['validator' => null], 'extensionConfig.symfony.validator must be auto, true or false.'];
+        yield 'version null' => [['version' => null], 'extensionConfig.symfony.version must be auto or a version like "6.4" (quote it in YAML: \'6.4\').'];
+        yield 'groups null' => [['groups' => null], 'extensionConfig.symfony.groups must be a list of group names.'];
+        yield 'groups repeated' => [['groups' => ['api', 'admin', 'api']], 'extensionConfig.symfony.groups names "api" twice.'];
+        yield 'several' => [['colour' => 'red', 'validator' => 1, 'groups' => 'api'], 'extensionConfig.symfony.colour is not a setting of the Symfony bridge. extensionConfig.symfony.validator must be auto, true or false. extensionConfig.symfony.groups must be a list of group names.'];
         yield 'groups type' => [['groups' => 'api'], 'extensionConfig.symfony.groups must be a list of group names.'];
         yield 'groups item' => [['groups' => ['api', '']], 'extensionConfig.symfony.groups must be a list of group names.'];
         yield 'groups map' => [['groups' => ['a' => 'api']], 'extensionConfig.symfony.groups must be a list of group names.'];
@@ -58,7 +64,7 @@ final class SettingsTest extends TestCase
     /**
      * @dataProvider invalidConfigs
      *
-     * @param array<string, mixed> $config
+     * @param array<string, array<array-key, int|string>|bool|float|int|string|null> $config
      */
     public function testRefusesAConfigItCannotUse(array $config, string $message): void
     {

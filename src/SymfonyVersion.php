@@ -12,10 +12,15 @@ use MSSTC4PHP\DtoGenerator\Contract\InstalledPackages;
  */
 final class SymfonyVersion
 {
-    /** The version assumed when the project has no Symfony component to tell. */
-    public const LATEST = '7.3';
+    /** The oldest version the bridge writes for. */
+    public const MINIMUM = '5.4';
+
+    /** The newest version whose rules the bridge knows; assumed when the project has no Symfony component. */
+    public const LATEST = '7.4';
 
     private const COMPONENTS = ['symfony/validator', 'symfony/serializer'];
+
+    private const NUMBER = '(0|[1-9]\d{0,3})';
 
     private int $major;
 
@@ -45,13 +50,7 @@ final class SymfonyVersion
      */
     public static function tryFromString(string $version): ?self
     {
-        if (preg_match('~^\d+\.\d+$~D', $version) !== 1) {
-            return null;
-        }
-
-        [$major, $minor] = explode('.', $version);
-
-        return new self((int) $major, (int) $minor);
+        return self::match('~^' . self::NUMBER . '\.' . self::NUMBER . '$~D', $version);
     }
 
     /**
@@ -59,29 +58,39 @@ final class SymfonyVersion
      */
     public static function fromPackageVersion(string $version): ?self
     {
-        return preg_match('~^v?(\d+)\.(\d+)\.~', $version, $matches) === 1 ? new self((int) $matches[1], (int) $matches[2]) : null;
+        return self::match('~^v?' . self::NUMBER . '\.' . self::NUMBER . '\.~', $version);
+    }
+
+    public static function latest(): self
+    {
+        return self::fromString(self::LATEST);
     }
 
     /**
-     * The configured version, else the newest of the project's Symfony components, else LATEST.
+     * The version to write a component's attributes for: the configured one, else the project's version of that
+     * component, else the newest of its other Symfony components (they come in step), else LATEST.
      */
-    public static function resolve(Settings $settings, InstalledPackages $packages): self
+    public static function resolve(Settings $settings, InstalledPackages $packages, string $component): self
     {
         $configured = $settings->version();
         if ($configured instanceof self) {
             return $configured;
         }
 
+        $own = self::installed($packages, $component);
+        if ($own instanceof self) {
+            return $own;
+        }
+
         $newest = null;
-        foreach (self::COMPONENTS as $component) {
-            $installed = $packages->version($component);
-            $version = $installed === null ? null : self::fromPackageVersion($installed);
+        foreach (self::COMPONENTS as $other) {
+            $version = self::installed($packages, $other);
             if ($version instanceof self && (!$newest instanceof self || $version->isAtLeast($newest))) {
                 $newest = $version;
             }
         }
 
-        return $newest ?? self::fromString(self::LATEST);
+        return $newest ?? self::latest();
     }
 
     public function isAtLeast(self $other): bool
@@ -89,8 +98,29 @@ final class SymfonyVersion
         return [$this->major, $this->minor] >= [$other->major, $other->minor];
     }
 
+    public function isSupported(): bool
+    {
+        return $this->isAtLeast(self::fromString(self::MINIMUM));
+    }
+
     public function toString(): string
     {
         return $this->major . '.' . $this->minor;
+    }
+
+    private static function installed(InstalledPackages $packages, string $component): ?self
+    {
+        $version = $packages->version($component);
+
+        return $version === null ? null : self::fromPackageVersion($version);
+    }
+
+    private static function match(string $pattern, string $version): ?self
+    {
+        if (preg_match($pattern, $version, $matches) !== 1) {
+            return null;
+        }
+
+        return new self((int) $matches[1], (int) $matches[2]);
     }
 }

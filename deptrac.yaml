@@ -11,6 +11,12 @@ deptrac:
       collectors:
         - type: classNameRegex
           value: '#^MSSTC4PHP\\DtoGenerator\\(Contract|Domain\\(Model|Schema|Diagnostic|Target|Shared))\\#'
+    # PHPStan type aliases imported from the core (JsonValue); deptrac resolves them as if they were classes.
+    - name: TypeAlias
+      collectors:
+        - type: classNameRegex
+          value: '#^MSSTC4PHP\\DtoGeneratorBridgeSymfony\\Json(Value|Scalar)$#'
   ruleset:
-    Bridge: [CoreSpi]
+    Bridge: [CoreSpi, TypeAlias]
     CoreSpi: ~
+    TypeAlias: ~

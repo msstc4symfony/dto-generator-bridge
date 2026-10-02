@@ -36,4 +36,4 @@ help: ## List commands
 	@grep -E '^[a-zA-Z_0-9-]+:.*?## ' Makefile | awk 'BEGIN {FS = ":.*?## "}; {printf "%-12s %s\n", $$1, $$2}'
 
 .DEFAULT_GOAL := help
-.PHONY: install check lint-74 test test-74 test-targets verify infection fix help
+.PHONY: install check lint-74 test test-74 verify infection fix help

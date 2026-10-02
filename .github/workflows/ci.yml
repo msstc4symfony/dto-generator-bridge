@@ -56,3 +56,51 @@ jobs:
         working-directory: dto-generator-bridge-symfony
         run: vendor/bin/phpunit
 
+
+  static:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dto-generator-bridge-symfony
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: dto-generator-bridge-symfony
+      - uses: actions/checkout@v4
+        with:
+          repository: msstc4php/dto-generator
+          path: dto-generator
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+      - run: composer install --no-interaction --no-progress
+      - run: composer install --no-interaction --no-progress --working-dir=tools
+      - run: tools/vendor/bin/phpstan analyse --memory-limit=512M -c phpstan.dist.neon --no-progress
+      - run: tools/vendor/bin/php-cs-fixer check
+      - run: composer validate --strict --no-check-publish
+      - run: tools/vendor/bin/rector process -n
+      - run: tools/vendor/bin/deptrac analyse --config-file=deptrac.yaml --no-progress --fail-on-uncovered
+
+  mutation:
+    name: Mutation testing
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dto-generator-bridge-symfony
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: dto-generator-bridge-symfony
+      - uses: actions/checkout@v4
+        with:
+          repository: msstc4php/dto-generator
+          path: dto-generator
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: xdebug
+      - run: composer install --no-interaction --no-progress
+      - run: composer install --no-interaction --no-progress --working-dir=tools
+      - run: make infection
