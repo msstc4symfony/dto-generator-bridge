@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace MSSTC4PHP\DtoGeneratorBridgeSymfony\Tests\Unit;
+namespace Msstc4Symfony\DtoGeneratorBridge\Test\Unit;
 
 use InvalidArgumentException;
-use MSSTC4PHP\DtoGeneratorBridgeSymfony\Settings;
+use Msstc4Symfony\DtoGeneratorBridge\Settings;
 use PHPUnit\Framework\TestCase;
 
 final class SettingsTest extends TestCase

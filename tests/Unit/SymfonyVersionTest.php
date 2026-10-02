@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace MSSTC4PHP\DtoGeneratorBridgeSymfony\Tests\Unit;
+namespace Msstc4Symfony\DtoGeneratorBridge\Test\Unit;
 
 use InvalidArgumentException;
 use MSSTC4PHP\DtoGenerator\Contract\InstalledPackages;
-use MSSTC4PHP\DtoGeneratorBridgeSymfony\Settings;
-use MSSTC4PHP\DtoGeneratorBridgeSymfony\SymfonyVersion;
+use Msstc4Symfony\DtoGeneratorBridge\Settings;
+use Msstc4Symfony\DtoGeneratorBridge\SymfonyVersion;
 use PHPUnit\Framework\TestCase;
 
 final class SymfonyVersionTest extends TestCase

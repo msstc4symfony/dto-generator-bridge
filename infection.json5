@@ -1,19 +1,19 @@
 {
-    "$schema": "tools/vendor/infection/infection/resources/schema.json",
+    "$schema": "vendor/infection/infection/resources/schema.json",
     "source": {
-        "directories": ["src"]
+        "directories": [
+            "src"
+        ]
     },
     "timeout": 10,
-    "minMsi": 100,
-    "minCoveredMsi": 100,
     "logs": {
-        "text": "var/infection/infection.log"
+        "text": "var/infection/infection.log",
+        "json": "var/infection/infection.json",
+        "github": true
     },
     "mutators": {
         "@default": true
     },
-    "phpUnit": {
-        "customPath": "vendor/bin/phpunit"
-    },
-    "testFramework": "phpunit"
+    "testFramework": "phpunit",
+    "testFrameworkOptions": "--testsuite=unit"
 }

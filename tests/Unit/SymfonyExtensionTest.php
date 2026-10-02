@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace MSSTC4PHP\DtoGeneratorBridgeSymfony\Tests\Unit;
+namespace Msstc4Symfony\DtoGeneratorBridge\Test\Unit;
 
 use InvalidArgumentException;
 use MSSTC4PHP\DtoGenerator\Contract\ClassEnricher;
 use MSSTC4PHP\DtoGenerator\Contract\ExtensionRegistry;
 use MSSTC4PHP\DtoGenerator\Contract\FormatMapping;
 use MSSTC4PHP\DtoGenerator\Contract\PropertyEnricher;
-use MSSTC4PHP\DtoGeneratorBridgeSymfony\SymfonyExtension;
+use Msstc4Symfony\DtoGeneratorBridge\SymfonyExtension;
 use PHPUnit\Framework\TestCase;
 
 final class SymfonyExtensionTest extends TestCase

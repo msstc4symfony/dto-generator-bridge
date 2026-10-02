@@ -1,21 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- PHPUnit 9.6, the last version for PHP 7.4. -->
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
          bootstrap="vendor/autoload.php"
          cacheResultFile=".phpunit.cache/test-results"
-         executionOrder="depends,defects"
+         executionOrder="defects"
+         resolveDependencies="true"
          beStrictAboutOutputDuringTests="true"
-         beStrictAboutTodoAnnotatedTests="true"
          convertDeprecationsToExceptions="true"
          failOnRisky="true"
-         failOnWarning="true"
-         colors="true">
-    <php>
-        <!-- php:7.4-cli ships without php.ini; its default hides notices and deprecations from PHPUnit. -->
-        <ini name="error_reporting" value="-1"/>
-        <ini name="display_errors" value="1"/>
-    </php>
-
+         failOnWarning="true">
     <testsuites>
         <testsuite name="unit">
             <directory>tests/Unit</directory>
@@ -23,10 +17,11 @@
         <testsuite name="integration">
             <directory>tests/Integration</directory>
         </testsuite>
-        <testsuite name="functional">
-            <directory>tests/Functional</directory>
-        </testsuite>
     </testsuites>
+
+    <php>
+        <ini name="error_reporting" value="-1"/>
+    </php>
 
     <coverage>
         <include>

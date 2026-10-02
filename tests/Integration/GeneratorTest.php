@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace MSSTC4PHP\DtoGeneratorBridgeSymfony\Tests\Functional;
+namespace Msstc4Symfony\DtoGeneratorBridge\Test\Integration;
 
 use FilesystemIterator;
 use MSSTC4PHP\DtoGenerator\Application\Service\Generate\Input;
@@ -10,7 +10,7 @@ use MSSTC4PHP\DtoGenerator\Application\Service\Generate\Mode;
 use MSSTC4PHP\DtoGenerator\Application\Service\Generate\Output;
 use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostic;
 use MSSTC4PHP\DtoGenerator\DtoGenerator;
-use MSSTC4PHP\DtoGeneratorBridgeSymfony\SymfonyExtension;
+use Msstc4Symfony\DtoGeneratorBridge\SymfonyExtension;
 use PHPUnit\Framework\TestCase;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;

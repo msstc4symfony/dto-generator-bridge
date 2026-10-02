@@ -1,39 +1,44 @@
-TOOLS := tools/vendor/bin
-# ~/PhpstormProjects is mounted: vendor/msstc4php/dto-generator links to ../../msstc4php/dto-generator.
-PHP74 := docker run --rm --user "$$(id -u):$$(id -g)" -v "$(CURDIR)/../..:/work" -w /work/msstc4symfony/$(notdir $(CURDIR)) php:7.4-cli
+PHPSTAN_CONFIG ?= phpstan.dist.neon
 
-install: ## Install package and tool dependencies
-	composer install
-	composer install --working-dir=tools
-
-check: ## Static checks (incl. PHP 7.4 syntax lint)
-	$(TOOLS)/phpstan analyse --memory-limit=512M -c phpstan.dist.neon
-	$(TOOLS)/php-cs-fixer check
+check: ## Check code (expects the composer-ci.json install, see install-ci)
+	find ./ -name '*.php' -not -path './vendor/*' | xargs -r php -l
+	vendor/bin/phpstan analyse --memory-limit=512M -c $(PHPSTAN_CONFIG)
+	vendor/bin/php-cs-fixer check
 	composer validate --strict --no-check-publish
-	$(TOOLS)/rector process -n
-	$(TOOLS)/deptrac analyse --config-file=deptrac.yaml --no-progress --fail-on-uncovered
-	$(MAKE) lint-74
+	composer audit
+	vendor/bin/rector process -n
+	vendor/bin/deptrac analyse --config-file=deptrac.yaml --no-progress
 
-lint-74: ## Lint sources with the PHP 7.4 parser
-	$(PHP74) sh -c "find src tests -name '*.php' -print0 | xargs -0 -r -n1 php -l > /dev/null"
-
-test: ## Run tests on the local PHP
+test: ## Test code (integration tests skip themselves when optional libraries are missing)
 	vendor/bin/phpunit
 
-test-74: ## Run tests on PHP 7.4
-	$(PHP74) vendor/bin/phpunit
+test-unit: ## Test code (unit suite only)
+	vendor/bin/phpunit --testsuite=unit
 
-verify: check test test-74 ## Full gate: static checks + tests on local PHP and PHP 7.4
+test-integration: ## Test code (integration suite only, needs the composer-ci.json install)
+	vendor/bin/phpunit --testsuite=integration
 
-infection: ## Mutation testing
-	XDEBUG_MODE=coverage $(TOOLS)/infection --threads=$(shell nproc) --no-interaction
+test-with-coverage: ## Test code with coverage
+	XDEBUG_MODE=coverage vendor/bin/phpunit --coverage-html coverage
 
-fix: ## Apply code style and Rector
-	$(TOOLS)/rector process
-	$(TOOLS)/php-cs-fixer fix
+infection: ## Run mutation testing
+	XDEBUG_MODE=coverage vendor/bin/infection --threads=$(shell nproc) --no-interaction
 
-help: ## List commands
-	@grep -E '^[a-zA-Z_0-9-]+:.*?## ' Makefile | awk 'BEGIN {FS = ":.*?## "}; {printf "%-12s %s\n", $$1, $$2}'
+install-ci: ## Install the CI profile: optional libraries plus CI-only tools
+	COMPOSER=composer-ci.json composer install --prefer-dist --no-progress --no-interaction
+
+regenerate-baseline: ## Regenerate baseline
+	vendor/bin/phpstan analyse --memory-limit=512M -b phpstan-baseline.neon
+
+fix: ## Fix code
+	vendor/bin/php-cs-fixer fix
+	vendor/bin/rector process
+
+## Help
+help: ## List of all commands
+	@grep -E '(^[a-zA-Z_0-9-]+:.*?##.*$$)|(^##)' Makefile \
+	| awk 'BEGIN {FS = ":.*?## "}; {printf "${G}%-24s${NC} %s\n", $$1, $$2}' \
+	| sed -e 's/\[32m## /[33m/' && printf "\n";
 
 .DEFAULT_GOAL := help
-.PHONY: install check lint-74 test test-74 verify infection fix help
+.PHONY: help

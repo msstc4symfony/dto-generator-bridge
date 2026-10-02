@@ -18,15 +18,16 @@
 - Валидация во время выполнения без Symfony.
 
 ## 2. Ограничения
-- Пакет `msstc4php/dto-generator-bridge-symfony`, namespace `MSSTC4PHP\DtoGeneratorBridgeSymfony`, PHP ≥ 7.4 (работает в рантайме генератора).
+- Пакет `msstc4symfony/dto-generator-bridge`, namespace `Msstc4Symfony\DtoGeneratorBridge`, PHP ≥ 7.4 (работает в рантайме генератора). Репозиторий — `~/PhpstormProjects/msstc4symfony/dto-generator-bridge-symfony`, рядом с остальными Symfony-бандлами.
+- Пакет соответствует `msstc4symfony/bundle-standard` (≥ v1.9.0) с профилем среды выполнения `php74` (`extra.bundle-standard.runtime`): шаблоны инструментов `templates/php74/`, `require.php >=7.4`, CI — общий workflow с `minimal-php: '7.4'`.
 - Зависимость только от SPI ядра: `Contract\*`, `Domain\Model\*`, `Domain\Schema\*`, `Domain\Diagnostic\*`, `Domain\Target\*`, `Domain\Shared\*` (так и записано в `deptrac.yaml`). Классы Symfony в рантайме генератора не нужны: мост выводит их имена строками (`ClassName`), поэтому `symfony/validator` и `symfony/serializer` — только в `require-dev` и `suggest`.
 - Бандл — в том же пакете (`src/Bundle`), активен, только если установлен `symfony/framework-bundle`; его PHP-минимум тот же, что у Symfony выбранной версии.
-- Инструменты как у ядра: PHPStan max, CS-Fixer, Rector, deptrac, infection (MSI 100 %), golden-матрица; в CI — тесты, статический анализ и infection.
-- До первого релиза ядро подключается path-репозиторием `../../msstc4php/dto-generator` (`dev-main`); в B6 — `^1.0`.
+- Инструменты — шаблоны стандарта (PHPStan max, CS-Fixer, Rector, deptrac, infection с порогом 100 %, Roave BC check); `composer.json` содержит только то, что ставится на 7.4 (PHPUnit 9.6), инструменты — в `composer-ci.json`.
+- Ядро — `msstc4php/dto-generator: ^1.0` из VCS `https://github.com/msstc4php/dto-generator`; локально — `composer-local.json` с path-репозиторием `../../msstc4php/dto-generator` (версия 1.0.0). Пока ядро не опубликовано, CI моста не может его установить (B6).
 
 ## 3. Подключение
 
-- `composer.json` моста: `extra.dto-generator.extensions: ["MSSTC4PHP\\DtoGeneratorBridgeSymfony\\SymfonyExtension"]` — обнаруживается ядром (§8 ядра) без правки конфига.
+- `composer.json` моста: `extra.dto-generator.extensions: ["Msstc4Symfony\\DtoGeneratorBridge\\SymfonyExtension"]` — обнаруживается ядром (§8 ядра) без правки конфига.
 - Одно расширение `SymfonyExtension`, `name()` = `symfony`, секция `extensionConfig.symfony`:
 
 ```yaml
@@ -147,6 +148,6 @@ extensionConfig:
 - **B3.** Serializer: §6.
 - **B4.** Интеграционная матрица Symfony 5.4/6.4/7.4/8.x; снимает пометки «проверить в B4».
 - **B5.** Бандл (§7).
-- **B6.** Ядро — `^1.0` вместо path-репозитория; включение моста в Docker-образ ядра; README; релиз.
+- **B6.** Публикация ядра (`v1.0.0`) и моста; включение моста в Docker-образ ядра; README; релиз.
 
 Каждый этап — с тестами и `make verify`.

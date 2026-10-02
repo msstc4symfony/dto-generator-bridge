@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace MSSTC4PHP\DtoGeneratorBridgeSymfony;
+namespace Msstc4Symfony\DtoGeneratorBridge;
 
 use InvalidArgumentException;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;

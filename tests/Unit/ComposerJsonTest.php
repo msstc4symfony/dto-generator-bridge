@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace MSSTC4PHP\DtoGeneratorBridgeSymfony\Tests\Unit;
+namespace Msstc4Symfony\DtoGeneratorBridge\Test\Unit;
 
 use MSSTC4PHP\DtoGenerator\Contract\Extension;
 use PHPUnit\Framework\TestCase;
