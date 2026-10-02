@@ -6,6 +6,7 @@ namespace Msstc4Symfony\DtoGeneratorBridge;
 
 use MSSTC4PHP\DtoGenerator\Contract\Extension;
 use MSSTC4PHP\DtoGenerator\Contract\ExtensionRegistry;
+use Msstc4Symfony\DtoGeneratorBridge\Validator\ValidatorEnricher;
 
 /**
  * The bridge as the generator sees it (bridge spec §3): found through `extra.dto-generator.extensions`, configured
@@ -20,7 +21,8 @@ final class SymfonyExtension implements Extension
 
     public function register(ExtensionRegistry $registry, array $config): void
     {
-        Settings::fromConfig($config);
+        $settings = Settings::fromConfig($config);
         $registry->claimExtensionKeys('x-validator-*', 'x-serializer-*');
+        $registry->addPropertyEnricher(new ValidatorEnricher($settings));
     }
 }

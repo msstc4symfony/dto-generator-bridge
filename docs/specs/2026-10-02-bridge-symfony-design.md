@@ -65,7 +65,7 @@ extensionConfig:
 | `multipleOf` | `DivisibleBy(value:)` | |
 | `minItems`/`maxItems`, `minProperties`/`maxProperties` (map) | `Count(min:, max:)` | |
 | `uniqueItems: true` | `Unique` | См. §5.6: объекты сравниваются по идентичности. |
-| `enum` у строки/числа, которое ядро не вынесло в PHP-enum | `Choice(choices:)` | См. §5.6 про `strict`. |
+| `enum` на цели без нативных enum (PHP 7.4/8.0: свойство — `string`/`int`) | `Choice(choices:)` | На 8.1+ значения ограничивает сам тип enum. Ядро принимает только строковые и целые enum, поэтому `strict` не нужен. |
 | `const`: скаляр | `IdenticalTo(value:)` | |
 | `const: null` | `IsNull` | |
 | `const`: массив или объект | — | Warning и пропуск: `AbstractComparison` принимает массив за опции. |
@@ -74,7 +74,7 @@ extensionConfig:
 | `format: hostname` | `Hostname(requireTld: false)` | По умолчанию `localhost` отклоняется. |
 | `format: uuid` | `Uuid` | См. §5.6 (версии UUID, nil). |
 | `format: uri` | — | Решение: не маппить. `Url` принимает только http(s) с хостом, а `uri` из JSON Schema — любой URI (`urn:`, `mailto:`). |
-| свойство-объект или список/map объектов | `Valid` | Каскад во вложенные DTO. |
+| значение или элементы — объект со свойствами или композиция (`allOf`/`oneOf`/`anyOf`) | `Valid` | Каскад во вложенные DTO; решается по схеме, а не по типу: дата — тоже класс, но строка в схеме; объект без свойств ядро делает массивом. |
 | ограничения `items` (список), схема `additionalProperties` (map) | `All(constraints: [...])` | Вложенные `new` в атрибуте — PHP ≥ 8.1; на цели 8.0 — warning и пропуск `All` (ядро отбрасывает такие атрибуты и само, §6.1 ядра); на 7.4 — аннотация `@Assert\All({@Assert\Length(...)})`. |
 
 - `format` формата, замапленного на класс (`formats` ядра), constraint не получает.
@@ -82,7 +82,7 @@ extensionConfig:
 - Nullable-свойства: constraint'ы не меняются — Validator пропускает `null` в большинстве constraint'ов; `NotNull` не ставится.
 
 ### 5.2 Группы
-- `x-validator-groups: [..]` на свойстве или классе — группы constraint'ов (иначе `extensionConfig.symfony.groups`, иначе без групп).
+- `x-validator-groups: [..]` на свойстве — группы его constraint'ов (иначе `extensionConfig.symfony.groups`, иначе без групп); нестроковые и пустые имена отбрасываются. Группы на уровне класса — после B2.
 - Constraint с явными группами выпадает из группы `Default`: `validate($dto)` без групп его не проверит. Решение: мост добавляет `Default` к явно заданным группам, если её там нет; `x-validator-groups-exclusive: true` это отключает.
 - `x-validator-skip: true` — свойство (или класс) без constraint'ов моста; `x-php-attributes` ядра работают как прежде.
 - Произвольные constraint'ы — через `x-php-attributes`/`attributeAliases` ядра; отдельного синтаксиса мост не вводит. Решение: не дублировать грамматику ядра.
@@ -101,7 +101,7 @@ extensionConfig:
 - Symfony 5.4/6.4 + аннотации: потребителю нужен `doctrine/annotations` — мост проверяет `InstalledPackages` и выдаёт warning, если пакета нет.
 
 ### 5.6 Известные расхождения с JSON Schema
-- `Choice` по умолчанию строгий: `1.0` и `1` разные, хотя для JSON равны. Решение: для числовых `enum` с дробными значениями — `strict: false`.
+- Ключевые слова рядом с `$ref` (`{$ref: Email, maxLength: 64}`) важнее ключевых слов цели (`SchemaReferences` ядра их не объединяет).
 - `Unique` сравнивает объекты по идентичности: `uniqueItems` для списка DTO фактически не проверяется. Документируется.
 - `Uuid`: поддержка версий 7/8 появилась позже 5.4 (проверить в B4, вероятно 6.2); nil-UUID отклоняется всеми версиями. Документируется; при `version < поддерживающей` — `Uuid(versions: [...])` без 7/8.
 

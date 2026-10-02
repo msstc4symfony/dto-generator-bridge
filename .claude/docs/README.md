@@ -11,9 +11,17 @@
 - `SymfonyVersion` — `major.minor`; `resolve(settings, packages, component)`: конфиг → версия компонента из lock → старшая из `symfony/validator`/`symfony/serializer` → `LATEST` (7.4). `MINIMUM` = 5.4.
 - deptrac: `Bridge` → только `CoreSpi` (Contract, Domain\{Model,Schema,Diagnostic,Target,Shared}) и `TypeAlias` (импортированный `JsonValue`).
 
+## Validator (B2)
+- `Validator\ValidatorEnricher` (регистрируется `SymfonyExtension`): решает «писать ли» один раз на запуск по первому свойству (предупреждения — на нём): `validator: false`/`auto` без пакета → нет; `true` без пакета → warning; версия < 5.4 → warning, нет; `metadata: annotations` + validator ≥ 7.0 → strict: error / warning, нет; 5.4/6.4 без `doctrine/annotations` → warning.
+- `ConstraintBuilder` — таблица §5.1 в её порядке; `Keywords` — ключевое слово свойства важнее цели `$ref` (`references()->resolve()`); `Constraint` — имя + аргументы → атрибут с `ImportAlias(…Constraints, 'Assert')` или `new` внутри `All`.
+- Тесты — настоящий генератор ядра в dry-run на временном проекте с `composer.lock`; `attributesOf()` разбирает сигнатуру конструктора по запятым нулевой глубины.
+
 ## Известные особенности
 - Песочница не пишет `.git/config`: автор коммитов задаётся переменными `GIT_AUTHOR_*`/`GIT_COMMITTER_*` (имя и почта — из `git -C ../../msstc4php/dto-generator config`).
 - PHP 7.4 локально: копия `src`, `tests`, `phpunit.xml.dist` и `composer.json` с path-репозиторием на `/work/msstc4php/dto-generator` и `config.platform.php 7.4.33`; установка в `composer:2` **без** `--ignore-platform-req=php` (иначе берутся версии для PHP 8 с типизированными константами), тесты в `php:7.4-cli` с `-v ~/PhpstormProjects:/work`.
 - Infection по шаблону стандарта гоняет только набор `unit`: интеграционные тесты мутантов не убивают.
 - deptrac принимает импортированные `@phpstan-import-type` псевдонимы за классы нашего namespace — для них слой `TypeAlias`.
 - YAML читает `version: 6.4` как число; версия принимается только строкой.
+- `Schema::keyword()` не содержит `enum`, `format`, `type`, `$ref` — у них свои методы (`enum()`, `format()`…); `Extensions::get()` бросает, если ключа нет — сначала `has()`.
+- Ядро: enum на 7.4/8.0 — класс с константами, свойство `string`/`int`; дробные enum — ошибка ядра; объект без свойств — массив; вложенный `new` в атрибуте — полное имя класса, без алиаса.
+- Ядро печатает атрибуты promoted-параметра в одну строку перед `public`, длинные — с переносом аргументов.

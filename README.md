@@ -3,9 +3,8 @@
 Symfony Validator constraints and Symfony Serializer attributes for the DTOs that
 [`msstc4php/dto-generator`](https://github.com/msstc4php/dto-generator) generates from OpenAPI 3.1.
 
-> **Status:** in development. Stage B1 is done: the generator discovers the bridge, reads its
-> `extensionConfig.symfony` section and detects the project's Symfony version. Constraints (B2),
-> serializer attributes (B3), the version matrix (B4) and the bundle (B5) are ahead.
+> **Status:** in development. Done: discovery and settings (B1) and Symfony Validator constraints (B2).
+> Serializer attributes (B3), the version matrix (B4) and the bundle (B5) are ahead.
 
 ## Installation
 
@@ -29,6 +28,29 @@ extensionConfig:
 ```
 
 The Symfony version is read per component from the project's `composer.lock`.
+
+## Validator constraints
+
+From the schema of each property (and of the schema its `$ref` points to; keywords beside a `$ref` win):
+
+| Schema | Constraint |
+|---|---|
+| required | `NotNull` |
+| `minLength` / `maxLength` | `Length` |
+| `pattern` | `Regex` (`/…/u`) |
+| `minimum` / `maximum` / `exclusive*` | `Range`, `GreaterThan(OrEqual)`, `LessThan(OrEqual)` |
+| `multipleOf` | `DivisibleBy` |
+| `minItems` / `maxItems`, `minProperties` / `maxProperties` | `Count` |
+| `uniqueItems` | `Unique` |
+| `enum` (PHP 7.4/8.0 targets, where the property is a plain string or int) | `Choice` |
+| `const` | `IdenticalTo`, `IsNull` |
+| `format`: `email`, `ipv4`, `ipv6`, `hostname`, `uuid` | `Email(mode: 'html5')`, `Ip`, `Hostname(requireTld: false)`, `Uuid` |
+| an object or a collection of objects | `Valid` |
+| constraints of `items` / `additionalProperties` | `All` |
+
+`x-validator-groups: [api]` sets the groups (plus `Default`, unless `x-validator-groups-exclusive: true`);
+`x-validator-skip: true` leaves a property alone. On PHP 7.4 the constraints are annotations, which
+Symfony Validator 7 no longer reads — the bridge reports that instead of writing them.
 
 ## Requirements
 
