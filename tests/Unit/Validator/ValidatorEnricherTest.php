@@ -671,13 +671,25 @@ final class ValidatorEnricherTest extends TestCase
         $output = $this->generate(['type' => 'object', 'properties' => [
             'currency' => ['$ref' => '#/components/schemas/Currency'],
             'fixed' => ['type' => 'string', 'const' => 'A', 'x-php-type' => 'App\\Code'],
-        ]], ['Currency' => ['type' => 'string', 'enum' => ['USD', 'EUR'], 'x-php-type' => 'App\\Currency']]);
+            'id' => ['type' => 'string', 'format' => 'uuid', 'const' => '00000000-0000-0000-0000-000000000000'],
+            'born' => ['type' => 'string', 'format' => 'date-time', 'const' => '2026-10-02T00:00:00Z'],
+            'gone' => ['type' => ['string', 'null'], 'format' => 'date-time', 'const' => null],
+            'blank' => ['type' => ['string', 'null'], 'format' => 'date-time', 'enum' => [null]],
+        ]], ['Currency' => ['type' => 'string', 'enum' => ['USD', 'EUR'], 'x-php-type' => 'App\\Currency']], '8.2', [], 'v7.1.0', [], true, ['uuid' => ['type' => 'Symfony\\Component\\Uid\\Uuid']]);
         $code = $this->code($output, 'Pet.php');
 
         self::assertSame([], $this->attributesOf($code, 'currency'));
         self::assertSame([], $this->attributesOf($code, 'fixed'));
-        self::assertContains('warning /api.yaml#/components/schemas/Pet/properties/currency: "enum" on a value of class App\\Currency is not checked; the class has to keep to it.', $this->messages($output));
-        self::assertContains('warning /api.yaml#/components/schemas/Pet/properties/fixed: "const" on a value of class App\\Code is not checked; the class has to keep to it.', $this->messages($output));
+        self::assertSame([], $this->attributesOf($code, 'id'));
+        self::assertSame([], $this->attributesOf($code, 'born'));
+        self::assertSame(['Assert\\IsNull'], $this->attributesOf($code, 'gone'));
+        self::assertSame([], $this->attributesOf($code, 'blank'));
+        self::assertContains('warning /api.yaml#/components/schemas/Pet/properties/id: "const" on a value of class Symfony\\Component\\Uid\\Uuid has no constraint to check it; it is not checked.', $this->messages($output));
+        self::assertContains('warning /api.yaml#/components/schemas/Pet/properties/born: "const" on a value of class DateTimeImmutable has no constraint to check it; it is not checked.', $this->messages($output));
+        // The fifth message is the generator's own, about the enum of null.
+        self::assertCount(5, $this->messages($output));
+        self::assertContains('warning /api.yaml#/components/schemas/Pet/properties/currency: "enum" on a value of class App\\Currency has no constraint to check it; it is not checked.', $this->messages($output));
+        self::assertContains('warning /api.yaml#/components/schemas/Pet/properties/fixed: "const" on a value of class App\\Code has no constraint to check it; it is not checked.', $this->messages($output));
     }
 
     public function testComparesNumbersAsJsonDoes(): void

@@ -89,3 +89,4 @@ PHP ≥ 7.4 (профиль `php74` bundle-standard); только SPI ядра;
 - CR-001: `enum`/`const` на значении-классе (`x-php-type`, класс формата) — warning, без `Choice`/`IdenticalTo` (они сравнивали бы объект с JSON-значением и отвергали всё).
 - CR-002: план B3 — формат сериализатор берёт из `Keywords::resolved()`, по которой ядро типизирует.
 - CR-003/004: doc-комментарии `Keywords`. CR-005: `describesObject()` сбрасывает `$explored`.
+- Ревью low коммита 2d5f7b8: сообщение нейтрально («has no constraint to check it»), класс — любой `ClassType`; `null` в `const`/`enum` обрабатывается до проверки класса; doc-комментарий `$collected` (cs-fixer убирает имя переменной из `@var`).

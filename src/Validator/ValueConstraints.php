@@ -43,7 +43,8 @@ final class ValueConstraints
     public function choices(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
     {
         $enum = $keywords->enum();
-        if ($enum === null || $this->heldByClass($value, 'enum', $at)) {
+        // Validator constraints accept null anyway: an enum of null alone needs nothing.
+        if ($enum === null || ($enum !== [] && $this->onlyNull($enum)) || $this->heldByClass($value, 'enum', $at)) {
             return [];
         }
 
@@ -74,8 +75,21 @@ final class ValueConstraints
             }
         }
 
-        // Validator constraints accept null anyway: an enum of null alone needs nothing more.
-        return $choices === [] ? [] : [new ConstraintSpec('Choice', [AttributeArgument::named('choices', ArgumentValue::listOf(...$choices))])];
+        return [new ConstraintSpec('Choice', [AttributeArgument::named('choices', ArgumentValue::listOf(...$choices))])];
+    }
+
+    /**
+     * @param list<JsonValue> $enum
+     */
+    private function onlyNull(array $enum): bool
+    {
+        foreach ($enum as $choice) {
+            if ($choice !== null) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -84,13 +98,18 @@ final class ValueConstraints
     public function constants(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
     {
         $constants = $keywords->values('const');
-        if ($constants === [] || $this->heldByClass($value, 'const', $at)) {
+        if ($constants === []) {
             return [];
         }
 
         if (count($constants) > 1) {
             $this->diagnostics->warning('The "const" values differ, so no value is valid; they are not checked.', $at);
 
+            return [];
+        }
+
+        // IsNull checks an object as well as a scalar.
+        if ($constants[0] !== null && $this->heldByClass($value, 'const', $at)) {
             return [];
         }
 
@@ -122,8 +141,8 @@ final class ValueConstraints
     }
 
     /**
-     * A class from `x-php-type` or `formats` holds the value: Choice and IdenticalTo would compare the object with the
-     * JSON value and reject every one.
+     * A class holds the value (`x-php-type`, a `formats` class, a date, a generated class): Choice and IdenticalTo
+     * would compare the object with the JSON value and reject every one.
      */
     private function heldByClass(TypeModel $value, string $keyword, SchemaLocation $at): bool
     {
@@ -131,7 +150,7 @@ final class ValueConstraints
             return false;
         }
 
-        $this->diagnostics->warning(sprintf('"%s" on a value of class %s is not checked; the class has to keep to it.', $keyword, $value->className()->fqcn()), $at);
+        $this->diagnostics->warning(sprintf('"%s" on a value of class %s has no constraint to check it; it is not checked.', $keyword, $value->className()->fqcn()), $at);
 
         return true;
     }

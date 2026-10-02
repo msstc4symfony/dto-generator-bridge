@@ -19,7 +19,7 @@ final class Keywords
     /** @var list<Schema> nearest first */
     private array $schemas = [];
 
-    /** @var list<string> the locations of, each read once */
+    /** @var list<string> locations of the schemas already collected, each read once */
     private array $collected = [];
 
     /** @var list<string> compositions already searched for an object, against `$ref` cycles and repeated work */
