@@ -7,7 +7,7 @@
     "minimum-stability": "stable",
     "prefer-stable": true,
     "repositories": [
-        {"type": "path", "url": "../dto-generator", "options": {"symlink": true}}
+        {"type": "path", "url": "../../msstc4php/dto-generator", "options": {"symlink": true}}
     ],
     "require": {
         "php": ">=7.4",

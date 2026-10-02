@@ -1,6 +1,6 @@
 TOOLS := tools/vendor/bin
-# The parent directory is mounted too: vendor/msstc4php/dto-generator links to the sibling ../dto-generator.
-PHP74 := docker run --rm --user "$$(id -u):$$(id -g)" -v "$(CURDIR)/..:/work" -w /work/$(notdir $(CURDIR)) php:7.4-cli
+# ~/PhpstormProjects is mounted: vendor/msstc4php/dto-generator links to ../../msstc4php/dto-generator.
+PHP74 := docker run --rm --user "$$(id -u):$$(id -g)" -v "$(CURDIR)/../..:/work" -w /work/msstc4symfony/$(notdir $(CURDIR)) php:7.4-cli
 
 install: ## Install package and tool dependencies
 	composer install
