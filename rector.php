@@ -18,9 +18,9 @@ use Rector\PHPUnit\AnnotationsToAttributes\Rector\Class_\CoversAnnotationWithVal
  * transitively (http-foundation, console, ...) have no constraint in composer.json, so Rector would take
  * the newest release from vendor/ and rewrite code to APIs the lowest supported Symfony lacks
  * (e.g. new RequestStack([$request]) needs 7.2). Every lockstep Symfony package is resolved to the floor
- * of the standard's "^6.4|^7.0|^8.0" constraint.
+ * of the php74 profile's "^5.4|^6.4|^7.0|^8.0" constraint.
  */
-$lowestSymfony = '6.4.0';
+$lowestSymfony = '5.4.0';
 
 $writeLowestPackagesManifest = static function () use ($lowestSymfony): string {
     $readJson = static function (string $file): array {

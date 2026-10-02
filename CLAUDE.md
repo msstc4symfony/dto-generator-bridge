@@ -21,7 +21,7 @@ All in `Makefile` (shared bundle-standard template):
 - `COMPOSER=composer-local.json composer install` — local install: tools plus the
   sibling core `../../msstc4php/dto-generator` as a path repository.
 - `make check`, `make fix`, `make test`, `make infection`.
-- PHP 7.4 is proven in CI (`minimal` job, `minimal-php: '7.4'`). Locally, run the
+- PHP 7.4 is proven in CI: the `minimal` job reads the `php74` profile from `composer.json`. Locally, run the
   suite in `php:7.4-cli` against an install of `composer.json` only.
 
 ## Conventions

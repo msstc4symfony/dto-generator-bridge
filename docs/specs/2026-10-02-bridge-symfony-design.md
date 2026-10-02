@@ -19,7 +19,7 @@
 
 ## 2. Ограничения
 - Пакет `msstc4symfony/dto-generator-bridge`, namespace `Msstc4Symfony\DtoGeneratorBridge`, PHP ≥ 7.4 (работает в рантайме генератора). Репозиторий — `~/PhpstormProjects/msstc4symfony/dto-generator-bridge-symfony`, рядом с остальными Symfony-бандлами.
-- Пакет соответствует `msstc4symfony/bundle-standard` (≥ v1.9.0) с профилем среды выполнения `php74` (`extra.bundle-standard.runtime`): шаблоны инструментов `templates/php74/`, `require.php >=7.4`, CI — общий workflow с `minimal-php: '7.4'`.
+- Пакет соответствует `msstc4symfony/bundle-standard` (≥ v1.9.0) с профилем среды выполнения `php74` (`extra.bundle-standard.runtime`): шаблоны инструментов `templates/php74/`, `require.php >=7.4`, CI — общий workflow; его задание `minimal` по профилю идёт на PHP 7.4.
 - Зависимость только от SPI ядра: `Contract\*`, `Domain\Model\*`, `Domain\Schema\*`, `Domain\Diagnostic\*`, `Domain\Target\*`, `Domain\Shared\*` (так и записано в `deptrac.yaml`). Классы Symfony в рантайме генератора не нужны: мост выводит их имена строками (`ClassName`), поэтому `symfony/validator` и `symfony/serializer` — только в `require-dev` и `suggest`.
 - Бандл — в том же пакете (`src/Bundle`), активен, только если установлен `symfony/framework-bundle`; его PHP-минимум тот же, что у Symfony выбранной версии.
 - Инструменты — шаблоны стандарта (PHPStan max, CS-Fixer, Rector, deptrac, infection с порогом 100 %, Roave BC check); `composer.json` содержит только то, что ставится на 7.4 (PHPUnit 9.6), инструменты — в `composer-ci.json`.
