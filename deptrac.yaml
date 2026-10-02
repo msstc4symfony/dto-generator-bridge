@@ -1,0 +1,16 @@
+deptrac:
+  paths:
+    - ./src
+  layers:
+    - name: Bridge
+      collectors:
+        - type: directory
+          value: src/.*
+    # The generator's SPI: what an extension may use of the core.
+    - name: CoreSpi
+      collectors:
+        - type: classNameRegex
+          value: '#^MSSTC4PHP\\DtoGenerator\\(Contract|Domain\\(Model|Schema|Diagnostic|Target|Shared))\\#'
+  ruleset:
+    Bridge: [CoreSpi]
+    CoreSpi: ~

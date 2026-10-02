@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  # One group per pull request, so a new push cancels its older run; one per commit on main, so each one runs.
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests on PHP ${{ matrix.php }} (${{ matrix.dependencies }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5']
+        dependencies: [lowest, highest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: dto-generator-bridge-symfony
+      # composer.json takes the core from the sibling directory until both are released.
+      - uses: actions/checkout@v4
+        with:
+          repository: msstc4php/dto-generator
+          path: dto-generator
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+      - name: Locate the Composer cache
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ matrix.php }}-${{ matrix.dependencies }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ matrix.php }}-${{ matrix.dependencies }}-
+      - name: Install dependencies
+        working-directory: dto-generator-bridge-symfony
+        # composer.json pins the platform to 7.4 for local installs; CI resolves for the PHP it runs on.
+        run: |
+          composer config platform --unset
+          composer update --no-interaction --no-progress ${{ matrix.dependencies == 'lowest' && '--prefer-lowest --prefer-stable' || '' }}
+      - name: Lint sources with this PHP
+        working-directory: dto-generator-bridge-symfony
+        run: find src tests -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null
+      - name: PHPUnit
+        working-directory: dto-generator-bridge-symfony
+        run: vendor/bin/phpunit
+
