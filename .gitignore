@@ -1,7 +1,7 @@
 /vendor/
 /tools/vendor/
 /var/
-composer.lock
+/composer.lock
 .php-cs-fixer.cache
 .phpunit.cache/
 .superpowers/

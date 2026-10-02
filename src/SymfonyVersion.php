@@ -18,7 +18,16 @@ final class SymfonyVersion
     /** The newest version whose rules the bridge knows; assumed when the project has no Symfony component. */
     public const LATEST = '7.4';
 
-    private const COMPONENTS = ['symfony/validator', 'symfony/serializer'];
+    /** InstalledPackages cannot list packages, so these stand for "the project's Symfony". */
+    private const COMPONENTS = [
+        'symfony/validator',
+        'symfony/serializer',
+        'symfony/framework-bundle',
+        'symfony/http-kernel',
+        'symfony/dependency-injection',
+        'symfony/console',
+        'symfony/property-access',
+    ];
 
     private const NUMBER = '(0|[1-9]\d{0,3})';
 
@@ -68,7 +77,10 @@ final class SymfonyVersion
 
     /**
      * The version to write a component's attributes for: the configured one, else the project's version of that
-     * component, else the newest of its other Symfony components (they come in step), else LATEST.
+     * component, else the newest of its other main Symfony packages (they come in step), else LATEST. A locked version
+     * may be older than MINIMUM: the caller checks isSupported().
+     *
+     * @param 'symfony/validator'|'symfony/serializer' $component
      */
     public static function resolve(Settings $settings, InstalledPackages $packages, string $component): self
     {

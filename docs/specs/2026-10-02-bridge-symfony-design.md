@@ -39,7 +39,7 @@ extensionConfig:
 ```
 
 - `auto` для `validator`/`serializer`: включено, если пакет `symfony/validator` / `symfony/serializer` есть в `InstalledPackages` (lock потребителя). `true` без пакета — работает (мост не зависит от пакетов), но warning «not installed».
-- **Версия — по компоненту.** Validator-атрибуты пишутся для версии `symfony/validator`, Serializer-атрибуты — для версии `symfony/serializer`: компоненты версионируются независимо. Явная `version` применяется к обоим. Без своего компонента — старшая из установленных Symfony-компонентов, без них — `LATEST` (7.4, последняя версия, правила которой мост знает).
+- **Версия — по компоненту.** Validator-атрибуты пишутся для версии `symfony/validator`, Serializer-атрибуты — для версии `symfony/serializer`: компоненты версионируются независимо. Явная `version` применяется к обоим. Без своего компонента — старшая из основных пакетов Symfony в lock (`validator`, `serializer`, `framework-bundle`, `http-kernel`, `dependency-injection`, `console`, `property-access`), без них — `LATEST` (7.4, последняя версия, правила которой мост знает).
 - `version` ниже 5.4 — ошибка конфига; версия ниже 5.4 из lock — warning, и компонент не обслуживается.
 - Неверная секция — ошибка конфига. Ядро сообщает ошибки регистрации расширения на корне конфига (`dto-generator.yaml#`), поэтому сообщение моста само называет ключ: `extensionConfig.symfony.<key> …`; все проблемы секции — в одном сообщении. `null` у ключа — ошибка, а не `auto`.
 - Мост заявляет (`claimExtensionKeys`) `x-validator-*` и `x-serializer-*`.

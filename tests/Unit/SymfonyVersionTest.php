@@ -88,8 +88,9 @@ final class SymfonyVersionTest extends TestCase
         self::assertSame('6.4', SymfonyVersion::resolve($settings, new InstalledPackages(['symfony/serializer' => 'v6.4.1']), 'symfony/validator')->toString());
         self::assertSame('7.1', SymfonyVersion::resolve($settings, new InstalledPackages(['symfony/serializer' => 'v7.1.2', 'symfony/validator' => 'dev-main']), 'symfony/validator')->toString());
         self::assertSame('7.1', SymfonyVersion::resolve($settings, new InstalledPackages(['symfony/validator' => 'v7.1.2', 'symfony/serializer' => 'dev-main']), 'symfony/serializer')->toString());
-        self::assertSame('7.1', SymfonyVersion::resolve($settings, new InstalledPackages(['symfony/validator' => 'v6.4.1', 'symfony/serializer' => 'v7.1.2']), 'symfony/form')->toString());
-        self::assertSame('6.4', SymfonyVersion::resolve($settings, new InstalledPackages(['symfony/validator' => 'v6.4.1', 'symfony/serializer' => 'v5.4.1']), 'symfony/form')->toString());
+        self::assertSame('5.4', SymfonyVersion::resolve($settings, new InstalledPackages(['symfony/http-kernel' => 'v5.4.40']), 'symfony/validator')->toString());
+        self::assertSame('7.1', SymfonyVersion::resolve($settings, new InstalledPackages(['symfony/console' => 'v6.4.1', 'symfony/framework-bundle' => 'v7.1.2']), 'symfony/serializer')->toString());
+        self::assertSame('6.4', SymfonyVersion::resolve($settings, new InstalledPackages(['symfony/dependency-injection' => 'v6.4.1', 'symfony/property-access' => 'v5.4.1']), 'symfony/serializer')->toString());
     }
 
     public function testResolvesTheNewestKnownVersionWithoutComponents(): void
