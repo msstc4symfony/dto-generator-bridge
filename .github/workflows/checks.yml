@@ -21,9 +21,11 @@ jobs:
     uses: msstc4symfony/bundle-standard/.github/workflows/php-bundle.yml@v1.0.0
     with:
       slug: msstc4symfony/dto-generator-bridge
-      # The bridge needs no Symfony at run time: one Symfony line is enough. Its runtime profile php74
-      # (composer.json) makes the minimal job run on PHP 7.4.
-      symfony-versions: '[{"version":"7.4.*","label":"7.4","codecov":false}]'
+      # The bridge writes for Symfony 5.4 to 8: the integration suite checks the generated DTOs with each line's
+      # Validator and Serializer. 7.4 comes first because the prefer-lowest cell takes the first entry, and early 5.4
+      # and 6.4 releases are not clean on PHP 8.4. The runtime profile php74 (composer.json) makes the minimal job run
+      # on PHP 7.4.
+      symfony-versions: '[{"version":"7.4.*","label":"7.4","codecov":false},{"version":"5.4.*","label":"5.4","codecov":false},{"version":"6.4.*","label":"6.4","codecov":false},{"version":"8.*","label":"8","codecov":false}]'
       # Measured MSI 100 % on 2026-10-02 UTC; the bridge keeps every mutant killed.
       infection-min-msi: 100
       infection-min-covered-msi: 100

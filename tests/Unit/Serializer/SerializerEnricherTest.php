@@ -63,6 +63,24 @@ final class SerializerEnricherTest extends TestCase
         }
     }
 
+    public function testReadsDateTimesLooselyFromSymfony81(): void
+    {
+        $schema = ['type' => 'object', 'properties' => [
+            'seen' => ['type' => 'string', 'format' => 'date-time'],
+            'visits' => ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'date-time']],
+            'born' => ['type' => 'string', 'format' => 'date'],
+        ]];
+        $loose = "Serializer\\Context(denormalizationContext: ['datetime_format' => null])";
+
+        $new = $this->code($this->generate($schema, [], '8.2', self::ONLY_SERIALIZER, null, ['symfony/serializer' => 'v8.1.0']), 'Pet.php');
+        $old = $this->code($this->generate($schema, [], '8.2', self::ONLY_SERIALIZER, null, ['symfony/serializer' => 'v8.0.9']), 'Pet.php');
+
+        self::assertSame([$loose], $this->attributesOf($new, 'seen'));
+        self::assertSame([$loose], $this->attributesOf($new, 'visits'));
+        self::assertCount(1, $this->attributesOf($new, 'born'));
+        self::assertSame([], $this->attributesOf($old, 'seen'));
+    }
+
     public function testFormatsDatesTypedThroughANullableUnion(): void
     {
         $code = $this->pet(['type' => 'object', 'properties' => [

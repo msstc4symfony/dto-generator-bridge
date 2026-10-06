@@ -3,8 +3,8 @@
 Symfony Validator constraints and Symfony Serializer attributes for the DTOs that
 [`msstc4php/dto-generator`](https://github.com/msstc4php/dto-generator) generates from OpenAPI 3.1.
 
-> **Status:** in development. Done: discovery and settings (B1), Symfony Validator constraints (B2) and Serializer
-> attributes (B3). The version matrix (B4) and the bundle (B5) are ahead.
+> **Status:** in development. Done: discovery and settings (B1), Symfony Validator constraints (B2), Serializer
+> attributes (B3) and the version matrix (B4: Symfony 5.4, 6.4, 7.4 and 8 in CI). The bundle (B5) is ahead.
 
 ## Installation
 
@@ -75,8 +75,10 @@ Notes:
   converter (such as `camel_case_to_snake_case`) renames the other properties too.
 - `x-serializer-ignore` on a required property leaves the constructor without its argument, so denormalizing fails;
   the bridge warns about it.
-- `date-time`, `readOnly` and `writeOnly` get no attribute: Symfony's defaults fit `date-time`, and the other two have
-  no single attribute.
+- `date-time` gets no format: Symfony's RFC 3339 default fits it. From Serializer 8.1, which deprecates reading other
+  forms such as fractions of a second, the bridge asks for the loose parser instead. A property attribute wins over the
+  context of the call, so a `datetime_format` passed to `deserialize()` does not apply to those properties;
+  `x-serializer-skip` turns this off. `readOnly` and `writeOnly` have no single attribute.
 
 ## Requirements
 
@@ -89,6 +91,7 @@ Notes:
 COMPOSER=composer-local.json composer install   # tools plus the sibling ../../msstc4php/dto-generator
 make check
 make test
+tests/Integration/Symfony/run-matrix.sh '5.4.*'   # the integration suite on one Symfony line, in Docker
 ```
 
 The design lives in `docs/specs/2026-10-02-bridge-symfony-design.md`.

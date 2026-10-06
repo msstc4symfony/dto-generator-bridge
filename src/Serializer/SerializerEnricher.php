@@ -37,6 +37,9 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
     /** DateTimeNormalizer::FORMAT_KEY in every version the bridge supports. */
     private const FORMAT_KEY = 'datetime_format';
 
+    /** The Serializer that deprecates reading a date-time off its default format without a context saying so. */
+    private const LOOSE_DATE_TIME_SINCE = '8.1';
+
     private ComponentGate $gate;
 
     public function __construct(Settings $settings)
@@ -98,7 +101,9 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
             $attributes[] = $this->attribute($version, 'Groups', [AttributeArgument::positional(ArgumentValue::listOf(...$names))]);
         }
 
-        if ($this->holdsDates($schema, $property->type(), $context->references(), $context->target())) {
+        $references = $context->references();
+        $target = $context->target();
+        if ($this->holds('date', $schema, $property->type(), $references, $target)) {
             $attributes[] = $this->attribute($version, 'Context', [
                 AttributeArgument::named('normalizationContext', ArgumentValue::mapOf([self::FORMAT_KEY => ArgumentValue::literal('Y-m-d')])),
                 // "!" resets the time; createFromFormat() would take it from the clock otherwise.
@@ -106,31 +111,41 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
             ]);
         }
 
+        // Serializer 8.1 deprecates reading a date-time off its default format, such as RFC 3339 with fractions of a
+        // second, unless the context asks for the loose parser; 9.0 rejects it.
+        if ($version->isAtLeast(SymfonyVersion::fromString(self::LOOSE_DATE_TIME_SINCE)) && $this->holds('date-time', $schema, $property->type(), $references, $target)) {
+            $attributes[] = $this->attribute($version, 'Context', [
+                AttributeArgument::named('denormalizationContext', ArgumentValue::mapOf([self::FORMAT_KEY => ArgumentValue::literal(null)])),
+            ]);
+        }
+
         return $attributes;
     }
 
     /**
-     * Whether the value, or every item of it, is a `format: date` the generator typed as the target's date class.
+     * Whether the value, or every item of it, has the format and the generator typed it as the target's date class.
+     *
+     * @param 'date'|'date-time' $format
      */
-    private function holdsDates(Schema $schema, TypeModel $type, SchemaReferences $references, TargetProfile $target): bool
+    private function holds(string $format, Schema $schema, TypeModel $type, SchemaReferences $references, TargetProfile $target): bool
     {
         $value = $type instanceof NullableType ? $type->inner() : $type;
         $resolved = (new Keywords($schema, $references))->resolved();
         if ($value instanceof ListType) {
             $items = $resolved->items();
 
-            return $items instanceof Schema && $this->holdsDates($items, $value->item(), $references, $target);
+            return $items instanceof Schema && $this->holds($format, $items, $value->item(), $references, $target);
         }
 
         if ($value instanceof MapType) {
             $items = $resolved->additionalProperties();
 
-            return $items instanceof Schema && $this->holdsDates($items, $value->value(), $references, $target);
+            return $items instanceof Schema && $this->holds($format, $items, $value->value(), $references, $target);
         }
 
         return $value instanceof ClassType
             && $value->className()->fqcn() === $target->dateTimeClass()->className()
-            && $resolved->format() === 'date';
+            && $resolved->format() === $format;
     }
 
     /**

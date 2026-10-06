@@ -31,15 +31,21 @@
     },
     "require-dev": {
         "deptrac/deptrac": "^4.6",
+        "doctrine/annotations": "^2.0",
         "friendsofphp/php-cs-fixer": "^3.55",
-        "infection/infection": "^0.29",
+        "infection/infection": "^0.29 || ^0.32",
+        "phpdocumentor/reflection-docblock": "^5.6",
         "phpstan/extension-installer": "^1.4",
         "phpstan/phpstan": "^2.1",
         "phpstan/phpstan-strict-rules": "^2.0",
         "phpunit/phpunit": "^9.6",
         "rector/rector": "^2.1",
         "roave/backward-compatibility-check": "^8.20",
-        "roave/security-advisories": "dev-latest"
+        "roave/security-advisories": "dev-latest",
+        "symfony/property-access": "^5.4|^6.4|^7.4|^8.0",
+        "symfony/property-info": "^5.4|^6.4|^7.4|^8.0",
+        "symfony/serializer": "^5.4|^6.4|^7.4|^8.0",
+        "symfony/validator": "^5.4|^6.4|^7.4|^8.0"
     },
     "suggest": {
         "symfony/validator": "To validate the generated DTOs",
@@ -77,6 +83,9 @@
             "infection/extension-installer": true,
             "msstc4php/dto-generator": false,
             "phpstan/extension-installer": true
+        },
+        "audit": {
+            "abandoned": "report"
         }
     }
 }
