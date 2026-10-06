@@ -124,13 +124,13 @@ final class Settings
             return null;
         }
 
-        if (!$version->isSupported()) {
-            $problems[] = sprintf('extensionConfig.symfony.version must be %s or newer.', SymfonyVersion::MINIMUM);
-
-            return null;
+        if ($version->isSupported()) {
+            return $version;
         }
 
-        return $version;
+        $problems[] = sprintf('extensionConfig.symfony.version must be %s or newer.', SymfonyVersion::MINIMUM);
+
+        return null;
     }
 
     /**

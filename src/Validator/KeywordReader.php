@@ -93,8 +93,8 @@ final class KeywordReader
             return $value >= 0 ? $value : null;
         }
 
-        // A fraction, or a float beyond the int range, does not survive the round trip through int.
-        if (is_float($value) && $value >= 0 && (float) (int) $value === $value) {
+        // 2^63 is the first float beyond the int range; PHP 8.5 deprecates casting such a float.
+        if (is_float($value) && $value >= 0 && $value < 9.2233720368547758E18 && fmod($value, 1.0) === 0.0) {
             return (int) $value;
         }
 

@@ -35,6 +35,11 @@ components:
         seen: {type: string, format: date-time}
         secret: {type: string, x-serializer-ignore: true}
         note: {type: string, maxLength: 3, x-validator-groups: [strict], x-validator-groups-exclusive: true}
+        gone: {type: ['string', 'null'], const: null}
+        ip6: {type: string, format: ipv6}
+        legs: {type: integer, minimum: 2}
+        tail: {type: integer, exclusiveMaximum: 3}
+        nick: {type: string, x-serializer-groups: [public]}
     Owner:
       type: object
       properties:

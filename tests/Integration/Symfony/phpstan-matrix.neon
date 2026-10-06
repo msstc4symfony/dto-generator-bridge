@@ -1,0 +1,7 @@
+# The matrix test as PHP 8.4 sees it: vendor/bin/phpstan analyse -c tests/Integration/Symfony/phpstan-matrix.neon
+parameters:
+    level: max
+    treatPhpDocTypesAsCertain: false
+    phpVersion: 80400
+    paths:
+        - .

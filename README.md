@@ -75,8 +75,9 @@ Notes:
   converter (such as `camel_case_to_snake_case`) renames the other properties too.
 - `x-serializer-ignore` on a required property leaves the constructor without its argument, so denormalizing fails;
   the bridge warns about it.
-- `date-time`, `readOnly` and `writeOnly` get no attribute: Symfony's defaults fit `date-time`, and the other two have
-  no single attribute.
+- `date-time` gets no format: Symfony's RFC 3339 default fits it. From Serializer 8.1, which deprecates reading other
+  forms such as fractions of a second, the bridge asks for the loose parser instead. `readOnly` and `writeOnly` have no
+  single attribute.
 
 ## Requirements
 

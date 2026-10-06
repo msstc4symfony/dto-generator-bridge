@@ -121,6 +121,82 @@ final class KeywordsTest extends TestCase
         self::assertSame($schema, $this->resolvedOf($schema));
     }
 
+    /**
+     * @dataProvider typedBranches
+     */
+    public function testTypesThroughAnAllOfBranchTypedByAnyMeans(string $means): void
+    {
+        $branch = $this->branch($means);
+        $wrapper = $this->schema([], null, null, [], ['allOf' => [$branch, $this->schema(['minLength' => 1])]]);
+
+        self::assertSame($branch, $this->resolvedOf($wrapper), $means);
+    }
+
+    /**
+     * As TypeMapper::union() of the generator decides: only a $ref, a type besides null, or a composition makes a
+     * member more than null.
+     *
+     * @dataProvider valueMembers
+     */
+    public function testReadsTheOneUnionMemberBesideNullWhateverMakesItAValue(string $means): void
+    {
+        $member = $this->branch($means, ['maxLength' => 3]);
+        $union = $this->schema([], null, null, [], ['anyOf' => [$member, $this->nullSchema()]]);
+
+        self::assertSame([3], (new Keywords($union, SchemaReferences::none()))->values('maxLength'), $means);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function typedBranches(): array
+    {
+        $means = ['ref', 'types', 'enum', 'allOf', 'oneOf', 'anyOf', 'properties', 'x-php-type'];
+
+        return array_combine($means, array_map(static fn (string $one): array => [$one], $means));
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function valueMembers(): array
+    {
+        $means = ['ref', 'types', 'allOf', 'oneOf', 'anyOf'];
+
+        return array_combine($means, array_map(static fn (string $one): array => [$one], $means));
+    }
+
+    /**
+     * A nullable schema that only the named means turns into a typed one.
+     *
+     * @param array<string, JsonValue> $keywords
+     */
+    private function branch(string $means, array $keywords = []): Schema
+    {
+        $null = [SchemaType::from(SchemaType::NULL)];
+
+        return new Schema(
+            new SchemaLocation('api.yaml', '/branch/' . $means),
+            $means === 'types' ? [SchemaType::from(SchemaType::STRING), SchemaType::from(SchemaType::NULL)] : $null,
+            $means === 'ref' ? '#/x' : null,
+            null,
+            null,
+            false,
+            null,
+            $means === 'enum' ? ['a', null] : null,
+            $means === 'properties' ? ['name' => $this->schema()] : [],
+            [],
+            null,
+            null,
+            $means === 'allOf' ? [$this->schema()] : [],
+            $means === 'oneOf' ? [$this->schema()] : [],
+            $means === 'anyOf' ? [$this->schema()] : [],
+            null,
+            $keywords,
+            new Extensions($means === 'x-php-type' ? ['x-php-type' => 'App\\Money'] : []),
+        );
+    }
+
     private function nullSchema(): Schema
     {
         return new Schema(new SchemaLocation('api.yaml', '/null'), [SchemaType::from(SchemaType::NULL)], null, null, null, false, null, null, [], [], null, null, [], [], [], null, [], new Extensions());

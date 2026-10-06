@@ -97,7 +97,7 @@ extensionConfig:
 - Внутри свойства — порядок строк таблицы §5.1; так golden-вывод стабилен.
 
 ### 5.4 Версии Symfony
-- Атрибуты Validator и именованные параметры конструкторов constraint'ов — с 5.2; B4: каждый constraint таблицы с именованными аргументами загружается и проверяет на 5.4–8.1, атрибутами и аннотациями (цель 7.4 на 5.4/6.4). Решение: всегда именованные аргументы; массив `options` не используется — в 7.3 он объявлен устаревшим, в 8.0 удалён.
+- Атрибуты Validator и именованные параметры конструкторов constraint'ов — с 5.2; B4: constraint'ы таблицы с именованными аргументами загружаются на 5.4–8.1 атрибутами и аннотациями (цель 7.4 на 5.4/6.4) и проверяют значения — кроме `NotNull` (обязательное значение требует уже конструктор DTO: проверяется только загрузка) и `Choice`, который ставится лишь на цели без PHP-enum (8.0, 7.4). Решение: всегда именованные аргументы; массив `options` не используется — в 7.3 он объявлен устаревшим, в 8.0 удалён.
 - Значения по умолчанию, которые меняются между версиями (`Email::mode`, `Url::requireTld`, `Hostname::requireTld`), мост пишет явно.
 - Constraint, которого нет в версии, — warning и пропуск.
 
@@ -119,7 +119,7 @@ extensionConfig:
 | `wireName` ≠ имя свойства PHP | `SerializedName('wire')` | Позиционно: так и атрибут, и аннотация 5.4 (`value`) читаются одинаково. |
 | `discriminator` у базы (abstract) | `DiscriminatorMap(typeProperty:, mapping:)` на классе | Mapping — wire-значение → `Подкласс::class` (`DiscriminatorModel::mapping()` ядра). |
 | `format: date` у значения, списка или map, тип — класс дат цели | `Context(normalizationContext: ['datetime_format' => 'Y-m-d'], denormalizationContext: ['datetime_format' => '!Y-m-d'])` | `!` обнуляет время, иначе `createFromFormat` подставит текущее. Ключ — литерал `'datetime_format'` (`DateTimeNormalizer::FORMAT_KEY` во всех версиях): ядро не пишет константы ключами map. Формат — схемы, по которой ядро типизирует (`Keywords::resolved()`). |
-| тип `date-time` | — | Решение: не ставить. Формат по умолчанию Symfony — RFC3339 при выводе, а строгий `FORMAT_KEY` при чтении отверг бы валидные значения с долями секунд. |
+| тип `date-time` | до 8.1 — ничего; с 8.1 — `Context(denormalizationContext: ['datetime_format' => null])` | Формат по умолчанию Symfony — RFC3339 при выводе; строгий `FORMAT_KEY` при чтении отверг бы валидные значения с долями секунд. B4: Serializer 8.1 объявил устаревшим чтение не по формату по умолчанию (9.0 отвергнет) — `null` явно включает «свободный» разбор. |
 | `x-serializer-groups: [..]` | `Groups([...])` | Позиционно; повторы схлопываются, неверные значения — warning. |
 | `x-serializer-ignore: true` | `Ignore` | Остальные атрибуты свойства тогда не пишутся. |
 | `x-serializer-skip: true` | — | Свойство без атрибутов моста. |
@@ -153,10 +153,11 @@ extensionConfig:
 - `composer.json` моста объявляет только существующие классы `Extension` (тест).
 
 ### 8.1 Матрица (B4)
-- Генерация фикстуры `tests/Integration/Symfony/api.yaml` для целей 8.2 (атрибуты), 8.0 (атрибуты без `All`) и 7.4 (аннотации, только Symfony < 7); `Validator::validate()` после денормализации — пути нарушений на каждую строку §5.1; round-trip Serializer (`SerializedName`, `Context` даты, `DiscriminatorMap`, `Ignore`), `date-time` с долями секунд при чтении, факты `Uuid`.
+- Генерация фикстуры `tests/Integration/Symfony/api.yaml` для целей 8.2 (атрибуты), 8.0 (атрибуты без `All`; два warning'а о пропуске) и 7.4 (аннотации, только Symfony < 7); цель не запускается на PHP ниже её версии, без Symfony тест пропускается (задание `minimal` на 7.4). `Validator::validate()` после денормализации — точный список путей нарушений на каждую строку §5.1; round-trip Serializer (`SerializedName`, `Context` даты, `DiscriminatorMap`, `Ignore` при чтении и записи, `Groups`), `date-time` с долями секунд при чтении, факты `Uuid`.
 - Типы свойств — `PhpDocExtractor` + `ReflectionExtractor`, как у FrameworkBundle с phpDocumentor.
-- Устаревания самой Symfony на новом PHP (5.4 на 8.5) и чтения аннотаций (6.4) не валят тест: отфильтровываются только сообщения из `vendor/`.
-- PHPStan с `phpVersion: 70400` не читает сигнатуры Symfony 8 (нативный `mixed` становится классом): тест исключён в `phpstan-baseline.neon` и проверяется `tests/Integration/Symfony/phpstan.neon` (PHP 8.4, level max).
+- Устаревания из `vendor/`, в том числе тихие (`@trigger_error`), собираются и сверяются со списком «чужих» (`FOREIGN_DEPRECATIONS`: чтение аннотаций 6.4, режим `loose` EmailValidator 6.2–6.4, код Symfony 5.4 на PHP 8.4/8.5); любое другое — провал как устаревание метаданных моста. Так найден `date-time` 8.1.
+- Локально — `tests/Integration/Symfony/run-matrix.sh`, повторяющий шаги задания `phpunit` стандарта (те же закрепления версий, тот же набор инструментов). Infection — `^0.29 || ^0.32`: 0.29 не ставится с console 8, 0.32 — с console 5.4.
+- PHPStan с `phpVersion: 70400` не читает сигнатуры Symfony 8 (нативный `mixed` становится классом): тест исключён в `phpstan-baseline.neon` и проверяется `tests/Integration/Symfony/phpstan-matrix.neon` (PHP 8.4, level max).
 
 ## 9. Этапы
 

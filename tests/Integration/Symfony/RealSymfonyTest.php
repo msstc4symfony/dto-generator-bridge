@@ -36,8 +36,8 @@ use Symfony\Component\Validator\Validation;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 /**
- * DTOs the bridge generated, checked by the installed Symfony Validator and Serializer (bridge spec §8). CI runs it
- * once per Symfony line of the matrix.
+ * DTOs the bridge generated, checked by the installed Symfony Validator and Serializer (bridge spec §8.1). CI runs it
+ * once per Symfony line of the matrix; without Symfony (the PHP 7.4 job) it skips itself.
  *
  * @phpstan-import-type JsonValue from Json
  */
@@ -61,18 +61,52 @@ final class RealSymfonyTest extends TestCase
         'born' => '2026-10-02',
         'seen' => '2026-10-02T10:00:00+00:00',
         'note' => 'abcd',
+        'gone' => null,
+        'ip6' => '::1',
+        'legs' => 4,
+        'tail' => 2,
+        'nick' => 'rx',
     ];
 
-    /** @var array<string, string> target PHP version → directory of the generated classes */
+    /**
+     * Deprecations Symfony itself raises here, which the bridge's output does not cause: reading annotations (6.4), the
+     * EmailValidator's default "loose" mode in this hand-built validator (6.2–6.4; FrameworkBundle configures it), and
+     * Symfony 5.4's code on PHP 8.4/8.5.
+     */
+    private const FOREIGN_DEPRECATIONS = [
+        '~annotation~i',
+        '~The "loose" mode is deprecated~',
+        '~Implicitly marking parameter .* as nullable is deprecated~',
+        '~Using null as an array offset is deprecated~',
+        '~Use of "static" in callables is deprecated~',
+        '~setAccessible\(\) is deprecated~',
+    ];
+
+    /** @var array<string, string> target PHP version → namespace of the generated classes */
     private static array $generated = [];
+
+    /** @var list<callable(string): void> */
+    private static array $autoloaders = [];
 
     private static ?string $root = null;
 
-    /** Whether the current test checks other targets, so that skipping one is no skip of the test. */
-    private bool $hasOtherTargets = false;
+    protected function setUp(): void
+    {
+        foreach ([Validation::class, Serializer::class, PropertyInfoExtractor::class, PhpDocExtractor::class] as $class) {
+            if (!class_exists($class)) {
+                self::markTestSkipped(sprintf('%s is not installed; the CI matrix installs it.', $class));
+            }
+        }
+    }
 
     public static function tearDownAfterClass(): void
     {
+        foreach (self::$autoloaders as $autoloader) {
+            spl_autoload_unregister($autoloader);
+        }
+
+        self::$autoloaders = [];
+        self::$generated = [];
         if (self::$root === null) {
             return;
         }
@@ -85,7 +119,6 @@ final class RealSymfonyTest extends TestCase
 
         rmdir(self::$root);
         self::$root = null;
-        self::$generated = [];
     }
 
     /**
@@ -110,18 +143,23 @@ final class RealSymfonyTest extends TestCase
             'name not matching the pattern' => [$all, ['name' => 'Rex'], ['name'], []],
             'name too long' => [$all, ['name' => 'abcdefghijk'], ['name'], []],
             'kind not the constant' => [$all, ['kind' => 'cat'], ['kind'], []],
+            'gone not null' => [$all, ['gone' => 'here'], ['gone'], []],
             'age above the maximum' => [$all, ['age' => 31], ['age'], []],
             'age below the minimum' => [$all, ['age' => -1], ['age'], []],
+            'legs below the minimum' => [$all, ['legs' => 1], ['legs'], []],
+            'tail at the exclusive maximum' => [$all, ['tail' => 3], ['tail'], []],
             'weight at the exclusive minimum' => [$all, ['weight' => 0.0], ['weight'], []],
             'weight not a multiple' => [$all, ['weight' => 2.3], ['weight'], []],
             'no tags' => [$all, ['tags' => []], ['tags'], []],
             'too many tags' => [$all, ['tags' => ['a', 'b', 'c', 'd']], ['tags'], []],
             'repeated tags' => [$all, ['tags' => ['a', 'a']], ['tags'], []],
             'tag too long' => [$withNew, ['tags' => ['abcde']], ['tags[0]'], []],
+            'tag too long, no All on PHP 8.0' => [['8.0'], ['tags' => ['abcde']], [], []],
             'too many scores' => [$all, ['scores' => ['a' => 1, 'b' => 2, 'c' => 3]], ['scores'], []],
             'negative score' => [$withNew, ['scores' => ['a' => -1]], ['scores[a]'], []],
             'email' => [$all, ['email' => 'nope'], ['email'], []],
-            'ip' => [$all, ['ip' => '300.1.1.1'], ['ip'], []],
+            'ipv4' => [$all, ['ip' => '300.1.1.1'], ['ip'], []],
+            'ipv6' => [$all, ['ip6' => '10.0.0.1'], ['ip6'], []],
             'host' => [$all, ['host' => 'bad host'], ['host'], []],
             'uuid' => [$all, ['id' => 'not-a-uuid'], ['id'], []],
             'status outside the enum' => [['8.0', '7.4'], ['status' => 'lost'], ['status'], []],
@@ -137,22 +175,23 @@ final class RealSymfonyTest extends TestCase
      *
      * @param list<string> $targets
      * @param array<string, JsonValue> $change
-     * @param list<string> $expected property paths of the violations
+     * @param list<string> $expected property paths of the violations, one per violation
      * @param list<string> $groups
      */
     public function testValidatesWhatTheSchemaAllows(array $targets, array $change, array $expected, array $groups): void
     {
-        foreach ($targets as $index => $php) {
-            $this->hasOtherTargets = $index < count($targets) - 1 || $index > 0;
-            $this->withTarget($php, function (string $namespace, bool $annotations) use ($change, $expected, $groups, $php): void {
+        $checked = 0;
+        foreach ($targets as $php) {
+            $checked += (int) $this->withTarget($php, function (string $namespace, bool $annotations) use ($change, $expected, $groups, $php): void {
                 $pet = $this->serializer($annotations)->denormalize(array_replace(self::VALID, $change), $namespace . '\Pet');
-                $paths = [];
-                foreach ($this->validator($annotations)->validate($pet, null, $groups === [] ? null : $groups) as $violation) {
-                    $paths[] = $violation->getPropertyPath();
-                }
+                self::assertIsObject($pet);
 
-                self::assertSame($expected, array_values(array_unique($paths)), 'PHP ' . $php);
+                self::assertSame($expected, $this->violationPaths($pet, $annotations, $groups), 'PHP ' . $php);
             });
+        }
+
+        if ($checked === 0) {
+            self::markTestSkipped('No target of this case runs here.');
         }
     }
 
@@ -162,11 +201,12 @@ final class RealSymfonyTest extends TestCase
      */
     public function testChecksUuidsAsTheInstalledVersionDoes(): void
     {
-        $this->withTarget('8.2', function (string $namespace, bool $annotations): void {
+        $this->runTarget('8.2', function (string $namespace, bool $annotations): void {
             $accepts = function (string $id) use ($namespace, $annotations): bool {
                 $pet = $this->serializer($annotations)->denormalize(['id' => $id] + self::VALID, $namespace . '\Pet');
+                self::assertIsObject($pet);
 
-                return count($this->validator($annotations)->validate($pet)) === 0;
+                return $this->violationPaths($pet, $annotations) === [];
             };
 
             self::assertSame($this->symfony() >= 6.2, $accepts('0190a6f0-5c3a-7d4b-8e9f-0a1b2c3d4e5f'));
@@ -179,11 +219,19 @@ final class RealSymfonyTest extends TestCase
      */
     public function testSerializesBackWhatItRead(string $php): void
     {
-        $this->withTarget($php, function (string $namespace, bool $annotations): void {
+        $this->runTarget($php, function (string $namespace, bool $annotations): void {
             $serializer = $this->serializer($annotations);
             $pet = $serializer->denormalize(self::VALID + ['secret' => 'kept out'], $namespace . '\Pet');
+            self::assertIsObject($pet);
+            $written = $serializer->normalize($pet);
+            self::assertIsArray($written);
 
-            self::assertEquals(self::VALID, $serializer->normalize($pet));
+            ksort($written);
+            $expected = self::VALID;
+            ksort($expected);
+            self::assertSame($expected, $written);
+            self::assertNull((new ReflectionProperty($pet, 'secret'))->getValue($pet), 'Ignore keeps the property out of reading too');
+            self::assertSame(['nick' => 'rx'], $serializer->normalize($pet, null, ['groups' => ['public']]));
         });
     }
 
@@ -192,7 +240,7 @@ final class RealSymfonyTest extends TestCase
      */
     public function testReadsFractionsOfSeconds(string $php): void
     {
-        $this->withTarget($php, function (string $namespace, bool $annotations): void {
+        $this->runTarget($php, function (string $namespace, bool $annotations): void {
             $pet = $this->serializer($annotations)->denormalize(['seen' => '2026-10-02T10:00:00.123+00:00'] + self::VALID, $namespace . '\Pet');
             self::assertIsObject($pet);
             $seen = (new ReflectionProperty($pet, 'seen'))->getValue($pet);
@@ -207,38 +255,61 @@ final class RealSymfonyTest extends TestCase
      */
     public function testReadsAndWritesTheDiscriminatedSubclass(string $php): void
     {
-        $this->withTarget($php, function (string $namespace, bool $annotations): void {
+        $this->runTarget($php, function (string $namespace, bool $annotations): void {
             $serializer = $this->serializer($annotations);
             $cat = $serializer->denormalize(['animal_type' => 'cat', 'lives' => 10], $namespace . '\Animal');
 
             self::assertIsObject($cat);
             self::assertSame($namespace . '\Cat', get_class($cat));
-            self::assertEquals(['animal_type' => 'cat', 'lives' => 10], $serializer->normalize($cat));
-            self::assertCount(1, $this->validator($annotations)->validate($cat));
+            self::assertSame(['animal_type' => 'cat', 'lives' => 10], $serializer->normalize($cat));
+            self::assertSame(['lives'], $this->violationPaths($cat, $annotations));
         });
     }
 
     /**
-     * @param callable(string, bool): void $check the namespace of the generated classes, and whether they carry annotations
+     * @param list<string> $groups
+     *
+     * @return list<string>
      */
-    private function withTarget(string $php, callable $check): void
+    private function violationPaths(object $value, bool $annotations, array $groups = []): array
     {
-        $annotations = $php === '7.4';
-        if ($annotations && ($this->symfony() >= 7.0 || !class_exists(AnnotationReader::class))) {
-            if (!$this->hasOtherTargets) {
-                self::markTestSkipped(sprintf('Symfony %.1F reads no annotations.', $this->symfony()));
-            }
-
-            return;
+        $paths = [];
+        foreach ($this->validator($annotations)->validate($value, null, $groups === [] ? null : $groups) as $violation) {
+            $paths[] = $violation->getPropertyPath();
         }
 
-        $namespace = 'App\Matrix\V' . str_replace('.', '', $php);
-        self::$generated[$php] ??= $this->generate($php, $namespace);
-        // Deprecations of the installed Symfony on a newer PHP (5.4 on 8.5), or of reading annotations (6.4), are not
-        // the bridge's: only those raised outside vendor/ reach PHPUnit.
+        return $paths;
+    }
+
+    /**
+     * @param callable(string, bool): void $check
+     */
+    private function runTarget(string $php, callable $check): void
+    {
+        if (!$this->withTarget($php, $check)) {
+            self::markTestSkipped(sprintf('PHP %s targets do not run with PHP %s and Symfony %.1F.', $php, PHP_VERSION, $this->symfony()));
+        }
+    }
+
+    /**
+     * Whether the target runs here: its classes need that PHP, and annotations need Symfony < 7 with Doctrine's reader.
+     *
+     * @param callable(string, bool): void $check the namespace of the generated classes, and whether they carry annotations
+     */
+    private function withTarget(string $php, callable $check): bool
+    {
+        $annotations = $php === '7.4';
+        if (version_compare(PHP_VERSION, $php, '<') || ($annotations && ($this->symfony() >= 7.0 || !class_exists(AnnotationReader::class)))) {
+            return false;
+        }
+
+        $namespace = self::$generated[$php] ??= $this->generate($php);
+        $deprecations = [];
         $previous = null;
-        $previous = set_error_handler(static function (int $level, string $message, string $file = '', int $line = 0) use (&$previous): bool {
+        $previous = set_error_handler(static function (int $level, string $message, string $file = '', int $line = 0) use (&$previous, &$deprecations): bool {
             if (strpos($file, DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR) !== false) {
+                $deprecations[] = $message;
+
                 return true;
             }
 
@@ -250,10 +321,20 @@ final class RealSymfonyTest extends TestCase
         } finally {
             restore_error_handler();
         }
+
+        // Symfony reports its own deprecations silently (@trigger_error); one that is not foreign points at the
+        // metadata the bridge wrote, like a constraint option a newer version drops.
+        foreach ($deprecations as $deprecation) {
+            $foreign = array_filter(self::FOREIGN_DEPRECATIONS, static fn (string $pattern): bool => preg_match($pattern, $deprecation) === 1);
+            self::assertNotSame([], $foreign, 'Deprecation of the generated metadata: ' . $deprecation);
+        }
+
+        return true;
     }
 
-    private function generate(string $php, string $namespace): string
+    private function generate(string $php): string
     {
+        $namespace = 'App\Matrix\V' . str_replace('.', '', $php);
         self::$root ??= sys_get_temp_dir() . '/dto-bridge-matrix-' . bin2hex(random_bytes(4));
         $dir = self::$root . '/' . $php;
         if (!is_dir($dir)) {
@@ -273,17 +354,22 @@ final class RealSymfonyTest extends TestCase
         ]));
 
         $output = DtoGenerator::generator()(new Input($dir . '/dto-generator.yaml', Mode::from(Mode::WRITE)));
-        $errors = array_filter($output->diagnostics()->all(), static fn (Diagnostic $diagnostic): bool => strncmp($diagnostic->toString(), 'error', 5) === 0);
-        self::assertSame([], array_map(static fn (Diagnostic $diagnostic): string => $diagnostic->toString(), array_values($errors)));
+        $messages = array_map(static fn (Diagnostic $diagnostic): string => str_replace($dir, '', $diagnostic->toString()), $output->diagnostics()->all());
+        self::assertSame([], array_values(array_filter($messages, static fn (string $message): bool => strncmp($message, 'error', 5) === 0)));
+        $dropped = array_values(array_filter($messages, static fn (string $message): bool => strpos($message, 'inside All') !== false));
+        self::assertCount($php === '8.0' ? 2 : 0, $dropped, implode("\n", $messages));
 
         $out = $dir . '/out/';
-        spl_autoload_register(static function (string $class) use ($namespace, $out): void {
-            if (strncmp($class, $namespace . '\\', strlen($namespace) + 1) === 0) {
-                require $out . str_replace('\\', '/', substr($class, strlen($namespace) + 1)) . '.php';
+        $autoloader = static function (string $class) use ($namespace, $out): void {
+            $file = $out . str_replace('\\', '/', substr($class, strlen($namespace) + 1)) . '.php';
+            if (strncmp($class, $namespace . '\\', strlen($namespace) + 1) === 0 && is_file($file)) {
+                require $file;
             }
-        });
+        };
+        spl_autoload_register($autoloader);
+        self::$autoloaders[] = $autoloader;
 
-        return $out;
+        return $namespace;
     }
 
     private function serializer(bool $annotations): Serializer

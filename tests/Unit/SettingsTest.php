@@ -59,6 +59,8 @@ final class SettingsTest extends TestCase
         yield 'groups type' => [['groups' => 'api'], 'extensionConfig.symfony.groups must be a list of group names.'];
         yield 'groups item' => [['groups' => ['api', '']], 'extensionConfig.symfony.groups must be a list of group names.'];
         yield 'groups map' => [['groups' => ['a' => 'api']], 'extensionConfig.symfony.groups must be a list of group names.'];
+        yield 'groups items' => [['groups' => [1, 2]], 'extensionConfig.symfony.groups must be a list of group names.'];
+        yield 'groups repeated thrice' => [['groups' => ['api', 'api', 'api']], 'extensionConfig.symfony.groups names "api" twice.'];
     }
 
     /**
@@ -68,9 +70,14 @@ final class SettingsTest extends TestCase
      */
     public function testRefusesAConfigItCannotUse(array $config, string $message): void
     {
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage($message);
+        try {
+            Settings::fromConfig($config);
+        } catch (InvalidArgumentException $exception) {
+            self::assertSame($message, $exception->getMessage());
 
-        Settings::fromConfig($config);
+            return;
+        }
+
+        self::fail('No exception');
     }
 }
