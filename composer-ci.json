@@ -54,6 +54,7 @@
         "symfony/framework-bundle": "To use DtoGeneratorBundle: the dto-generator:generate command and the warmup check"
     },
     "conflict": {
+        "symfony/framework-bundle": "<5.4",
         "symfony/symfony": "*"
     },
     "autoload": {

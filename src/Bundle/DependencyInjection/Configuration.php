@@ -18,7 +18,7 @@ final class Configuration implements ConfigurationInterface
         $tree->getRootNode()
             ->children()
                 ->scalarNode('config')
-                    ->info('The generator config, as dto-generator generate --config takes it.')
+                    ->info('The generator config file; a relative path is resolved against the project directory.')
                     ->defaultValue('%kernel.project_dir%/dto-generator.yaml')
                     ->cannotBeEmpty()
                 ->end()

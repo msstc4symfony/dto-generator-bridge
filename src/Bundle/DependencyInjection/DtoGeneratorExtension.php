@@ -16,12 +16,15 @@ use Symfony\Component\DependencyInjection\Reference;
  */
 final class DtoGeneratorExtension extends Extension
 {
+    // `list` shows it without building the command; the command itself copies the core's.
+    private const DESCRIPTION = 'Generates DTO classes from the OpenAPI schemas named in the config.';
+
     public function load(array $configs, ContainerBuilder $container): void
     {
         $config = $this->processConfiguration(new Configuration(), $configs);
         $container->register(GenerateCommand::class, GenerateCommand::class)
             ->setArguments([$config['config'], '%kernel.project_dir%'])
-            ->addTag('console.command', ['command' => GenerateCommand::NAME])
+            ->addTag('console.command', ['command' => GenerateCommand::NAME, 'description' => self::DESCRIPTION])
         ;
 
         if ($config['check_on_warmup'] !== true) {
@@ -29,7 +32,7 @@ final class DtoGeneratorExtension extends Extension
         }
 
         $container->register(GenerationCheckWarmer::class, GenerationCheckWarmer::class)
-            ->setArguments([$config['config'], new Reference('logger', ContainerInterface::NULL_ON_INVALID_REFERENCE)])
+            ->setArguments([$config['config'], '%kernel.project_dir%', new Reference('logger', ContainerInterface::NULL_ON_INVALID_REFERENCE)])
             ->addTag('kernel.cache_warmer')
         ;
     }

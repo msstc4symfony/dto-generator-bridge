@@ -4,15 +4,18 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\DtoGeneratorBridge\Bundle\Command;
 
+use MSSTC4PHP\DtoGenerator\Domain\Shared\Path;
 use MSSTC4PHP\DtoGenerator\DtoGenerator;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Input\InputDefinition;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
 /**
  * The core's `generate` command under the application's console: the same options, output and exit codes, with
- * `--config` defaulting to the bundle's `config`.
+ * `--config` defaulting to the bundle's `config` and resolved against the project directory.
  */
 final class GenerateCommand extends Command
 {
@@ -22,9 +25,12 @@ final class GenerateCommand extends Command
 
     private string $projectDir;
 
+    /**
+     * @param string $config relative to the project directory, or absolute
+     */
     public function __construct(string $config, string $projectDir)
     {
-        $this->config = $config;
+        $this->config = Path::resolve($projectDir, $config);
         $this->projectDir = $projectDir;
         parent::__construct(self::NAME);
     }
@@ -32,7 +38,19 @@ final class GenerateCommand extends Command
     protected function configure(): void
     {
         $core = $this->core();
-        $this->setDescription($core->getDescription())->setDefinition($core->getDefinition());
+        $definition = new InputDefinition();
+        foreach ($core->getDefinition()->getOptions() as $option) {
+            $definition->addOption($option->getName() === 'config'
+                ? new InputOption('config', null, InputOption::VALUE_REQUIRED, sprintf('Config file, relative to the project directory (default: %s)', $this->config))
+                : $option);
+        }
+
+        $this->setDescription($core->getDescription())->setDefinition($definition);
+    }
+
+    public function run(InputInterface $input, OutputInterface $output): int
+    {
+        return DtoGenerator::guard($input, $output, fn (): int => parent::run($input, $output));
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -41,7 +59,7 @@ final class GenerateCommand extends Command
         $core = $this->core();
         $parameters = ['--config' => $this->config];
         foreach ($input->getOptions() as $name => $value) {
-            if ($value !== null && $value !== false && $core->getDefinition()->hasOption((string) $name)) {
+            if (!in_array($value, [null, false, ''], true) && $core->getDefinition()->hasOption((string) $name)) {
                 $parameters['--' . $name] = $value;
             }
         }

@@ -84,15 +84,18 @@ Notes:
 ## Symfony bundle
 
 The generator needs no bundle. In a Symfony application, `DtoGeneratorBundle` adds a console command and an optional
-check on cache warmup:
+check on cache warmup. With the bridge installed as a dev dependency (`composer require --dev`), register the bundle
+for the environments that have it:
 
 ```php
 // config/bundles.php
 return [
     // ...
-    Msstc4Symfony\DtoGeneratorBridge\Bundle\DtoGeneratorBundle::class => ['all' => true],
+    Msstc4Symfony\DtoGeneratorBridge\Bundle\DtoGeneratorBundle::class => ['dev' => true, 'test' => true],
 ];
 ```
+
+The warmup check in production needs the bridge in `require` and the bundle registered with `['all' => true]`.
 
 ```yaml
 # config/packages/dto_generator.yaml
@@ -101,8 +104,10 @@ dto_generator:
   check_on_warmup: false   # true: warn in the log on cache warmup when the DTOs are out of date
 ```
 
-`bin/console dto-generator:generate [--check] [--dry-run] [--format=text|json]` takes the same options and gives the
-same output and exit codes as the generator's own `generate` command. The warmup check never writes files.
+`bin/console dto-generator:generate [--config=...] [--check] [--dry-run] [--format=text|json]` takes the same options
+and gives the same output and exit codes as the generator's own `generate` command. A relative `config` or `--config`
+is resolved against the project directory, not the current one; an empty `--config` keeps the bundle's. The warmup
+check never writes files and never fails the warmup: whatever goes wrong becomes a warning in the log.
 
 ## Requirements
 
