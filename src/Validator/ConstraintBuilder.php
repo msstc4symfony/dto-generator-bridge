@@ -19,6 +19,7 @@ use MSSTC4PHP\DtoGenerator\Domain\Schema\Schema;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaLocation;
 use MSSTC4PHP\DtoGenerator\Domain\Target\Capability;
 use MSSTC4PHP\DtoGenerator\Domain\Target\TargetProfile;
+use Msstc4Symfony\DtoGeneratorBridge\Keywords;
 
 /**
  * The constraints a value's schema and type call for (bridge spec §5.1), in the order of that table.

@@ -3,8 +3,8 @@
 Symfony Validator constraints and Symfony Serializer attributes for the DTOs that
 [`msstc4php/dto-generator`](https://github.com/msstc4php/dto-generator) generates from OpenAPI 3.1.
 
-> **Status:** in development. Done: discovery and settings (B1) and Symfony Validator constraints (B2).
-> Serializer attributes (B3), the version matrix (B4) and the bundle (B5) are ahead.
+> **Status:** in development. Done: discovery and settings (B1), Symfony Validator constraints (B2) and Serializer
+> attributes (B3). The version matrix (B4) and the bundle (B5) are ahead.
 
 ## Installation
 
@@ -31,7 +31,8 @@ The Symfony version is read per component from the project's `composer.lock`.
 
 ## Validator constraints
 
-From the schema of each property and of the schema its `$ref` points to (both apply, as in JSON Schema 2020-12):
+From the schema of each property, of the schema its `$ref` points to, of its `allOf` branches and of the one member of a
+nullable `oneOf`/`anyOf` (all apply, as in JSON Schema 2020-12):
 
 | Schema | Constraint |
 |---|---|
@@ -54,6 +55,28 @@ Symfony Validator 7 no longer reads — the bridge reports that instead of writi
 
 Keywords of one kind of value (`minLength`, `minimum`, `minItems`…) are written only for a property of that type; for a
 value of several types, a pattern PHP cannot compile or a malformed keyword the bridge warns and writes nothing.
+
+## Serializer attributes
+
+| Schema | Attribute |
+|---|---|
+| a wire name the PHP property does not have (`first_name` → `$firstName`) | `SerializedName('first_name')` |
+| a discriminated base | `DiscriminatorMap(typeProperty: …, mapping: […])` on the class |
+| `format: date` (also of list or map items, or behind a nullable union) | `Context` with the `Y-m-d` date format |
+| `x-serializer-groups: [api]` | `Groups(['api'])` |
+| `x-serializer-ignore: true` | `Ignore` |
+
+`x-serializer-skip: true` leaves a property alone. Before Symfony 6.4 the attributes come from
+`Symfony\Component\Serializer\Annotation`, from 6.4 from `Symfony\Component\Serializer\Attribute`.
+
+Notes:
+
+- `SerializedName` is written only where the wire name differs from the PHP name. An application with a global name
+  converter (such as `camel_case_to_snake_case`) renames the other properties too.
+- `x-serializer-ignore` on a required property leaves the constructor without its argument, so denormalizing fails;
+  the bridge warns about it.
+- `date-time`, `readOnly` and `writeOnly` get no attribute: Symfony's defaults fit `date-time`, and the other two have
+  no single attribute.
 
 ## Requirements
 

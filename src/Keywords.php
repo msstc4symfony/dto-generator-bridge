@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Msstc4Symfony\DtoGeneratorBridge\Validator;
+namespace Msstc4Symfony\DtoGeneratorBridge;
 
 use MSSTC4PHP\DtoGenerator\Contract\SchemaReferences;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\Schema;
@@ -10,7 +10,8 @@ use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 
 /**
  * The keywords a value must satisfy (JSON Schema 2020-12): those of its schema, of every schema its `$ref` chain passes
- * through, and of its `allOf` branches. Values compare as JSON does: 1 and 1.0 are the same number.
+ * through, of its `allOf` branches, and of the one member of a `oneOf`/`anyOf` that leaves only null aside (a value
+ * other than null has to satisfy it). Values compare as JSON does: 1 and 1.0 are the same number.
  *
  * @phpstan-import-type JsonValue from Json
  */
@@ -38,7 +39,8 @@ final class Keywords
 
     /**
      * The schema that describes the value, as the generator types it: the end of the `$ref` chain, through the one
-     * typed branch of an `allOf` (an idiom for annotating or constraining a reference).
+     * typed branch of an `allOf` (an idiom for annotating or constraining a reference) or the one typed member of a
+     * `oneOf`/`anyOf` besides null.
      */
     public function resolved(): Schema
     {
@@ -143,33 +145,57 @@ final class Keywords
             foreach ($link->allOf() as $branch) {
                 $this->collect($branch);
             }
+
+            $member = $this->soleValueMember($link);
+            if ($member instanceof Schema) {
+                $this->collect($member);
+            }
         }
     }
 
     /**
-     * Follows TypeMapper::bareType() of the generator: `x-php-type`, a class, or a typed union keeps the schema;
-     * otherwise exactly one typed `allOf` branch gives the type, and the other branches only constrain it.
+     * The one `oneOf`/`anyOf` member that is not just null; TypeMapper::union() of the generator types the value by it.
+     */
+    private function soleValueMember(Schema $schema): ?Schema
+    {
+        $members = array_values(array_filter(
+            array_merge($schema->oneOf(), $schema->anyOf()),
+            static fn (Schema $member): bool => $member->ref() !== null
+                || !$member->isNullable()
+                || $member->nonNullTypes() !== []
+                || $member->allOf() !== [] || $member->oneOf() !== [] || $member->anyOf() !== [],
+        ));
+
+        return count($members) === 1 ? $members[0] : null;
+    }
+
+    /**
+     * Follows TypeMapper::bareType() of the generator: `x-php-type` or a class keeps the schema; a typed union gives the
+     * type of its one member besides null, or keeps the schema; otherwise exactly one typed `allOf` branch gives the
+     * type, and the other branches only constrain it.
      *
      * @param list<string> $seen
      */
     private function unwrap(Schema $schema, array $seen): Schema
     {
         $location = $schema->location()->toString();
-        if (
-            $schema->extensions()->has('x-php-type')
-            || $schema->propertyNames() !== []
-            || $this->typed(array_merge($schema->oneOf(), $schema->anyOf())) !== []
-            || in_array($location, $seen, true)
-        ) {
+        if ($schema->extensions()->has('x-php-type') || $schema->propertyNames() !== [] || in_array($location, $seen, true)) {
             return $schema;
+        }
+
+        $seen[] = $location;
+        $union = $this->typed(array_merge($schema->oneOf(), $schema->anyOf()));
+        if ($union !== []) {
+            $member = $this->soleValueMember($schema);
+
+            // A member that only constrains (a pattern) leaves the type to the schema itself, as in the generator.
+            return $member instanceof Schema && $this->typed([$member]) !== [] ? $this->unwrap($this->references->resolve($member), $seen) : $schema;
         }
 
         $typed = $this->typed($schema->allOf());
         if (count($typed) !== 1) {
             return $schema;
         }
-
-        $seen[] = $location;
 
         return $this->unwrap($this->references->resolve($typed[0]), $seen);
     }

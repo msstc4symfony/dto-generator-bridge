@@ -15,6 +15,7 @@ use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaLocation;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use MSSTC4PHP\DtoGenerator\Domain\Target\Capability;
 use MSSTC4PHP\DtoGenerator\Domain\Target\TargetProfile;
+use Msstc4Symfony\DtoGeneratorBridge\Keywords;
 
 /**
  * The constraints that pin a value to listed ones: `enum` and `const`. Symfony compares with ===, so a JSON number is

@@ -23,3 +23,19 @@ PHP ≥ 7.4; только SPI ядра; MSI 100 %; ядро не меняетс�
 1. Рефакторинг: `ComponentGate`, `Keywords` в корень; тесты B2 зелёные без изменений сообщений.
 2. `SerializerEnricher` + регистрация; тесты.
 3. Документация, ревью, слияние.
+
+## Решения при выполнении
+- Ruling: `ComponentGate::version()` возвращает версию (или null), а не bool — сериализатору версия нужна для namespace; сообщения валидатора не изменились.
+- Ruling: общий `ExtensionReader` (флаги, списки групп) для `x-validator-*` и `x-serializer-*` — одинаковые правила и сообщения.
+- Ruling: `SerializedName` и `Groups` — позиционно (одинаково для атрибута и аннотации 5.4); `Context`/`DiscriminatorMap` — именованно.
+- Ruling: `Context` ставится, только если тип значения — класс дат цели (`TargetProfile::dateTimeClass()`), а формат схемы, по которой типизирует ядро, — `date`: класс из `formats` для `date` получает свою нормализацию.
+- Ядро: `DiscriminatorModel::mapping()` (минор, слит в `main` ядра) — иначе ветка «значение без класса» в мосте недостижима и даёт эквивалентного мутанта.
+- Ruling: проверка `ClassKind::isAbstract()` не нужна — ядро даёт дискриминатор только абстрактной базе.
+
+## Ревью high (CR-001…CR-010) — исправления
+- CR-001: `Keywords` проходит в единственного не-null члена `oneOf`/`anyOf` (и для `resolved()`, и для ключевых слов) — nullable-даты получают `Context`, валидатор — ограничения члена.
+- CR-002: warning на `x-serializer-ignore` у required-свойства без default.
+- CR-003: Ruling — `SerializedName` только при различии имён, глобальные name converter'ы описаны в README; опция «всегда» — YAGNI до запроса.
+- CR-004: тесты — граница 6.4.0, числовой дискриминатор, аннотации 7.4 для `DiscriminatorMap`/`Groups`/`Context`, `list<list<date>>`, nullable-union.
+- CR-005…010: комментарий о gate; `ComponentGate` получает настройку в конструкторе; харнесс — префикс `dto-bridge-`, `classAttributesOf()` разбирает многострочные атрибуты; сообщение о группах; README — раздел выше License и ограничения; `ExtensionReader` после проверки версии.
+- Повторное ревью medium: CR-101 — в члена union заходим, только если он типизирован (иначе тип даёт сама схема, как в ядре); CR-102/103 — docblock `resolved()` и README.

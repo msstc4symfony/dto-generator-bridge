@@ -4,17 +4,8 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Validator;
 
-use FilesystemIterator;
-use MSSTC4PHP\DtoGenerator\Application\Service\Generate\Input;
-use MSSTC4PHP\DtoGenerator\Application\Service\Generate\Mode;
-use MSSTC4PHP\DtoGenerator\Application\Service\Generate\Output;
-use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostic;
-use MSSTC4PHP\DtoGenerator\DtoGenerator;
-use Msstc4Symfony\DtoGeneratorBridge\SymfonyExtension;
+use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\GeneratesDtos;
 use PHPUnit\Framework\TestCase;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
-use SplFileInfo;
 use stdClass;
 
 /**
@@ -22,24 +13,7 @@ use stdClass;
  */
 final class ValidatorEnricherTest extends TestCase
 {
-    private string $root;
-
-    protected function setUp(): void
-    {
-        $this->root = sys_get_temp_dir() . '/dto-bridge-validator-' . bin2hex(random_bytes(4));
-        mkdir($this->root);
-    }
-
-    protected function tearDown(): void
-    {
-        $entries = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($this->root, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
-        foreach ($entries as $entry) {
-            assert($entry instanceof SplFileInfo);
-            $entry->isDir() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
-        }
-
-        rmdir($this->root);
-    }
+    use GeneratesDtos;
 
     public function testConstrainsStringsByRequirementLengthAndPattern(): void
     {
@@ -142,7 +116,7 @@ final class ValidatorEnricherTest extends TestCase
         $output = $this->generate(['type' => 'object', 'properties' => ['a' => ['type' => 'string', 'maxLength' => 1, 'x-validator-groups' => ['', 'api', 3]]]]);
 
         self::assertSame(["Assert\\Length(max: 1, groups: ['api', 'Default'])"], $this->attributesOf($this->code($output, 'Pet.php'), 'a'));
-        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/a: x-validator-groups names a group that is no name; it is left out.'], $this->messages($output));
+        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/a: x-validator-groups lists a value that is not a group name; it is left out.'], $this->messages($output));
     }
 
     public function testLeavesAFormatMappedToAClassToThatClass(): void
@@ -692,6 +666,17 @@ final class ValidatorEnricherTest extends TestCase
         self::assertContains('warning /api.yaml#/components/schemas/Pet/properties/fixed: "const" on a value of class App\\Code has no constraint to check it; it is not checked.', $this->messages($output));
     }
 
+    public function testChecksTheOneMemberOfAUnionBesideNull(): void
+    {
+        $code = $this->pet(['type' => 'object', 'properties' => [
+            'nick' => ['anyOf' => [['type' => 'string', 'maxLength' => 3], ['type' => 'null']]],
+            'owner' => ['oneOf' => [['$ref' => '#/components/schemas/Owner'], ['type' => 'null']]],
+        ]], ['Owner' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]]]);
+
+        self::assertSame(['Assert\\Length(max: 3)'], $this->attributesOf($code, 'nick'));
+        self::assertSame(['Assert\\Valid'], $this->attributesOf($code, 'owner'));
+    }
+
     public function testComparesNumbersAsJsonDoes(): void
     {
         $code = $this->pet(['type' => 'object', 'properties' => [
@@ -765,115 +750,5 @@ final class ValidatorEnricherTest extends TestCase
         self::assertSame([], array_filter($this->messages($output), static fn (string $message): bool => strncmp($message, 'error', 5) === 0));
 
         return $this->code($output, 'Pet.php');
-    }
-
-    /**
-     * @param array<string, mixed> $pet
-     * @param array<string, mixed> $others
-     * @param array<string, mixed> $settings
-     * @param array<string, string> $packages more locked packages
-     * @param array<string, array<string, string>> $formats
-     * @param array<string, string> $target more target settings
-     * @param array<string, array<string, mixed>> $documents more documents, each with its own Pet schema
-     */
-    private function generate(
-        array $pet,
-        array $others = [],
-        string $php = '8.2',
-        array $settings = [],
-        ?string $validator = 'v7.1.0',
-        array $packages = [],
-        bool $strict = true,
-        array $formats = [],
-        array $target = [],
-        array $documents = []
-    ): Output {
-        $locked = $validator === null ? $packages : ['symfony/validator' => $validator] + $packages;
-        file_put_contents($this->root . '/composer.json', '{}');
-        file_put_contents($this->root . '/composer.lock', (string) json_encode(['packages' => array_map(
-            static fn (string $name, string $version): array => ['name' => $name, 'version' => $version],
-            array_keys($locked),
-            array_values($locked),
-        )]));
-        file_put_contents($this->root . '/api.yaml', (string) json_encode(['openapi' => '3.1.0', 'components' => ['schemas' => ['Pet' => $pet] + $others]], JSON_PRESERVE_ZERO_FRACTION));
-        $sources = [['spec' => 'api.yaml', 'namespace' => 'App\\Dto', 'outputDir' => 'out']];
-        foreach ($documents as $name => $schema) {
-            file_put_contents($this->root . '/' . $name . '.yaml', (string) json_encode(['openapi' => '3.1.0', 'components' => ['schemas' => ['Pet' => $schema]]]));
-            $sources[] = ['spec' => $name . '.yaml', 'namespace' => 'App\\Dto\\' . ucfirst($name), 'outputDir' => 'out/' . $name];
-        }
-
-        file_put_contents($this->root . '/dto-generator.yaml', (string) json_encode([
-            'version' => 1,
-            'target' => ['php' => $php, 'strict' => $strict] + $target,
-            'verifyClasses' => false,
-            'discoverExtensions' => false,
-            'formats' => $formats === [] ? new stdClass() : $formats,
-            'extensions' => [SymfonyExtension::class],
-            'extensionConfig' => ['symfony' => $settings],
-            'sources' => $sources,
-        ]));
-
-        return DtoGenerator::generator()(new Input($this->root . '/dto-generator.yaml', Mode::from(Mode::DRY_RUN)));
-    }
-
-    /**
-     * The attributes written before a promoted constructor parameter, without "#[" and "]", on one line each.
-     *
-     * @return list<string>
-     */
-    private function attributesOf(string $code, string $property): array
-    {
-        $open = strpos($code, 'function __construct(');
-        self::assertIsInt($open);
-        $parameters = [];
-        $current = '';
-        $depth = 0;
-        for ($i = $open + strlen('function __construct('), $length = strlen($code); $i < $length; $i++) {
-            $char = $code[$i];
-            if ($depth === 0 && ($char === ',' || $char === ')')) {
-                $parameters[] = $current;
-                $current = '';
-                if ($char === ')') {
-                    break;
-                }
-
-                continue;
-            }
-
-            $depth += (int) in_array($char, ['(', '['], true) - (int) in_array($char, [')', ']'], true);
-            $current .= $char;
-        }
-
-        foreach ($parameters as $parameter) {
-            if (preg_match('~\$' . $property . '\b~', $parameter) === 1) {
-                preg_match_all('~#\[((?:[^\[\]]|\[(?:[^\[\]]|\[[^\[\]]*\])*\])*)\]~', $parameter, $matches);
-
-                return array_map(static fn (string $attribute): string => (string) preg_replace(['~([(\[])\s+~', '~,?\s+([)\]])~', '~\s+~'], ['$1', '$1', ' '], trim($attribute)), $matches[1]);
-            }
-        }
-
-        self::fail('No parameter $' . $property);
-    }
-
-    private function code(Output $output, string $file): string
-    {
-        foreach ($output->files() as $generated) {
-            if ($generated->relativePath() === $file) {
-                return $generated->contents();
-            }
-        }
-
-        self::fail(sprintf('No %s among: %s', $file, implode(' ', $this->messages($output))));
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function messages(Output $output): array
-    {
-        return array_map(
-            fn (Diagnostic $diagnostic): string => str_replace($this->root, '', $diagnostic->toString()),
-            $output->diagnostics()->all(),
-        );
     }
 }

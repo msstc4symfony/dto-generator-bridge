@@ -116,17 +116,21 @@ extensionConfig:
 
 | Источник | Атрибут | Примечание |
 |---|---|---|
-| `wireName` ≠ имя свойства PHP | `SerializedName(wireName)` | |
-| `discriminator` у базы (abstract) | `DiscriminatorMap(typeProperty:, mapping:)` на классе | Mapping — wire-значение → FQCN подкласса из IR. |
-| тип `date` (`format: date`) | `Context(normalizationContext: [FORMAT_KEY => 'Y-m-d'], denormalizationContext: [FORMAT_KEY => '!Y-m-d'])` | `!` обнуляет время, иначе `createFromFormat` подставит текущее. |
+| `wireName` ≠ имя свойства PHP | `SerializedName('wire')` | Позиционно: так и атрибут, и аннотация 5.4 (`value`) читаются одинаково. |
+| `discriminator` у базы (abstract) | `DiscriminatorMap(typeProperty:, mapping:)` на классе | Mapping — wire-значение → `Подкласс::class` (`DiscriminatorModel::mapping()` ядра). |
+| `format: date` у значения, списка или map, тип — класс дат цели | `Context(normalizationContext: ['datetime_format' => 'Y-m-d'], denormalizationContext: ['datetime_format' => '!Y-m-d'])` | `!` обнуляет время, иначе `createFromFormat` подставит текущее. Ключ — литерал `'datetime_format'` (`DateTimeNormalizer::FORMAT_KEY` во всех версиях): ядро не пишет константы ключами map. Формат — схемы, по которой ядро типизирует (`Keywords::resolved()`). |
 | тип `date-time` | — | Решение: не ставить. Формат по умолчанию Symfony — RFC3339 при выводе, а строгий `FORMAT_KEY` при чтении отверг бы валидные значения с долями секунд. |
-| `x-serializer-groups: [..]` | `Groups([...])` | |
-| `x-serializer-ignore: true` | `Ignore` | |
+| `x-serializer-groups: [..]` | `Groups([...])` | Позиционно; повторы схлопываются, неверные значения — warning. |
+| `x-serializer-ignore: true` | `Ignore` | Остальные атрибуты свойства тогда не пишутся. |
+| `x-serializer-skip: true` | — | Свойство без атрибутов моста. |
 | `readOnly: true` / `writeOnly: true` | — | Решение: не маппить в этой версии (нет однозначного атрибута). |
 
 - Namespace атрибутов: `Symfony\Component\Serializer\Attribute` с 6.4, `Symfony\Component\Serializer\Annotation` для 5.4–6.3 (в 6.4 объявлен устаревшим, в 8.0 удалён — проверить в B4). Импорт `ImportAlias(<namespace>, 'Serializer')`.
+- Писать ли и для какой версии — `ComponentGate` (общий с Validator): `extensionConfig.symfony.serializer` auto/true/false, версия `symfony/serializer`, аннотации на 7.4 + Serializer ≥ 7.0 — как §5.5. Один экземпляр `SerializerEnricher` — и `ClassEnricher`, и `PropertyEnricher`: ядро обогащает класс раньше свойств, решение принимается один раз.
 - `Context` — с 5.3; `SerializedName`, `Groups`, `Ignore`, `DiscriminatorMap` — атрибуты с 5.x.
-- Аннотации на 7.4 + Symfony Serializer ≥ 7.0 — как §5.5.
+- Решение: `SerializedName` — только при `wireName ≠ name`; глобальный name converter приложения (`camel_case_to_snake_case`) переименует остальные свойства — это описано в README, опции «всегда» нет.
+- `x-serializer-ignore` на required-свойстве без default — warning: конструктору нечего передать, денормализация упадёт.
+- Дата через nullable-union (`anyOf: [{$ref: Date}, {type: null}]`) — тоже `Context`: `Keywords::resolved()` проходит в единственного не-null члена, как `TypeMapper::union()` ядра. То же даёт валидатору ключевые слова этого члена.
 
 ## 7. Бандл (`src/Bundle`)
 

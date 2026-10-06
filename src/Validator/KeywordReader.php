@@ -7,6 +7,7 @@ namespace Msstc4Symfony\DtoGeneratorBridge\Validator;
 use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostics;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaLocation;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
+use Msstc4Symfony\DtoGeneratorBridge\Keywords;
 
 /**
  * The numeric keywords of a value, read as JSON Schema defines them; a value that breaks the definition is reported

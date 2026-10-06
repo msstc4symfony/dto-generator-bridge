@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   standard:
-    uses: msstc4symfony/bundle-standard/.github/workflows/php-bundle.yml@v1.9.0
+    uses: msstc4symfony/bundle-standard/.github/workflows/php-bundle.yml@v1.0.0
     with:
       slug: msstc4symfony/dto-generator-bridge
       # The bridge needs no Symfony at run time: one Symfony line is enough. Its runtime profile php74
