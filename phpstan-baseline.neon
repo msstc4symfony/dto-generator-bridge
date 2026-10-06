@@ -1,2 +1,6 @@
 parameters:
 	ignoreErrors: []
+	excludePaths:
+		# Runs only on PHP 8.4+ against the matrix Symfony, whose signatures phpVersion 70400 misreads (a native
+		# "mixed" becomes a class name). tests/Integration/Symfony/phpstan.neon analyses it for PHP 8.4.
+		- tests/Integration/Symfony

@@ -1,7 +1,7 @@
 # dto-generator-bridge-symfony — дизайн
 
 **Дата:** 2026-10-02 (UTC)
-**Статус:** черновик, составлен автономно по §12 спецификации ядра (`../../msstc4php/dto-generator/docs/specs/2026-10-01-dto-generator-design.md`); решения, принятые без пользователя, помечены «Решение». Утверждения о поведении конкретной версии Symfony, помеченные «проверить в B4», подтверждаются интеграционной матрицей до того, как на них опирается вывод.
+**Статус:** черновик, составлен автономно по §12 спецификации ядра (`../../msstc4php/dto-generator/docs/specs/2026-10-01-dto-generator-design.md`); решения, принятые без пользователя, помечены «Решение». Утверждения о поведении версий Symfony проверены матрицей B4 (2026-10-06 UTC: 5.4.48, 6.4.47, 7.4.20, 8.0.15, 8.1.8 на PHP 8.4/8.5) — отмечены «B4».
 
 ## 1. Цель
 
@@ -97,7 +97,7 @@ extensionConfig:
 - Внутри свойства — порядок строк таблицы §5.1; так golden-вывод стабилен.
 
 ### 5.4 Версии Symfony
-- Атрибуты Validator и именованные параметры конструкторов constraint'ов — с 5.2 (проверить в B4 на каждом constraint таблицы). Решение: всегда именованные аргументы; массив `options` не используется — в 7.3 он объявлен устаревшим, в 8.0 удалён (проверить в B4).
+- Атрибуты Validator и именованные параметры конструкторов constraint'ов — с 5.2; B4: каждый constraint таблицы с именованными аргументами загружается и проверяет на 5.4–8.1, атрибутами и аннотациями (цель 7.4 на 5.4/6.4). Решение: всегда именованные аргументы; массив `options` не используется — в 7.3 он объявлен устаревшим, в 8.0 удалён.
 - Значения по умолчанию, которые меняются между версиями (`Email::mode`, `Url::requireTld`, `Hostname::requireTld`), мост пишет явно.
 - Constraint, которого нет в версии, — warning и пропуск.
 
@@ -110,7 +110,7 @@ extensionConfig:
 - Ограничения веток `anyOf`/`oneOf` не переносятся; `Valid` ставится, если хотя бы одна ветка — объект со свойствами.
 - ECMA-262 и PCRE: `\d`, `\w`, `\b` в PCRE без `(*UCP)` — только ASCII, как и в ECMA без флага `u`; именованные группы и lookbehind совместимы; остальные расхождения проявятся ошибкой компиляции (warning).
 - `Unique` сравнивает объекты по идентичности: `uniqueItems` для списка DTO фактически не проверяется. Документируется.
-- `Uuid`: поддержка версий 7/8 появилась позже 5.4 (проверить в B4, вероятно 6.2); nil-UUID отклоняется всеми версиями. Документируется; при `version < поддерживающей` — `Uuid(versions: [...])` без 7/8.
+- `Uuid`: B4 — UUID версий 7/8 Symfony 5.4 отклоняет, 6.4+ принимает (поддержка с 6.2); nil-UUID отклоняют все версии. Мост пишет `Uuid` без `versions`: значения по умолчанию каждой версии — всё, что она знает.
 
 ## 6. Serializer
 
@@ -125,7 +125,7 @@ extensionConfig:
 | `x-serializer-skip: true` | — | Свойство без атрибутов моста. |
 | `readOnly: true` / `writeOnly: true` | — | Решение: не маппить в этой версии (нет однозначного атрибута). |
 
-- Namespace атрибутов: `Symfony\Component\Serializer\Attribute` с 6.4, `Symfony\Component\Serializer\Annotation` для 5.4–6.3 (в 6.4 объявлен устаревшим, в 8.0 удалён — проверить в B4). Импорт `ImportAlias(<namespace>, 'Serializer')`.
+- Namespace атрибутов: `Symfony\Component\Serializer\Attribute` с 6.4, `Symfony\Component\Serializer\Annotation` для 5.4–6.3 (в 6.4 объявлен устаревшим, в 8.0 удалён; B4 — `Attribute` работает на 6.4–8.1, `Annotation` на 5.4). Импорт `ImportAlias(<namespace>, 'Serializer')`.
 - Писать ли и для какой версии — `ComponentGate` (общий с Validator): `extensionConfig.symfony.serializer` auto/true/false, версия `symfony/serializer`, аннотации на 7.4 + Serializer ≥ 7.0 — как §5.5. Один экземпляр `SerializerEnricher` — и `ClassEnricher`, и `PropertyEnricher`: ядро обогащает класс раньше свойств, решение принимается один раз.
 - `Context` — с 5.3; `SerializedName`, `Groups`, `Ignore`, `DiscriminatorMap` — атрибуты с 5.x.
 - Решение: `SerializedName` — только при `wireName ≠ name`; глобальный name converter приложения (`camel_case_to_snake_case`) переименует остальные свойства — это описано в README, опции «всегда» нет.
@@ -152,12 +152,18 @@ extensionConfig:
 - Бандл: тестовое ядро Symfony, команда и warmer.
 - `composer.json` моста объявляет только существующие классы `Extension` (тест).
 
+### 8.1 Матрица (B4)
+- Генерация фикстуры `tests/Integration/Symfony/api.yaml` для целей 8.2 (атрибуты), 8.0 (атрибуты без `All`) и 7.4 (аннотации, только Symfony < 7); `Validator::validate()` после денормализации — пути нарушений на каждую строку §5.1; round-trip Serializer (`SerializedName`, `Context` даты, `DiscriminatorMap`, `Ignore`), `date-time` с долями секунд при чтении, факты `Uuid`.
+- Типы свойств — `PhpDocExtractor` + `ReflectionExtractor`, как у FrameworkBundle с phpDocumentor.
+- Устаревания самой Symfony на новом PHP (5.4 на 8.5) и чтения аннотаций (6.4) не валят тест: отфильтровываются только сообщения из `vendor/`.
+- PHPStan с `phpVersion: 70400` не читает сигнатуры Symfony 8 (нативный `mixed` становится классом): тест исключён в `phpstan-baseline.neon` и проверяется `tests/Integration/Symfony/phpstan.neon` (PHP 8.4, level max).
+
 ## 9. Этапы
 
 - **B1.** Каркас репозитория (инструменты как у ядра, deptrac, CI), `SymfonyExtension`, разбор `extensionConfig.symfony`, определение версии по компоненту, `extra.dto-generator.extensions`.
 - **B2.** Validator: §5.1–§5.6, при необходимости `PropertyContext::resolvedSchema()` в ядре.
 - **B3.** Serializer: §6.
-- **B4.** Интеграционная матрица Symfony 5.4/6.4/7.4/8.x; снимает пометки «проверить в B4».
+- **B4.** Интеграционная матрица Symfony 5.4/6.4/7.4/8.x (`tests/Integration/Symfony/RealSymfonyTest`, строки `symfony-versions` в CI). Выполнено 2026-10-06 UTC; находки — в ядре: переносимый PHPDoc (`@var` без уточнений + `@phpstan-var`) для PhpDocExtractor Symfony 5.4 и `X::*|null` для PhpDocExtractor 7.4.
 - **B5.** Бандл (§7).
 - **B6.** Публикация ядра (`v1.0.0`) и моста; включение моста в Docker-образ ядра; README; релиз.
 

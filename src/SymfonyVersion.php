@@ -16,7 +16,7 @@ final class SymfonyVersion
     public const MINIMUM = '5.4';
 
     /** The newest version whose rules the bridge knows; assumed when the project has no Symfony component. */
-    public const LATEST = '7.4';
+    public const LATEST = '8.1';
 
     /** Symfony 7.0 dropped annotations: the version assumed for a target that writes them. */
     public const LATEST_READING_ANNOTATIONS = '6.4';

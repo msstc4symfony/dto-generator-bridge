@@ -1,0 +1,62 @@
+openapi: 3.1.0
+info: {title: Bridge matrix, version: '1'}
+paths: {}
+components:
+  schemas:
+    Pet:
+      type: object
+      required: [name, kind]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 10, pattern: '^[a-z]+$'}
+        kind: {type: string, const: pet}
+        age: {type: integer, minimum: 0, maximum: 30}
+        weight: {type: number, exclusiveMinimum: 0, multipleOf: 0.5}
+        tags:
+          type: array
+          minItems: 1
+          maxItems: 3
+          uniqueItems: true
+          items: {type: string, maxLength: 4}
+        scores:
+          type: object
+          maxProperties: 2
+          additionalProperties: {type: integer, minimum: 0}
+        email: {type: string, format: email}
+        ip: {type: string, format: ipv4}
+        host: {type: string, format: hostname}
+        id: {type: string, format: uuid}
+        status: {type: string, enum: [active, gone]}
+        owner: {$ref: '#/components/schemas/Owner'}
+        friends:
+          type: array
+          items: {$ref: '#/components/schemas/Owner'}
+        first_name: {type: string, maxLength: 8}
+        born: {type: string, format: date}
+        seen: {type: string, format: date-time}
+        secret: {type: string, x-serializer-ignore: true}
+        note: {type: string, maxLength: 3, x-validator-groups: [strict], x-validator-groups-exclusive: true}
+    Owner:
+      type: object
+      properties:
+        name: {type: string, maxLength: 5}
+    Animal:
+      oneOf:
+        - {$ref: '#/components/schemas/Cat'}
+        - {$ref: '#/components/schemas/Dog'}
+      discriminator:
+        propertyName: animal_type
+        mapping:
+          cat: '#/components/schemas/Cat'
+          dog: '#/components/schemas/Dog'
+    Cat:
+      type: object
+      required: [animal_type]
+      properties:
+        animal_type: {type: string}
+        lives: {type: integer, maximum: 9}
+    Dog:
+      type: object
+      required: [animal_type]
+      properties:
+        animal_type: {type: string}
+        good: {type: boolean}
