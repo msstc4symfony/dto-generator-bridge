@@ -54,13 +54,13 @@ final class SettingsTest extends TestCase
         yield 'validator null' => [['validator' => null], 'extensionConfig.symfony.validator must be auto, true or false.'];
         yield 'version null' => [['version' => null], 'extensionConfig.symfony.version must be auto or a version like "6.4" (quote it in YAML: \'6.4\').'];
         yield 'groups null' => [['groups' => null], 'extensionConfig.symfony.groups must be a list of group names.'];
-        yield 'groups repeated' => [['groups' => ['api', 'admin', 'api']], 'extensionConfig.symfony.groups names "api" twice.'];
+        yield 'groups repeated' => [['groups' => ['api', 'admin', 'api']], 'extensionConfig.symfony.groups names "api" more than once.'];
         yield 'several' => [['colour' => 'red', 'validator' => 1, 'groups' => 'api'], 'extensionConfig.symfony.colour is not a setting of the Symfony bridge. extensionConfig.symfony.validator must be auto, true or false. extensionConfig.symfony.groups must be a list of group names.'];
         yield 'groups type' => [['groups' => 'api'], 'extensionConfig.symfony.groups must be a list of group names.'];
         yield 'groups item' => [['groups' => ['api', '']], 'extensionConfig.symfony.groups must be a list of group names.'];
         yield 'groups map' => [['groups' => ['a' => 'api']], 'extensionConfig.symfony.groups must be a list of group names.'];
         yield 'groups items' => [['groups' => [1, 2]], 'extensionConfig.symfony.groups must be a list of group names.'];
-        yield 'groups repeated thrice' => [['groups' => ['api', 'api', 'api']], 'extensionConfig.symfony.groups names "api" twice.'];
+        yield 'groups repeated thrice' => [['groups' => ['api', 'api', 'api']], 'extensionConfig.symfony.groups names "api" more than once.'];
     }
 
     /**

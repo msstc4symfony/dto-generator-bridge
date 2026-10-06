@@ -17,6 +17,9 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
  */
 final class KeywordReader
 {
+    /** The first float beyond the int range. */
+    private const INT_LIMIT = PHP_INT_MAX + 1;
+
     private Keywords $keywords;
 
     private Diagnostics $diagnostics;
@@ -93,8 +96,8 @@ final class KeywordReader
             return $value >= 0 ? $value : null;
         }
 
-        // 2^63 is the first float beyond the int range; PHP 8.5 deprecates casting such a float.
-        if (is_float($value) && $value >= 0 && $value < 9.2233720368547758E18 && fmod($value, 1.0) === 0.0) {
+        // PHP 8.5 deprecates casting a float beyond the int range.
+        if (is_float($value) && $value >= 0 && $value < self::INT_LIMIT && fmod($value, 1.0) === 0.0) {
             return (int) $value;
         }
 

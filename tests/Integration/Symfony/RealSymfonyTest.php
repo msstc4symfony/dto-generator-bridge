@@ -74,7 +74,9 @@ final class RealSymfonyTest extends TestCase
      * Symfony 5.4's code on PHP 8.4/8.5.
      */
     private const FOREIGN_DEPRECATIONS = [
-        '~annotation~i',
+        // The PHP 7.4 target has no attributes; Symfony 6.4 deprecates the annotations it gets instead (spec §5.5).
+        '~uses Doctrine Annotations to configure (serialization|validation constraints), which is deprecated~',
+        '~Passing a "Doctrine\\\\Common\\\\Annotations\\\\AnnotationReader" instance as argument 1 to ".*AttributeLoader::__construct\(\)" is deprecated~',
         '~The "loose" mode is deprecated~',
         '~Implicitly marking parameter .* as nullable is deprecated~',
         '~Using null as an array offset is deprecated~',
@@ -158,6 +160,7 @@ final class RealSymfonyTest extends TestCase
             'too many scores' => [$all, ['scores' => ['a' => 1, 'b' => 2, 'c' => 3]], ['scores'], []],
             'negative score' => [$withNew, ['scores' => ['a' => -1]], ['scores[a]'], []],
             'email' => [$all, ['email' => 'nope'], ['email'], []],
+            'email that only the loose mode takes' => [$all, ['email' => 'a b@example.com'], ['email'], []],
             'ipv4' => [$all, ['ip' => '300.1.1.1'], ['ip'], []],
             'ipv6' => [$all, ['ip6' => '10.0.0.1'], ['ip6'], []],
             'host' => [$all, ['host' => 'bad host'], ['host'], []],

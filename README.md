@@ -76,8 +76,9 @@ Notes:
 - `x-serializer-ignore` on a required property leaves the constructor without its argument, so denormalizing fails;
   the bridge warns about it.
 - `date-time` gets no format: Symfony's RFC 3339 default fits it. From Serializer 8.1, which deprecates reading other
-  forms such as fractions of a second, the bridge asks for the loose parser instead. `readOnly` and `writeOnly` have no
-  single attribute.
+  forms such as fractions of a second, the bridge asks for the loose parser instead. A property attribute wins over the
+  context of the call, so a `datetime_format` passed to `deserialize()` does not apply to those properties;
+  `x-serializer-skip` turns this off. `readOnly` and `writeOnly` have no single attribute.
 
 ## Requirements
 

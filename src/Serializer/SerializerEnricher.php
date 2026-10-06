@@ -37,6 +37,9 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
     /** DateTimeNormalizer::FORMAT_KEY in every version the bridge supports. */
     private const FORMAT_KEY = 'datetime_format';
 
+    /** The Serializer that deprecates reading a date-time off its default format without a context saying so. */
+    private const LOOSE_DATE_TIME_SINCE = '8.1';
+
     private ComponentGate $gate;
 
     public function __construct(Settings $settings)
@@ -110,7 +113,7 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
 
         // Serializer 8.1 deprecates reading a date-time off its default format, such as RFC 3339 with fractions of a
         // second, unless the context asks for the loose parser; 9.0 rejects it.
-        if ($version->isAtLeast(SymfonyVersion::fromString('8.1')) && $this->holds('date-time', $schema, $property->type(), $references, $target)) {
+        if ($version->isAtLeast(SymfonyVersion::fromString(self::LOOSE_DATE_TIME_SINCE)) && $this->holds('date-time', $schema, $property->type(), $references, $target)) {
             $attributes[] = $this->attribute($version, 'Context', [
                 AttributeArgument::named('denormalizationContext', ArgumentValue::mapOf([self::FORMAT_KEY => ArgumentValue::literal(null)])),
             ]);

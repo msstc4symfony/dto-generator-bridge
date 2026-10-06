@@ -157,7 +157,7 @@ final class Settings
             }
 
             if (in_array($group, $groups, true)) {
-                $problems[] = sprintf('extensionConfig.symfony.groups names "%s" twice.', $group);
+                $problems[] = sprintf('extensionConfig.symfony.groups names "%s" more than once.', $group);
 
                 return [];
             }

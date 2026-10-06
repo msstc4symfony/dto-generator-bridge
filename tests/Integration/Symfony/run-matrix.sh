@@ -12,6 +12,10 @@ if [ $# -lt 1 ]; then
 fi
 
 SYMFONY="$1"; PHP_IMAGE="${2:-8.4-cli}"; shift; shift || true
+if ! echo "$PHP_IMAGE" | grep -qE '^[0-9]+\.[0-9]+'; then
+    echo "The PHP image tag must start with its version, like 8.4-cli; got \"$PHP_IMAGE\"." >&2
+    exit 2
+fi
 BRIDGE="$(cd "$(dirname "$0")/../../.." && pwd)"
 CORE="${CORE:-$BRIDGE/../../msstc4php/dto-generator}"
 WORK="$(mktemp -d)"
@@ -35,4 +39,10 @@ PY
 USER_ID="$(id -u):$(id -g)"
 docker run --rm -u "$USER_ID" -v "$WORK:/app" -w /app -e COMPOSER_HOME=/tmp composer:2 \
     update ${LOWEST:+--prefer-lowest --prefer-stable} --no-interaction --no-progress --ignore-platform-req='ext-*'
+# As the standard's job does: a dependency must not have moved the cell to another Symfony major.
+INSTALLED="$(docker run --rm -u "$USER_ID" -v "$WORK:/app" -w /app "php:$PHP_IMAGE" php -d error_reporting=0 -r 'require "vendor/autoload.php"; echo Composer\InstalledVersions::getPrettyVersion("symfony/http-kernel");')"
+case "$INSTALLED" in
+    "v${SYMFONY%%.\*}"*) echo "symfony/http-kernel $INSTALLED" ;;
+    *) echo "Expected Symfony $SYMFONY, resolved symfony/http-kernel $INSTALLED" >&2; exit 1 ;;
+esac
 docker run --rm -u "$USER_ID" -v "$WORK:/app" -w /app "php:$PHP_IMAGE" vendor/bin/phpunit "$@"
