@@ -4,8 +4,8 @@ Symfony Validator constraints and Symfony Serializer attributes for the DTOs tha
 [`msstc4php/dto-generator`](https://github.com/msstc4php/dto-generator) generates from OpenAPI 3.1.
 
 > **Status:** in development. Done: discovery and settings (B1), Symfony Validator constraints (B2), Serializer
-> attributes (B3), the version matrix (B4: Symfony 5.4, 6.4, 7.4 and 8 in CI) and the Symfony bundle (B5). The
-> generator's Docker image ships the bridge; publishing (B6) is ahead.
+> attributes (B3), the version matrix (B4: Symfony 5.4, 6.4, 7.4 and 8 in CI), the Symfony bundle (B5) and the
+> first release with the generator's Docker image shipping the bridge (B6).
 
 ## Installation
 

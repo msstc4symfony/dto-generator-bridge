@@ -169,6 +169,6 @@ extensionConfig:
 - **B4.** Интеграционная матрица Symfony 5.4/6.4/7.4/8.x (`tests/Integration/Symfony/RealSymfonyTest`, строки `symfony-versions` в CI). Выполнено 2026-10-06 UTC; находки — в ядре: переносимый PHPDoc (`@var` без уточнений + `@phpstan-var`) для PhpDocExtractor Symfony 5.4 и `X::*|null` для PhpDocExtractor 7.4.
 - **B5.** Бандл (§7).
 - **B6.** Публикация ядра (`v1.0.0`) и моста; включение моста в Docker-образ ядра; README; релиз.
-  - Сделано локально: образ ядра ставит мост из его репозитория (`BRIDGE_REPOSITORY`, по умолчанию `https://github.com/msstc4symfony/dto-generator-bridge-symfony`), до публикации `make docker-build` ядра берёт закоммиченный `HEAD` этого checkout'а. Осталось: публикация (пользователь) — CI ядра (job `docker`) зелёный только после публикации моста, CI моста — после публикации ядра.
+  - Ядро — `github.com/msstc4php/dto-generator` (`v1.0.0`), мост — `github.com/msstc4symfony/dto-generator-bridge` (`v1.0.0`), оба публичные. Образ ядра ставит мост из его репозитория (`BRIDGE_REPOSITORY`); `make docker-build` ядра подставляет закоммиченный `HEAD` локального checkout'а моста.
 
 Каждый этап — с тестами и `make verify`.
