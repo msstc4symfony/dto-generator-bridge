@@ -113,6 +113,14 @@ final class KeywordsTest extends TestCase
         self::assertSame([], (new Keywords($list, SchemaReferences::none()))->formats());
     }
 
+    public function testKeepsTheSchemaWhenTheSoleValueMemberOnlyConstrains(): void
+    {
+        $typedNull = new Schema(new SchemaLocation('api.yaml', '/typed-null'), [SchemaType::from(SchemaType::NULL)], null, null, null, false, null, [null], [], [], null, null, [], [], [], null, [], new Extensions());
+        $schema = $this->schema([], null, null, [], ['anyOf' => [$this->schema(['minItems' => 1]), $typedNull]]);
+
+        self::assertSame($schema, $this->resolvedOf($schema));
+    }
+
     private function nullSchema(): Schema
     {
         return new Schema(new SchemaLocation('api.yaml', '/null'), [SchemaType::from(SchemaType::NULL)], null, null, null, false, null, null, [], [], null, null, [], [], [], null, [], new Extensions());

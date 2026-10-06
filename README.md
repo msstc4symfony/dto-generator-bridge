@@ -31,7 +31,8 @@ The Symfony version is read per component from the project's `composer.lock`.
 
 ## Validator constraints
 
-From the schema of each property and of the schema its `$ref` points to (both apply, as in JSON Schema 2020-12):
+From the schema of each property, of the schema its `$ref` points to, of its `allOf` branches and of the one member of a
+nullable `oneOf`/`anyOf` (all apply, as in JSON Schema 2020-12):
 
 | Schema | Constraint |
 |---|---|
@@ -61,7 +62,7 @@ value of several types, a pattern PHP cannot compile or a malformed keyword the 
 |---|---|
 | a wire name the PHP property does not have (`first_name` → `$firstName`) | `SerializedName('first_name')` |
 | a discriminated base | `DiscriminatorMap(typeProperty: …, mapping: […])` on the class |
-| `format: date` (also of list or map items) | `Context` with the `Y-m-d` date format |
+| `format: date` (also of list or map items, or behind a nullable union) | `Context` with the `Y-m-d` date format |
 | `x-serializer-groups: [api]` | `Groups(['api'])` |
 | `x-serializer-ignore: true` | `Ignore` |
 

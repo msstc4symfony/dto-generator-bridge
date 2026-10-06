@@ -39,7 +39,8 @@ final class Keywords
 
     /**
      * The schema that describes the value, as the generator types it: the end of the `$ref` chain, through the one
-     * typed branch of an `allOf` (an idiom for annotating or constraining a reference).
+     * typed branch of an `allOf` (an idiom for annotating or constraining a reference) or the one typed member of a
+     * `oneOf`/`anyOf` besides null.
      */
     public function resolved(): Schema
     {
@@ -187,8 +188,8 @@ final class Keywords
         if ($union !== []) {
             $member = $this->soleValueMember($schema);
 
-            // A typed member of the union is a member besides null, so it is the sole one if there is one.
-            return $member instanceof Schema ? $this->unwrap($this->references->resolve($member), $seen) : $schema;
+            // A member that only constrains (a pattern) leaves the type to the schema itself, as in the generator.
+            return $member instanceof Schema && $this->typed([$member]) !== [] ? $this->unwrap($this->references->resolve($member), $seen) : $schema;
         }
 
         $typed = $this->typed($schema->allOf());

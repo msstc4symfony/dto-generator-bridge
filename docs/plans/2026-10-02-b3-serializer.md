@@ -38,3 +38,4 @@ PHP ≥ 7.4; только SPI ядра; MSI 100 %; ядро не меняетс�
 - CR-003: Ruling — `SerializedName` только при различии имён, глобальные name converter'ы описаны в README; опция «всегда» — YAGNI до запроса.
 - CR-004: тесты — граница 6.4.0, числовой дискриминатор, аннотации 7.4 для `DiscriminatorMap`/`Groups`/`Context`, `list<list<date>>`, nullable-union.
 - CR-005…010: комментарий о gate; `ComponentGate` получает настройку в конструкторе; харнесс — префикс `dto-bridge-`, `classAttributesOf()` разбирает многострочные атрибуты; сообщение о группах; README — раздел выше License и ограничения; `ExtensionReader` после проверки версии.
+- Повторное ревью medium: CR-101 — в члена union заходим, только если он типизирован (иначе тип даёт сама схема, как в ядре); CR-102/103 — docblock `resolved()` и README.
