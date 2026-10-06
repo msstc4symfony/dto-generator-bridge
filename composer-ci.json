@@ -42,6 +42,7 @@
         "rector/rector": "^2.1",
         "roave/backward-compatibility-check": "^8.20",
         "roave/security-advisories": "dev-latest",
+        "symfony/framework-bundle": "^5.4|^6.4|^7.4|^8.0",
         "symfony/property-access": "^5.4|^6.4|^7.4|^8.0",
         "symfony/property-info": "^5.4|^6.4|^7.4|^8.0",
         "symfony/serializer": "^5.4|^6.4|^7.4|^8.0",
@@ -49,7 +50,8 @@
     },
     "suggest": {
         "symfony/validator": "To validate the generated DTOs",
-        "symfony/serializer": "To (de)serialize the generated DTOs"
+        "symfony/serializer": "To (de)serialize the generated DTOs",
+        "symfony/framework-bundle": "To use DtoGeneratorBundle: the dto-generator:generate command and the warmup check"
     },
     "conflict": {
         "symfony/symfony": "*"

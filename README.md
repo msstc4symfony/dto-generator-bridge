@@ -4,7 +4,8 @@ Symfony Validator constraints and Symfony Serializer attributes for the DTOs tha
 [`msstc4php/dto-generator`](https://github.com/msstc4php/dto-generator) generates from OpenAPI 3.1.
 
 > **Status:** in development. Done: discovery and settings (B1), Symfony Validator constraints (B2), Serializer
-> attributes (B3) and the version matrix (B4: Symfony 5.4, 6.4, 7.4 and 8 in CI). The bundle (B5) is ahead.
+> attributes (B3), the version matrix (B4: Symfony 5.4, 6.4, 7.4 and 8 in CI) and the Symfony bundle (B5). Publishing
+> (B6) is ahead.
 
 ## Installation
 
@@ -79,6 +80,29 @@ Notes:
   forms such as fractions of a second, the bridge asks for the loose parser instead. A property attribute wins over the
   context of the call, so a `datetime_format` passed to `deserialize()` does not apply to those properties;
   `x-serializer-skip` turns this off. `readOnly` and `writeOnly` have no single attribute.
+
+## Symfony bundle
+
+The generator needs no bundle. In a Symfony application, `DtoGeneratorBundle` adds a console command and an optional
+check on cache warmup:
+
+```php
+// config/bundles.php
+return [
+    // ...
+    Msstc4Symfony\DtoGeneratorBridge\Bundle\DtoGeneratorBundle::class => ['all' => true],
+];
+```
+
+```yaml
+# config/packages/dto_generator.yaml
+dto_generator:
+  config: '%kernel.project_dir%/dto-generator.yaml'   # the default
+  check_on_warmup: false   # true: warn in the log on cache warmup when the DTOs are out of date
+```
+
+`bin/console dto-generator:generate [--check] [--dry-run] [--format=text|json]` takes the same options and gives the
+same output and exit codes as the generator's own `generate` command. The warmup check never writes files.
 
 ## Requirements
 

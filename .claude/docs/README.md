@@ -24,10 +24,15 @@
 ## Матрица (B4)
 - `tests/Integration/Symfony/RealSymfonyTest` — сгенерированные DTO + настоящие Validator/Serializer; локально `tests/Integration/Symfony/run-matrix.sh '<версия>' [8.4-cli|8.5-cli]` (`LOWEST=1` — prefer-lowest). CI — задание `phpunit` стандарта по `symfony-versions`.
 - `composer-ci.json`: Symfony-компоненты, `doctrine/annotations` ^2 (аннотации цели 7.4 на Symfony < 7; пакет заброшен — `config.audit.abandoned: report`), `phpdocumentor/reflection-docblock` ^5.6.
-- PHPStan (`phpVersion 70400`) не читает Symfony 8 — тест исключён в `phpstan-baseline.neon` (`excludePaths`; `phpstan -b` перезапишет файл — вернуть блок руками), вручную: `vendor/bin/phpstan analyse -c tests/Integration/Symfony/phpstan-matrix.neon`.
+- PHPStan (`phpVersion 70400`) не читает Symfony 8 — тест исключён в `phpstan-baseline.neon` (`excludePaths`; `phpstan -b` перезапишет файл — вернуть блок руками), вручную: `vendor/bin/phpstan analyse -c phpstan-symfony.neon`.
 - `FOREIGN_DEPRECATIONS` в `RealSymfonyTest` — список устареваний Symfony, не вызванных мостом; новое устаревание проваливает тест, его надо разобрать, а не добавлять в список не глядя.
 - Infection `^0.29 || ^0.32` (console 5.4 ↔ 8); 0.32 печатает только Covered Code MSI.
 - Rector с установленным `symfony/validator` превращает строки FQCN в `::class` (тестам это безопасно: `::class` не загружает класс).
+
+## Бандл (B5)
+- `src/Bundle`: `DtoGeneratorBundle`, `DependencyInjection\{DtoGeneratorExtension,Configuration}`, `Command\GenerateCommand` (обёртка над `generate` ядра, свой `ArrayInput`), `CacheWarmer\GenerationCheckWarmer`. deptrac: слой `Bundle` видит только `CoreSpi` и `CoreEntry` (`DtoGenerator`, `Generate\{Input,Mode,Output,Status}`).
+- Тесты — `tests/Unit/Bundle` (настоящее ядро Symfony, `TestKernel`; кэш контейнера — свой на каждый конфиг бандла, иначе ядро берёт старый контейнер). Устаревания из `vendor/` глушатся с самого начала `setUp()`: Symfony 5.4 и старые contracts на PHP 8.4 бросают их уже при загрузке классов.
+- PHPStan: `phpstan-symfony.neon` (PHP 8.4) — `src/Bundle`, `tests/Unit/Bundle`, `tests/Integration/Symfony`; в основном они исключены.
 
 ## Известные особенности
 - Песочница не пишет `.git/config`: автор коммитов задаётся переменными `GIT_AUTHOR_*`/`GIT_COMMITTER_*` (имя и почта — из `git -C ../../msstc4php/dto-generator config`).
