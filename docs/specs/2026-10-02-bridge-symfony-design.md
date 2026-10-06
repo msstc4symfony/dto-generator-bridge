@@ -40,7 +40,7 @@ extensionConfig:
 ```
 
 - `auto` для `validator`/`serializer`: включено, если пакет `symfony/validator` / `symfony/serializer` есть в `InstalledPackages` (lock потребителя). `true` без пакета — работает (мост не зависит от пакетов), но warning «not installed».
-- **Версия — по компоненту.** Validator-атрибуты пишутся для версии `symfony/validator`, Serializer-атрибуты — для версии `symfony/serializer`: компоненты версионируются независимо. Явная `version` применяется к обоим. Без своего компонента — старшая из основных пакетов Symfony в lock (`validator`, `serializer`, `framework-bundle`, `http-kernel`, `dependency-injection`, `console`, `property-access`), без них — `LATEST` (7.4, последняя версия, правила которой мост знает).
+- **Версия — по компоненту.** Validator-атрибуты пишутся для версии `symfony/validator`, Serializer-атрибуты — для версии `symfony/serializer`: компоненты версионируются независимо. Явная `version` применяется к обоим. Без своего компонента — старшая из основных пакетов Symfony в lock (`validator`, `serializer`, `framework-bundle`, `http-kernel`, `dependency-injection`, `console`, `property-access`), без них — `LATEST` (8.1, последняя версия, проверенная матрицей B4).
 - `version` ниже 5.4 — ошибка конфига; версия ниже 5.4 из lock — warning, и компонент не обслуживается.
 - Неверная секция — ошибка конфига. Ядро сообщает ошибки регистрации расширения на корне конфига (`dto-generator.yaml#`), поэтому сообщение моста само называет ключ: `extensionConfig.symfony.<key> …`; все проблемы секции — в одном сообщении. `null` у ключа — ошибка, а не `auto`.
 - Мост заявляет (`claimExtensionKeys`) `x-validator-*` и `x-serializer-*`.
@@ -143,6 +143,8 @@ extensionConfig:
 - Команда `dto-generator:generate [--check] [--dry-run] [--format=text|json]` — те же коды выхода и вывод, что у CLI ядра (переиспользует `Presentation\Cli` ядра или вызывает `Generate` и форматирует так же).
 - `check_on_warmup: true` — `CacheWarmerInterface` (опциональный) запускает генерацию в режиме `--check` и пишет warning в лог при расхождении; никогда не пишет файлы (на деплое `src/` может быть только для чтения). Решение: запись в warmup не делается.
 - Бандл не нужен для генерации: плагин Composer и CLI ядра работают без него.
+- B5: команда — обёртка над командой `generate` ядра (`DtoGenerator::console($projectDir)->find('generate')`): то же определение, вывод и коды выхода; ядру передаётся свой `ArrayInput` (`Command::run()` заново привязывает вход и потерял бы подставленный `--config`). `run()` идёт через `DtoGenerator::guard()` ядра: опечатка в опции — код 3 (JSON при `--format=json`), сбой — 2, как у CLI. Относительный `config` и `--config` разрешаются от каталога проекта; пустой `--config` оставляет конфиг бандла. Регистрация ленивая (`console.command` с `command` и `description`). Прогрев пишет warning при `out-of-date`, при ошибке проверки (сообщения ошибок ядра) и при любом исключении — прогрев не падает никогда. Сервисы — кодом в `Extension::load()`, классический `Bundle` (5.4–8).
+- Код бандла выполняется только рядом с Symfony: PHPStan проверяет его конфигом `phpstan-symfony.neon` (PHP 8.4), основной (`phpVersion 70400`) Symfony 8 не читает.
 
 ## 8. Тестирование
 
@@ -157,7 +159,7 @@ extensionConfig:
 - Типы свойств — `PhpDocExtractor` + `ReflectionExtractor`, как у FrameworkBundle с phpDocumentor.
 - Устаревания из `vendor/`, в том числе тихие (`@trigger_error`), собираются и сверяются со списком «чужих» (`FOREIGN_DEPRECATIONS`: чтение аннотаций 6.4, режим `loose` EmailValidator 6.2–6.4, код Symfony 5.4 на PHP 8.4/8.5); любое другое — провал как устаревание метаданных моста. Так найден `date-time` 8.1.
 - Локально — `tests/Integration/Symfony/run-matrix.sh`, повторяющий шаги задания `phpunit` стандарта (те же закрепления версий, тот же набор инструментов). Infection — `^0.29 || ^0.32`: 0.29 не ставится с console 8, 0.32 — с console 5.4.
-- PHPStan с `phpVersion: 70400` не читает сигнатуры Symfony 8 (нативный `mixed` становится классом): тест исключён в `phpstan-baseline.neon` и проверяется `tests/Integration/Symfony/phpstan-matrix.neon` (PHP 8.4, level max).
+- PHPStan с `phpVersion: 70400` не читает сигнатуры Symfony 8 (нативный `mixed` становится классом): тест исключён в `phpstan-baseline.neon` и проверяется `phpstan-symfony.neon` (PHP 8.4, level max).
 
 ## 9. Этапы
 

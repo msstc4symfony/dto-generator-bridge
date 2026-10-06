@@ -2,15 +2,25 @@ deptrac:
   paths:
     - ./src
   layers:
+    # By namespace: deptrac matches a directory pattern anywhere in the absolute path, checkout included.
     - name: Bridge
       collectors:
-        - type: directory
-          value: src/.*
+        - type: classNameRegex
+          value: '#^Msstc4Symfony\\DtoGeneratorBridge\\(?!Bundle\\|((Validator|Serializer)\\)?Json(Value|Scalar)$)#'
+    # The Symfony bundle: runs the generator, so it may also use the core's entry points.
+    - name: Bundle
+      collectors:
+        - type: classNameRegex
+          value: '#^Msstc4Symfony\\DtoGeneratorBridge\\Bundle\\#'
     # The generator's SPI: what an extension may use of the core.
     - name: CoreSpi
       collectors:
         - type: classNameRegex
           value: '#^MSSTC4PHP\\DtoGenerator\\(Contract|Domain\\(Model|Schema|Diagnostic|Target|Shared))\\#'
+    - name: CoreEntry
+      collectors:
+        - type: classNameRegex
+          value: '#^MSSTC4PHP\\DtoGenerator\\(DtoGenerator|Application\\Service\\Generate\\(Input|Mode|Output|Status))$#'
     # PHPStan type aliases imported from the core (JsonValue); deptrac resolves them as if they were classes.
     - name: TypeAlias
       collectors:
@@ -18,5 +28,7 @@ deptrac:
           value: '#^Msstc4Symfony\\DtoGeneratorBridge\\(Validator\\|Serializer\\)?Json(Value|Scalar)$#'
   ruleset:
     Bridge: [CoreSpi, TypeAlias]
+    Bundle: [CoreSpi, CoreEntry]
     CoreSpi: ~
+    CoreEntry: ~
     TypeAlias: ~

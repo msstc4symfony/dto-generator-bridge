@@ -34,9 +34,11 @@
     },
     "suggest": {
         "symfony/validator": "To validate the generated DTOs",
-        "symfony/serializer": "To (de)serialize the generated DTOs"
+        "symfony/serializer": "To (de)serialize the generated DTOs",
+        "symfony/framework-bundle": "To use DtoGeneratorBundle: the dto-generator:generate command and the warmup check"
     },
     "conflict": {
+        "symfony/framework-bundle": "<5.4",
         "symfony/symfony": "*"
     },
     "autoload": {

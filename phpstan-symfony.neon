@@ -1,0 +1,10 @@
+# The code that runs only beside an installed Symfony, as PHP 8.4 sees it: vendor/bin/phpstan analyse -c phpstan-symfony.neon
+# phpstan.dist.neon (phpVersion 70400) cannot read Symfony 8, which the CI tools install, so it leaves these paths out.
+parameters:
+    level: max
+    treatPhpDocTypesAsCertain: false
+    phpVersion: 80400
+    paths:
+        - src/Bundle
+        - tests/Unit/Bundle
+        - tests/Integration/Symfony
