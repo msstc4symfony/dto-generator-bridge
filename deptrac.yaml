@@ -2,15 +2,16 @@ deptrac:
   paths:
     - ./src
   layers:
+    # By namespace: deptrac matches a directory pattern anywhere in the absolute path, checkout included.
     - name: Bridge
       collectors:
-        - type: directory
-          value: src/(?!Bundle/).*
+        - type: classNameRegex
+          value: '#^Msstc4Symfony\\DtoGeneratorBridge\\(?!Bundle\\|((Validator|Serializer)\\)?Json(Value|Scalar)$)#'
     # The Symfony bundle: runs the generator, so it may also use the core's entry points.
     - name: Bundle
       collectors:
-        - type: directory
-          value: src/Bundle/.*
+        - type: classNameRegex
+          value: '#^Msstc4Symfony\\DtoGeneratorBridge\\Bundle\\#'
     # The generator's SPI: what an extension may use of the core.
     - name: CoreSpi
       collectors:

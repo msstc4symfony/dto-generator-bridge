@@ -34,6 +34,9 @@
 - Тесты — `tests/Unit/Bundle` (настоящее ядро Symfony, `TestKernel`; кэш контейнера — свой на каждый конфиг бандла, иначе ядро берёт старый контейнер). Устаревания из `vendor/` глушатся с самого начала `setUp()`: Symfony 5.4 и старые contracts на PHP 8.4 бросают их уже при загрузке классов.
 - PHPStan: `phpstan-symfony.neon` (PHP 8.4) — `src/Bundle`, `tests/Unit/Bundle`, `tests/Integration/Symfony`; в основном они исключены. Ни `make check`, ни CI стандарта этот конфиг не запускают — перед слиянием вручную: `vendor/bin/phpstan analyse -c phpstan-symfony.neon`.
 - `GenerateCommand::run()` обёрнут в `DtoGenerator::guard()`: `CommandTester` и `Application` вызывают `run()` команды, а ошибка привязки входа (`--chek`) бросается внутри `Command::run()` — без обёртки Symfony отвечал бы 1, что у генератора значит «устарело».
+- Сбой команды (код 2) не доходит до `ConsoleErrorEvent` и логгера FrameworkBundle — `guard()` ловит его внутри `run()`, вывод только в stderr, как у CLI ядра. Код 2 на уровне бандла тестом не покрыт: ядро не даёт надёжного способа упасть не-`ExceptionInterface`; сам `guard()` покрыт в ядре.
+- Прогрев строит генератор ядра в `warmUp()` под `try`, а не в конструкторе: исключение при создании сервиса уронило бы весь `cache:warmup`.
+- deptrac: слои моста — по namespace (`classNameRegex`), не по каталогу: `directory` ищет шаблон в любом месте абсолютного пути, и `src/` из пути checkout (`/usr/src/app`) смешал бы слои. Псевдоклассы `Json(Value|Scalar)` исключены из `Bridge` — это слой `TypeAlias`.
 - Ядро требует абсолютный путь в `Generate\Input` (`InvalidArgumentException`), поэтому команда и прогрев разрешают `config` от каталога проекта сами; `--config` команды разрешает ядро — от `console($projectDir)`, т. е. тоже от проекта.
 
 ## Известные особенности

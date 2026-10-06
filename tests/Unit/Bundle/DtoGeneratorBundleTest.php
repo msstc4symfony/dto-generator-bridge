@@ -6,6 +6,8 @@ namespace Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Bundle;
 
 use FilesystemIterator;
 use MSSTC4PHP\DtoGenerator\Application\Service\Generate\Output;
+use MSSTC4PHP\DtoGenerator\Application\Service\Generate\Status;
+use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostics;
 use MSSTC4PHP\DtoGenerator\DtoGenerator;
 use Msstc4Symfony\DtoGeneratorBridge\Bundle\CacheWarmer\GenerationCheckWarmer;
 use PHPUnit\Framework\TestCase;
@@ -137,6 +139,13 @@ final class DtoGeneratorBundleTest extends TestCase
         self::assertSame('config-failed', $report['status']);
     }
 
+    public function testPassesAnEmptyFormatToTheCore(): void
+    {
+        $command = $this->command([]);
+
+        self::assertSame(3, $command->execute(['--format' => '']), $command->getDisplay());
+    }
+
     public function testShowsTheBundleConfigInTheHelp(): void
     {
         $kernel = new TestKernel($this->project, ['config' => 'dtos.yaml']);
@@ -149,8 +158,7 @@ final class DtoGeneratorBundleTest extends TestCase
 
     public function testWarnsOnWarmupWhenTheDtosAreOutOfDate(): void
     {
-        $kernel = new TestKernel($this->project, ['check_on_warmup' => true]);
-        $kernel->boot();
+        $kernel = $this->bootedKernel(['check_on_warmup' => true]);
 
         $warmer = $this->service($kernel, GenerationCheckWarmer::class);
         assert($warmer instanceof GenerationCheckWarmer);
@@ -166,14 +174,12 @@ final class DtoGeneratorBundleTest extends TestCase
         $logger->records = [];
         $warmer->warmUp($kernel->getCacheDir());
         self::assertSame([], $logger->records);
-        $kernel->shutdown();
     }
 
     public function testWarnsOnWarmupWhenTheCheckFails(): void
     {
         file_put_contents($this->project . '/api.yaml', 'openapi: [');
-        $kernel = new TestKernel($this->project, ['check_on_warmup' => true]);
-        $kernel->boot();
+        $kernel = $this->bootedKernel(['check_on_warmup' => true]);
 
         $warmer = $this->service($kernel, GenerationCheckWarmer::class);
         assert($warmer instanceof GenerationCheckWarmer);
@@ -184,7 +190,6 @@ final class DtoGeneratorBundleTest extends TestCase
 
         self::assertCount(1, $logger->records);
         self::assertStringStartsWith('warning: dto-generator could not check ' . $this->project . '/dto-generator.yaml: ', $logger->records[0]);
-        $kernel->shutdown();
     }
 
     public function testWarnsOnWarmupForARelativeConfig(): void
@@ -211,6 +216,16 @@ final class DtoGeneratorBundleTest extends TestCase
         self::assertSame(['warning: dto-generator could not check ' . $this->project . '/dto-generator.yaml: boom'], $logger->records);
     }
 
+    public function testNamesTheStatusWhenAFailedCheckGivesNoErrors(): void
+    {
+        $logger = new RecordingLogger();
+        $warmer = new GenerationCheckWarmer('dto-generator.yaml', $this->project, $logger, static fn (): Output => new Output(Status::from(Status::GENERATION_FAILED), new Diagnostics(), null, []));
+
+        $warmer->warmUp($this->project . '/var/cache');
+
+        self::assertSame(['warning: dto-generator could not check ' . $this->project . '/dto-generator.yaml: generation-failed'], $logger->records);
+    }
+
     public function testChecksOnTheRealCacheWarmup(): void
     {
         $kernel = $this->bootedKernel(['check_on_warmup' => true]);
@@ -226,25 +241,21 @@ final class DtoGeneratorBundleTest extends TestCase
 
     public function testLoadsTheCommandLazily(): void
     {
-        $kernel = new TestKernel($this->project, []);
-        $kernel->boot();
+        $kernel = $this->bootedKernel([]);
 
         $loader = $kernel->getContainer()->get('console.command_loader');
 
         self::assertInstanceOf(CommandLoaderInterface::class, $loader);
         self::assertTrue($loader->has('dto-generator:generate'));
         self::assertSame(DtoGenerator::console()->find('generate')->getDescription(), $this->listedDescription($kernel));
-        $kernel->shutdown();
     }
 
     public function testChecksNothingOnWarmupByDefault(): void
     {
-        $kernel = new TestKernel($this->project, []);
-        $kernel->boot();
+        $kernel = $this->bootedKernel([]);
 
         self::assertTrue($kernel->getContainer()->has('test.service_container'));
         self::assertFalse($this->testContainer($kernel)->has(GenerationCheckWarmer::class));
-        $kernel->shutdown();
     }
 
     /**

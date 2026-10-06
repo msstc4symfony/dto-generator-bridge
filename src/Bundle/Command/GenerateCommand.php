@@ -59,7 +59,8 @@ final class GenerateCommand extends Command
         $core = $this->core();
         $parameters = ['--config' => $this->config];
         foreach ($input->getOptions() as $name => $value) {
-            if (!in_array($value, [null, false, ''], true) && $core->getDefinition()->hasOption((string) $name)) {
+            $unset = $value === null || $value === false || ($name === 'config' && $value === '');
+            if (!$unset && $core->getDefinition()->hasOption((string) $name)) {
                 $parameters['--' . $name] = $value;
             }
         }

@@ -26,18 +26,18 @@ final class GenerationCheckWarmer implements CacheWarmerInterface
 
     private LoggerInterface $logger;
 
-    /** @var callable(Input): Output */
+    /** @var (callable(Input): Output)|null */
     private $generator;
 
     /**
      * @param string $config relative to the project directory, or absolute
-     * @param (callable(Input): Output)|null $generator the core's generator by default
+     * @param (callable(Input): Output)|null $generator internal, for tests; the core's generator by default
      */
     public function __construct(string $config, string $projectDir, ?LoggerInterface $logger = null, ?callable $generator = null)
     {
         $this->config = Path::resolve($projectDir, $config);
         $this->logger = $logger ?? new NullLogger();
-        $this->generator = $generator ?? DtoGenerator::generator();
+        $this->generator = $generator;
     }
 
     public function isOptional(): bool
@@ -56,7 +56,9 @@ final class GenerationCheckWarmer implements CacheWarmerInterface
     public function warmUp($cacheDir, $buildDir = null): array
     {
         try {
-            $output = ($this->generator)(new Input($this->config, Mode::from(Mode::CHECK)));
+            // Built here rather than in the constructor, so that a broken core install is a warning too.
+            $generator = $this->generator ?? DtoGenerator::generator();
+            $output = $generator(new Input($this->config, Mode::from(Mode::CHECK)));
         } catch (Throwable $exception) {
             $this->cannotCheck($exception->getMessage());
 
@@ -68,7 +70,7 @@ final class GenerationCheckWarmer implements CacheWarmerInterface
             $this->logger->warning(sprintf('The DTOs generated from %s are out of date; run bin/console dto-generator:generate.', $this->config));
         } elseif ($status !== Status::OK) {
             $errors = array_map(static fn (Diagnostic $diagnostic): string => $diagnostic->toString(), $output->diagnostics()->errors());
-            $this->cannotCheck(implode(' ', $errors));
+            $this->cannotCheck($errors === [] ? $status : implode(' ', $errors));
         }
 
         return [];
