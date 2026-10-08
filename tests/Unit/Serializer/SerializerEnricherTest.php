@@ -99,6 +99,28 @@ final class SerializerEnricherTest extends TestCase
         self::assertSame([], $this->attributesOf($code, 'either'));
     }
 
+    public function testIgnoresTheUndeclaredPropertiesTheSerializerCannotCarry(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => ['name' => ['type' => 'string']], 'additionalProperties' => ['type' => 'integer']], [], '8.2', self::ONLY_SERIALIZER, null, self::SERIALIZER);
+        $declared = $this->pet(['type' => 'object', 'properties' => ['additionalProperties' => ['type' => 'string']]]);
+
+        self::assertSame(['Serializer\\Ignore'], $this->attributesOf($this->code($output, 'Pet.php'), 'additionalProperties'));
+        self::assertSame(
+            ['warning /api.yaml#/components/schemas/Pet/additionalProperties: Symfony Serializer would carry the undeclared properties as one key "additionalProperties", so $additionalProperties is ignored: they are dropped when reading and not written.'],
+            $this->messages($output),
+        );
+        self::assertSame([], $this->attributesOf($declared, 'additionalProperties'));
+    }
+
+    public function testReadsTheSerializerKeysOfUndeclaredPropertiesFromTheirSchema(): void
+    {
+        $confirmed = $this->pet(['type' => 'object', 'properties' => ['name' => ['type' => 'string']], 'additionalProperties' => ['type' => 'integer', 'x-serializer-ignore' => true]]);
+        $skipped = $this->pet(['type' => 'object', 'properties' => ['name' => ['type' => 'string']], 'additionalProperties' => ['type' => 'integer', 'x-serializer-skip' => true]]);
+
+        self::assertSame(['Serializer\\Ignore'], $this->attributesOf($confirmed, 'additionalProperties'));
+        self::assertSame([], $this->attributesOf($skipped, 'additionalProperties'));
+    }
+
     public function testWarnsThatAnIgnoredRequiredPropertyCannotBeDenormalized(): void
     {
         $output = $this->generate(['type' => 'object', 'required' => ['secret', 'token'], 'properties' => [

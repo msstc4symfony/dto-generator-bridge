@@ -65,3 +65,8 @@ components:
       properties:
         animal_type: {type: string}
         good: {type: boolean}
+    Tally:
+      type: object
+      properties:
+        label: {type: string}
+      additionalProperties: {type: integer, minimum: 0}
