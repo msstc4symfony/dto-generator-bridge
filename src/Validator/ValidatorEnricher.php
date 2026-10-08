@@ -7,6 +7,7 @@ namespace Msstc4Symfony\DtoGeneratorBridge\Validator;
 use MSSTC4PHP\DtoGenerator\Contract\PropertyContext;
 use MSSTC4PHP\DtoGenerator\Contract\PropertyEnricher;
 use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeModel;
+use MSSTC4PHP\DtoGenerator\Domain\Model\MapType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\MixedType;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use Msstc4Symfony\DtoGeneratorBridge\ComponentGate;
@@ -45,12 +46,18 @@ final class ValidatorEnricher implements PropertyEnricher
         $builder = new ConstraintBuilder($context->references(), $context->target(), $diagnostics);
         $groups = $this->groups($extensions);
 
-        // A required property is non-nullable, except a mixed one (null among its values): the generator makes a
-        // nullable property optional otherwise.
-        $constraints = array_merge(
-            $property->isRequired() && !$property->type() instanceof MixedType ? [new ConstraintSpec('NotNull')] : [],
-            $builder->build($schema, $property->type()),
-        );
+        $type = $property->type();
+        if ($property->isAdditionalProperties() && $type instanceof MapType) {
+            // Its schema is that of each undeclared property, not of the map.
+            $constraints = $builder->elements($schema, $type->value(), $schema->location());
+        } else {
+            // A required property is non-nullable, except a mixed one (null among its values): the generator makes a
+            // nullable property optional otherwise.
+            $constraints = array_merge(
+                $property->isRequired() && !$type instanceof MixedType ? [new ConstraintSpec('NotNull')] : [],
+                $builder->build($schema, $type),
+            );
+        }
 
         return array_map(
             static fn (ConstraintSpec $constraint): AttributeModel => $constraint->withGroups($groups)->toAttribute(),

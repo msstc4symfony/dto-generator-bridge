@@ -78,6 +78,15 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
         }
 
         $property = $context->property();
+        if ($property->isAdditionalProperties()) {
+            $context->diagnostics()->warning(
+                'Symfony Serializer would carry the undeclared properties as one key "additionalProperties", so $additionalProperties is ignored: they are dropped when reading and not written.',
+                $schema->location(),
+            );
+
+            return [$this->attribute($version, 'Ignore')];
+        }
+
         if ($extensions->flag('x-serializer-ignore')) {
             // A required property is a constructor parameter without a default, even with a schema default.
             if ($property->isRequired()) {

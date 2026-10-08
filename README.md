@@ -66,6 +66,7 @@ value of several types, a pattern PHP cannot compile or a malformed keyword the 
 | `format: date` (also of list or map items, or behind a nullable union) | `Context` with the `Y-m-d` date format |
 | `x-serializer-groups: [api]` | `Groups(['api'])` |
 | `x-serializer-ignore: true` | `Ignore` |
+| `properties` beside an `additionalProperties` schema | `Ignore` on `$additionalProperties`, with a warning |
 
 `x-serializer-skip: true` leaves a property alone. Before Symfony 6.4 the attributes come from
 `Symfony\Component\Serializer\Annotation`, from 6.4 from `Symfony\Component\Serializer\Attribute`.
@@ -76,6 +77,9 @@ Notes:
   converter (such as `camel_case_to_snake_case`) renames the other properties too.
 - `x-serializer-ignore` on a required property leaves the constructor without its argument, so denormalizing fails;
   the bridge warns about it.
+- Symfony Serializer cannot spread a map over the keys of its object: it would carry `$additionalProperties`, the
+  properties a schema does not declare, as one key `"additionalProperties"`. The bridge ignores that property, so
+  undeclared keys are dropped when reading and not written; the validator still checks each value with `All`/`Valid`.
 - `date-time` gets no format: Symfony's RFC 3339 default fits it. From Serializer 8.1, which deprecates reading other
   forms such as fractions of a second, the bridge asks for the loose parser instead. A property attribute wins over the
   context of the call, so a `datetime_format` passed to `deserialize()` does not apply to those properties;

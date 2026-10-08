@@ -53,6 +53,21 @@ final class ValidatorEnricherTest extends TestCase
         self::assertSame(['Assert\\Count(max: 4)', 'Assert\\All(constraints: [new \\Symfony\\Component\\Validator\\Constraints\\GreaterThanOrEqual(value: 0)])'], $this->attributesOf($code, 'scores'));
     }
 
+    public function testConstrainsTheValuesOfUndeclaredProperties(): void
+    {
+        $strings = $this->pet(['type' => 'object', 'properties' => ['name' => ['type' => 'string']], 'additionalProperties' => ['type' => 'string', 'maxLength' => 8, 'pattern' => '^[a-z]+$']]);
+        $owners = $this->pet(['type' => 'object', 'properties' => ['name' => ['type' => 'string']], 'additionalProperties' => ['$ref' => '#/components/schemas/Owner']], ['Owner' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]]]);
+        $declared = $this->pet(['type' => 'object', 'required' => ['counts'], 'properties' => [
+            'additionalProperties' => ['type' => 'string', 'maxLength' => 3],
+            'counts' => ['type' => 'object', 'maxProperties' => 2, 'additionalProperties' => ['type' => 'integer', 'minimum' => 1]],
+        ]]);
+
+        self::assertSame(["Assert\\All(constraints: [new \\Symfony\\Component\\Validator\\Constraints\\Length(max: 8), new \\Symfony\\Component\\Validator\\Constraints\\Regex(pattern: '/^[a-z]+$/uD')])"], $this->attributesOf($strings, 'additionalProperties'));
+        self::assertSame(['Assert\\Valid'], $this->attributesOf($owners, 'additionalProperties'));
+        self::assertSame(['Assert\\Length(max: 3)'], $this->attributesOf($declared, 'additionalProperties'));
+        self::assertSame(['Assert\\NotNull', 'Assert\\Count(max: 2)', 'Assert\\All(constraints: [new \\Symfony\\Component\\Validator\\Constraints\\GreaterThanOrEqual(value: 1)])'], $this->attributesOf($declared, 'counts'));
+    }
+
     public function testCascadesIntoNestedObjects(): void
     {
         $code = $this->pet(['type' => 'object', 'properties' => [

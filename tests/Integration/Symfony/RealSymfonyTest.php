@@ -270,6 +270,23 @@ final class RealSymfonyTest extends TestCase
     }
 
     /**
+     * @dataProvider targets
+     */
+    public function testCarriesNoUndeclaredPropertiesButChecksTheirValues(string $php): void
+    {
+        $this->runTarget($php, function (string $namespace, bool $annotations) use ($php): void {
+            $serializer = $this->serializer($annotations);
+            $tally = $serializer->denormalize(['label' => 'x', 'apples' => 2], $namespace . '\Tally');
+
+            self::assertIsObject($tally);
+            self::assertSame(['label' => 'x'], $serializer->normalize($tally));
+            $class = $namespace . '\Tally';
+            // PHP 8.0 attributes allow no "new", so the bridge writes no All there.
+            self::assertSame($php === '8.0' ? [] : ['additionalProperties[apples]'], $this->violationPaths(new $class('x', ['apples' => -1]), $annotations));
+        });
+    }
+
+    /**
      * @param list<string> $groups
      *
      * @return list<string>
@@ -360,7 +377,7 @@ final class RealSymfonyTest extends TestCase
         $messages = array_map(static fn (Diagnostic $diagnostic): string => str_replace($dir, '', $diagnostic->toString()), $output->diagnostics()->all());
         self::assertSame([], array_values(array_filter($messages, static fn (string $message): bool => strncmp($message, 'error', 5) === 0)));
         $dropped = array_values(array_filter($messages, static fn (string $message): bool => strpos($message, 'inside All') !== false));
-        self::assertCount($php === '8.0' ? 2 : 0, $dropped, implode("\n", $messages));
+        self::assertCount($php === '8.0' ? 3 : 0, $dropped, implode("\n", $messages));
 
         $out = $dir . '/out/';
         $autoloader = static function (string $class) use ($namespace, $out): void {

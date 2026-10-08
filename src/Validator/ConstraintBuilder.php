@@ -291,10 +291,16 @@ final class ConstraintBuilder
             return [];
         }
 
-        if (!$itemSchema instanceof Schema) {
-            return [];
-        }
+        return $itemSchema instanceof Schema ? $this->elements($itemSchema, $item, $at) : [];
+    }
 
+    /**
+     * The constraints of each element of a list or map, from the schema of the elements.
+     *
+     * @return list<ConstraintSpec>
+     */
+    public function elements(Schema $itemSchema, TypeModel $item, SchemaLocation $at): array
+    {
         $valid = null;
         $inner = [];
         foreach ($this->build($itemSchema, $item) as $constraint) {
