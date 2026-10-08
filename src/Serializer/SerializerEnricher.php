@@ -78,7 +78,8 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
         }
 
         $property = $context->property();
-        if ($property->isAdditionalProperties()) {
+        // x-serializer-ignore on the schema of the values confirms the choice, so it needs no warning.
+        if ($property->isAdditionalProperties() && !$extensions->flag('x-serializer-ignore')) {
             $context->diagnostics()->warning(
                 'Symfony Serializer would carry the undeclared properties as one key "additionalProperties", so $additionalProperties is ignored: they are dropped when reading and not written.',
                 $schema->location(),

@@ -78,8 +78,12 @@ Notes:
 - `x-serializer-ignore` on a required property leaves the constructor without its argument, so denormalizing fails;
   the bridge warns about it.
 - Symfony Serializer cannot spread a map over the keys of its object: it would carry `$additionalProperties`, the
-  properties a schema does not declare, as one key `"additionalProperties"`. The bridge ignores that property, so
-  undeclared keys are dropped when reading and not written; the validator still checks each value with `All`/`Valid`.
+  properties a schema does not declare, as one key `"additionalProperties"`. The bridge ignores that property, with a
+  warning, so undeclared keys are dropped when reading and not written. The validator checks each value with
+  `All`/`Valid`, which covers the values a DTO is built with in code; keys of a JSON input never reach it. The bridge's
+  `x-validator-*` and `x-serializer-*` keys for `$additionalProperties` go on the `additionalProperties` schema:
+  `x-serializer-ignore: true` there confirms the choice without the warning, while `x-serializer-skip: true` brings the
+  single key back.
 - `date-time` gets no format: Symfony's RFC 3339 default fits it. From Serializer 8.1, which deprecates reading other
   forms such as fractions of a second, the bridge asks for the loose parser instead. A property attribute wins over the
   context of the call, so a `datetime_format` passed to `deserialize()` does not apply to those properties;
@@ -116,7 +120,7 @@ check never writes files and never fails the warmup: whatever goes wrong becomes
 ## Requirements
 
 - PHP >= 7.4 (the bridge runs inside the generator)
-- `msstc4php/dto-generator` ^1.0
+- `msstc4php/dto-generator` ^1.1
 
 ## Development
 

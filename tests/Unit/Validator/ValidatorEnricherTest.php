@@ -68,6 +68,15 @@ final class ValidatorEnricherTest extends TestCase
         self::assertSame(['Assert\\NotNull', 'Assert\\Count(max: 2)', 'Assert\\All(constraints: [new \\Symfony\\Component\\Validator\\Constraints\\GreaterThanOrEqual(value: 1)])'], $this->attributesOf($declared, 'counts'));
     }
 
+    public function testReadsTheValidatorKeysOfUndeclaredPropertiesFromTheirSchema(): void
+    {
+        $skipped = $this->pet(['type' => 'object', 'properties' => ['name' => ['type' => 'string']], 'additionalProperties' => ['type' => 'string', 'maxLength' => 8, 'x-validator-skip' => true]]);
+        $grouped = $this->pet(['type' => 'object', 'properties' => ['name' => ['type' => 'string']], 'additionalProperties' => ['type' => 'string', 'maxLength' => 8, 'x-validator-groups' => ['api']]]);
+
+        self::assertSame([], $this->attributesOf($skipped, 'additionalProperties'));
+        self::assertSame(["Assert\\All(constraints: [new \\Symfony\\Component\\Validator\\Constraints\\Length(max: 8)], groups: ['api', 'Default'])"], $this->attributesOf($grouped, 'additionalProperties'));
+    }
+
     public function testCascadesIntoNestedObjects(): void
     {
         $code = $this->pet(['type' => 'object', 'properties' => [
@@ -330,7 +339,7 @@ final class ValidatorEnricherTest extends TestCase
         ]], [], '8.0');
 
         self::assertSame(['Assert\\Count(max: 3)'], $this->attributesOf($this->code($output, 'Pet.php'), 'tags'));
-        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/tags: The constraints of the items go inside All as "new", which PHP 8.0 does not allow in attributes; they are not checked.'], $this->messages($output));
+        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/tags: The constraints of the elements go inside All as "new", which PHP 8.0 does not allow in attributes; they are not checked.'], $this->messages($output));
     }
 
     public function testComparesWithTheConstantAsThePropertyHoldsIt(): void

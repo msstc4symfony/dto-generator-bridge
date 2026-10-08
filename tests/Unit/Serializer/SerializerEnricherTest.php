@@ -112,6 +112,15 @@ final class SerializerEnricherTest extends TestCase
         self::assertSame([], $this->attributesOf($declared, 'additionalProperties'));
     }
 
+    public function testReadsTheSerializerKeysOfUndeclaredPropertiesFromTheirSchema(): void
+    {
+        $confirmed = $this->pet(['type' => 'object', 'properties' => ['name' => ['type' => 'string']], 'additionalProperties' => ['type' => 'integer', 'x-serializer-ignore' => true]]);
+        $skipped = $this->pet(['type' => 'object', 'properties' => ['name' => ['type' => 'string']], 'additionalProperties' => ['type' => 'integer', 'x-serializer-skip' => true]]);
+
+        self::assertSame(['Serializer\\Ignore'], $this->attributesOf($confirmed, 'additionalProperties'));
+        self::assertSame([], $this->attributesOf($skipped, 'additionalProperties'));
+    }
+
     public function testWarnsThatAnIgnoredRequiredPropertyCannotBeDenormalized(): void
     {
         $output = $this->generate(['type' => 'object', 'required' => ['secret', 'token'], 'properties' => [

@@ -47,8 +47,9 @@ final class ValidatorEnricher implements PropertyEnricher
         $groups = $this->groups($extensions);
 
         $type = $property->type();
-        if ($property->isAdditionalProperties() && $type instanceof MapType) {
+        if ($property->isAdditionalProperties()) {
             // Its schema is that of each undeclared property, not of the map.
+            assert($type instanceof MapType);
             $constraints = $builder->elements($schema, $type->value(), $schema->location());
         } else {
             // A required property is non-nullable, except a mixed one (null among its values): the generator makes a

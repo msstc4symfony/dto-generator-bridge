@@ -89,6 +89,31 @@ final class ConstraintBuilder
     }
 
     /**
+     * The constraints of each element of a list or map, from the schema of the elements.
+     *
+     * @return list<ConstraintSpec>
+     */
+    public function elements(Schema $itemSchema, TypeModel $item, SchemaLocation $at): array
+    {
+        $valid = null;
+        $inner = [];
+        foreach ($this->build($itemSchema, $item) as $constraint) {
+            if ($constraint->is('Valid')) {
+                $valid = $constraint;
+            } else {
+                $inner[] = $constraint->toNewInstance();
+            }
+        }
+
+        $constraints = $valid === null ? [] : [$valid];
+        if ($inner !== [] && $this->allowsNew($at)) {
+            $constraints[] = new ConstraintSpec('All', [AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner))]);
+        }
+
+        return $constraints;
+    }
+
+    /**
      * Symfony checks a keyword on another kind of value anyway (Length counts the digits of a number), so a value that
      * may be of several types gets none.
      *
@@ -294,31 +319,6 @@ final class ConstraintBuilder
         return $itemSchema instanceof Schema ? $this->elements($itemSchema, $item, $at) : [];
     }
 
-    /**
-     * The constraints of each element of a list or map, from the schema of the elements.
-     *
-     * @return list<ConstraintSpec>
-     */
-    public function elements(Schema $itemSchema, TypeModel $item, SchemaLocation $at): array
-    {
-        $valid = null;
-        $inner = [];
-        foreach ($this->build($itemSchema, $item) as $constraint) {
-            if ($constraint->is('Valid')) {
-                $valid = $constraint;
-            } else {
-                $inner[] = $constraint->toNewInstance();
-            }
-        }
-
-        $constraints = $valid === null ? [] : [$valid];
-        if ($inner !== [] && $this->allowsNew($at)) {
-            $constraints[] = new ConstraintSpec('All', [AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner))]);
-        }
-
-        return $constraints;
-    }
-
     private function allowsNew(SchemaLocation $at): bool
     {
         if ($this->target->metadata()->isAnnotations() || $this->target->supports(Capability::from(Capability::NEW_IN_INITIALIZERS))) {
@@ -326,7 +326,7 @@ final class ConstraintBuilder
         }
 
         $this->diagnostics->warning(sprintf(
-            'The constraints of the items go inside All as "new", which PHP %s does not allow in attributes; they are not checked.',
+            'The constraints of the elements go inside All as "new", which PHP %s does not allow in attributes; they are not checked.',
             $this->target->php()->toString(),
         ), $at);
 

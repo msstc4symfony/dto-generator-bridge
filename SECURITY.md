@@ -14,7 +14,7 @@ Runtime requirements are tracked in `composer.json`:
 
 - PHP >= 7.4 — the bridge runs inside the DTO generator, which supports PHP 7.4
   (bundle-standard runtime profile `php74`)
-- `msstc4php/dto-generator` ^1.0
+- `msstc4php/dto-generator` ^1.1
 - The generated attributes target Symfony 5.4, 6.4, 7.x and 8.x
 
 ## Reporting a Vulnerability
