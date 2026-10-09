@@ -463,6 +463,42 @@ final class ValidatorEnricherTest extends TestCase
         ], $this->messages($output));
     }
 
+    public function testChoosesAmongTheValuesOfAMixedEnumAndLeavesKeywordsOfOneKind(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'level' => ['enum' => ['low', 1], 'minLength' => 2, 'minimum' => 0],
+        ]]);
+
+        self::assertSame(["Assert\\Choice(choices: ['low', 1])"], $this->attributesOf($this->code($output, 'Pet.php'), 'level'));
+        self::assertSame([
+            'warning /api.yaml#/components/schemas/Pet/properties/level/enum: The enum mixes strings and integers, which no PHP enum can back; the property takes either.',
+            'warning /api.yaml#/components/schemas/Pet/properties/level: "minLength" checks only a string, and the value may be of another type; it is not checked.',
+            'warning /api.yaml#/components/schemas/Pet/properties/level: "minimum" checks only a number, and the value may be of another type; it is not checked.',
+        ], $this->messages($output));
+    }
+
+    public function testCascadesIntoHoistedUnionMembers(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'either' => ['oneOf' => [
+                ['type' => 'object', 'properties' => ['a' => ['type' => 'string', 'maxLength' => 2]]],
+                ['type' => 'object', 'title' => 'Bee', 'properties' => ['b' => ['type' => 'integer']]],
+            ]],
+            'many' => ['type' => 'array', 'maxItems' => 3, 'items' => ['anyOf' => [
+                ['type' => 'object', 'properties' => ['a' => ['type' => 'string']]],
+                ['type' => 'object', 'properties' => ['c' => ['type' => 'string']]],
+            ]]],
+        ]]);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertStringContainsString('PetEitherOption1|Bee|null $either', $code);
+        self::assertStringContainsString('@var list<PetManyItemOption1|PetManyItemOption2>|null', $code);
+        self::assertSame(['Assert\\Valid'], $this->attributesOf($code, 'either'));
+        self::assertSame(['Assert\\Count(max: 3)', 'Assert\\Valid'], $this->attributesOf($code, 'many'));
+        self::assertSame(['Assert\\Length(max: 2)'], $this->attributesOf($this->code($output, 'PetEitherOption1.php'), 'a'));
+        self::assertSame([], $this->messages($output));
+    }
+
     public function testReadsKeywordsWrittenAsOtherNumbersAndWarnsAboutTheRest(): void
     {
         $output = $this->generate(['type' => 'object', 'properties' => [
