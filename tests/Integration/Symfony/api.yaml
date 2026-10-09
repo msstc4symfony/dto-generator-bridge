@@ -40,6 +40,9 @@ components:
         legs: {type: integer, minimum: 2}
         tail: {type: integer, exclusiveMaximum: 3}
         nick: {type: string, x-serializer-groups: [public]}
+        count: {type: integer, format: int32, minimum: 0}
+        blob: {type: string, format: byte}
+        level: {enum: [low, 1]}
     Owner:
       type: object
       properties:
@@ -70,3 +73,25 @@ components:
       properties:
         label: {type: string}
       additionalProperties: {type: integer, minimum: 0}
+    Creature:
+      oneOf:
+        - {$ref: '#/components/schemas/Fish'}
+        - {$ref: '#/components/schemas/Bird'}
+      discriminator:
+        propertyName: kind
+        mapping:
+          fish: '#/components/schemas/Fish'
+          bird: '#/components/schemas/Bird'
+    CreatureKind: {type: string, enum: [fish, bird]}
+    Fish:
+      type: object
+      required: [kind]
+      properties:
+        kind: {$ref: '#/components/schemas/CreatureKind'}
+        fins: {type: integer, minimum: 0}
+    Bird:
+      type: object
+      required: [kind]
+      properties:
+        kind: {$ref: '#/components/schemas/CreatureKind'}
+        wings: {type: integer}
