@@ -66,7 +66,7 @@ final class ConstraintBuilder
     private const INT32 = [-2147483647 - 1, 2147483647];
 
     /** The name the int32 bounds go by, beside the keywords that compete with them. */
-    private const INT32_BOUND = 'format: int32';
+    private const INT32_LABEL = 'format: int32';
 
     /**
      * The formats whose constraint checks one kind of value only, and that kind as a warning names it.
@@ -106,7 +106,7 @@ final class ConstraintBuilder
         return array_merge(
             $this->checks($keywords, $kind, 'string', $at) ? $this->strings($keywords, $reader, $at) : [],
             $this->checks($keywords, $kind, 'number', $at)
-                ? $this->numbers($reader, $kind, $this->implied($keywords, $kind), $at)
+                ? $this->numbers($reader, $kind === 'integer', $this->implied($keywords, $kind), $at)
                 : [],
             $this->checks($keywords, $kind, 'collection', $at) ? $this->collections($keywords, $reader, $value, $at) : [],
             $this->values->choices($keywords, $value, $at),
@@ -228,31 +228,36 @@ final class ConstraintBuilder
     }
 
     /**
+     * The inclusive bounds the format of an integer sets, each with the name a warning gives it.
+     *
      * @param 'string'|'integer'|'number'|'collection'|'several'|null $kind
      *
-     * @return array{int, int}|null the inclusive bounds the format of an integer sets
+     * @return array{array{int, 'format: int32'}, array{int, 'format: int32'}}|null
      */
     private function implied(Keywords $keywords, ?string $kind): ?array
     {
-        return $kind === 'integer' && in_array('int32', $keywords->formats(), true) ? self::INT32 : null;
+        if ($kind !== 'integer' || !in_array('int32', $keywords->formats(), true)) {
+            return null;
+        }
+
+        return [[self::INT32[0], self::INT32_LABEL], [self::INT32[1], self::INT32_LABEL]];
     }
 
     /**
      * One lower and one upper bound: the strictest of the inclusive and exclusive keywords and the implied bounds,
      * exclusive on a tie.
      *
-     * @param 'string'|'integer'|'number'|'collection'|'several'|null $kind
-     * @param array{int, int}|null $implied
+     * @param array{array{int, 'format: int32'}, array{int, 'format: int32'}}|null $implied
      *
      * @return list<ConstraintSpec>
      */
-    private function numbers(KeywordReader $reader, ?string $kind, ?array $implied, SchemaLocation $at): array
+    private function numbers(KeywordReader $reader, bool $integer, ?array $implied, SchemaLocation $at): array
     {
         [$impliedLower, $impliedUpper] = $implied ?? [null, null];
         $lower = $this->strictest($reader, 'exclusiveMinimum', 'minimum', true, $impliedLower);
         $upper = $this->strictest($reader, 'exclusiveMaximum', 'maximum', false, $impliedUpper);
         $constraints = [];
-        if ($lower !== null && $upper !== null && !$this->satisfiable($lower, $upper, $kind === 'integer', $at)) {
+        if ($lower !== null && $upper !== null && !$this->satisfiable($lower, $upper, $integer, $at)) {
             $lower = null;
             $upper = null;
         }
@@ -283,12 +288,12 @@ final class ConstraintBuilder
 
     /**
      * The strictest bound and its keyword. On a tie the first candidate stays: an exclusive keyword before an inclusive
-     * one, a keyword before the int32 bound.
+     * one, a keyword before an implied bound.
      *
      * @param 'exclusiveMinimum'|'exclusiveMaximum' $exclusive
      * @param 'minimum'|'maximum' $inclusive
      * @param bool $lower whether the greatest bound is the strictest
-     * @param int|null $int32 the bound of `format: int32`, inclusive
+     * @param array{int, 'format: int32'}|null $implied an inclusive bound a format sets, and its name
      *
      * @return array{int|float, 'exclusiveMinimum'|'minimum'|'exclusiveMaximum'|'maximum'|'format: int32'}|null
      */
@@ -297,7 +302,7 @@ final class ConstraintBuilder
         string $exclusive,
         string $inclusive,
         bool $lower,
-        ?int $int32
+        ?array $implied
     ): ?array {
         $candidates = [];
         foreach ([$exclusive, $inclusive] as $keyword) {
@@ -306,8 +311,8 @@ final class ConstraintBuilder
             }
         }
 
-        if ($int32 !== null) {
-            $candidates[] = [$int32, self::INT32_BOUND];
+        if ($implied !== null) {
+            $candidates[] = $implied;
         }
 
         $strictest = null;
