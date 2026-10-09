@@ -6,6 +6,8 @@ All notable changes to this package are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-09
+
 ### Added
 
 - `format: int32` gives `Range(min: -2147483648, max: 2147483647)`, merged with `minimum`, `maximum` and the
@@ -80,7 +82,8 @@ First release.
   annotations for PHP 7.4 targets.
 - `DtoGeneratorBundle`: the `dto-generator:generate` console command and an optional check on cache warmup.
 
-[Unreleased]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/msstc4symfony/dto-generator-bridge/releases/tag/v1.0.0
