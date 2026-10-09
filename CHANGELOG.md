@@ -6,6 +6,8 @@ All notable changes to this package are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-10-09
+
 ### Documentation
 
 - README: features, requirements per component, installation from the GitHub repositories, a table of the
@@ -42,6 +44,7 @@ First release.
   annotations for PHP 7.4 targets.
 - `DtoGeneratorBundle`: the `dto-generator:generate` console command and an optional check on cache warmup.
 
-[Unreleased]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/msstc4symfony/dto-generator-bridge/releases/tag/v1.0.0
