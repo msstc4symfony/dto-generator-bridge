@@ -14,8 +14,9 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
 /**
- * The core's `generate` command under the application's console: the same options, output and exit codes, with
- * `--config` defaulting to the bundle's `config` and resolved against the project directory.
+ * The core's `generate` command under the application's console: the same options, output, exit codes and process
+ * settings as the generator's CLI, with `--config` defaulting to the bundle's `config` and resolved against the project
+ * directory.
  */
 final class GenerateCommand extends Command
 {
@@ -50,6 +51,8 @@ final class GenerateCommand extends Command
 
     public function run(InputInterface $input, OutputInterface $output): int
     {
+        DtoGenerator::prepareProcess($output);
+
         return DtoGenerator::guard($input, $output, fn (): int => parent::run($input, $output));
     }
 

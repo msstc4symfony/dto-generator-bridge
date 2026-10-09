@@ -32,6 +32,9 @@ final class DtoGeneratorBundleTest extends TestCase
 
     private bool $handlesErrors = false;
 
+    /** @var array{string|false, string|false, string|false} memory_limit, display_errors, DTO_GENERATOR_MEMORY_LIMIT */
+    private array $process;
+
     /** @var list<TestKernel> */
     private array $kernels = [];
 
@@ -49,6 +52,9 @@ final class DtoGeneratorBundleTest extends TestCase
             return is_callable($previous) && (bool) $previous($level, $message, $file, $line);
         }, E_USER_DEPRECATED | E_DEPRECATED);
         $this->handlesErrors = true;
+        // The command changes the process as the generator's CLI does; the suite runs on in this one.
+        $this->process = [ini_get('memory_limit'), ini_get('display_errors'), getenv('DTO_GENERATOR_MEMORY_LIMIT')];
+        putenv('DTO_GENERATOR_MEMORY_LIMIT');
 
         if (!class_exists(FrameworkBundle::class)) {
             self::markTestSkipped('symfony/framework-bundle is not installed; the CI matrix installs it.');
@@ -69,6 +75,10 @@ final class DtoGeneratorBundleTest extends TestCase
 
         if ($this->handlesErrors) {
             restore_error_handler();
+            [$memoryLimit, $displayErrors, $configured] = $this->process;
+            ini_set('memory_limit', (string) $memoryLimit);
+            ini_set('display_errors', (string) $displayErrors);
+            putenv($configured === false ? 'DTO_GENERATOR_MEMORY_LIMIT' : 'DTO_GENERATOR_MEMORY_LIMIT=' . $configured);
         }
 
         if (!isset($this->project) || !is_dir($this->project)) {
@@ -95,6 +105,31 @@ final class DtoGeneratorBundleTest extends TestCase
         self::assertSame(0, $command->execute([]));
         self::assertFileExists($this->project . '/src/Dto/Pet.php');
         self::assertSame(0, $command->execute(['--check' => true]));
+    }
+
+    public function testPreparesTheProcessAsTheGeneratorCliDoes(): void
+    {
+        ini_set('memory_limit', '256M');
+        ini_set('display_errors', 'stdout');
+
+        self::assertSame(0, $this->command([])->execute(['--dry-run' => true]));
+
+        self::assertSame('1G', ini_get('memory_limit'));
+        self::assertSame('stderr', ini_get('display_errors'));
+    }
+
+    public function testLeavesTheProcessAloneOnWarmup(): void
+    {
+        $kernel = $this->bootedKernel(['check_on_warmup' => true]);
+        $warmer = $this->service($kernel, GenerationCheckWarmer::class);
+        assert($warmer instanceof GenerationCheckWarmer);
+        ini_set('memory_limit', '256M');
+        ini_set('display_errors', 'stdout');
+
+        $warmer->warmUp($kernel->getCacheDir());
+
+        self::assertSame('256M', ini_get('memory_limit'));
+        self::assertSame('stdout', ini_get('display_errors'));
     }
 
     public function testTakesAnotherConfigFromTheOptionOrTheBundle(): void
