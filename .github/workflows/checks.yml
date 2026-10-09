@@ -32,3 +32,29 @@ jobs:
       infection-min-covered-msi: 100
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # What the standard's jobs cannot run: the Symfony-bound code against Symfony 8 on PHP 8.4, and the bans on PHP 8
+  # functions and classes that phpVersion 70400 does not catch.
+  bridge:
+    name: Bridge checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+      - name: Locate the Composer cache
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v5
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-bridge-${{ hashFiles('composer-ci.json') }}
+          restore-keys: composer-bridge-
+      - run: composer update --no-interaction --no-progress
+        env:
+          COMPOSER: composer-ci.json
+      - run: vendor/bin/phpstan analyse -c phpstan-symfony.neon --no-progress
+      - run: vendor/bin/phpstan analyse -c phpstan-php74.neon --no-progress
