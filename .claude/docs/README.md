@@ -1,6 +1,7 @@
 # dto-generator-bridge-symfony — база знаний
 
-- Спецификация: `docs/specs/2026-10-02-bridge-symfony-design.md`; планы этапов — `docs/plans/`.
+- Спецификация: `docs/internal/specs/2026-10-02-bridge-symfony-design.md`; планы этапов — `docs/internal/plans/`.
+- Пользовательская документация (английский, входит в пакет): `README.md`, `CHANGELOG.md`, `SECURITY.md`. `docs/internal/` и dev-файлы исключены из архива пакета (`export-ignore` в `.gitattributes`; `docker/build.sh` ядра собирает образ из `git archive` моста — экспорт тоже без них).
 - Пакет `msstc4symfony/dto-generator-bridge`, namespace `Msstc4Symfony\DtoGeneratorBridge`; репозиторий живёт в `~/PhpstormProjects/msstc4symfony/` рядом с остальными Symfony-бандлами.
 - Соответствует `bundle-standard` (линия сброшена пользователем 2026-10-04: `checks.yml` → `@v1.0.0`) с профилем `php74`: шаблоны `templates/php74/` (PHPStan 70400, PHPUnit 9.6, Rector PHP_74, CS-Fixer без запятых после параметров), задание `minimal` CI само идёт на PHP 7.4 по профилю из `composer.json`; в `checks.yml` четыре записи `symfony-versions` (7.4 первой: ячейка prefer-lowest берёт первую, а ранние 5.4/6.4 не чисты на PHP 8.4). Проверка: `php ../bundle-standard/bin/verify-standard.php .`.
 - Ядро — `msstc4php/dto-generator ^1.1` (`PropertyModel::isAdditionalProperties()`): в `composer.json`/`composer-ci.json` из VCS GitHub, локально — `COMPOSER=composer-local.json composer install` (path `../../msstc4php/dto-generator`, версия 1.1.0; та же в `run-matrix.sh`). Его SPI — `src/Contract`, IR — `src/Domain/Model`.

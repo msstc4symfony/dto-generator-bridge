@@ -1,19 +1,53 @@
-# dto-generator-bridge
+# DTO Generator Bridge for Symfony
+
+![Build Status](https://github.com/msstc4symfony/dto-generator-bridge/actions/workflows/checks.yml/badge.svg?branch=main)
+[![PHP Version](https://img.shields.io/badge/PHP-%3E%3D7.4-787CB5?logo=php&logoColor=white)](https://php.net)
+[![Symfony Versions](https://img.shields.io/badge/Symfony-5.4%20%7C%206.4%20%7C%207.x%20%7C%208.x-000000?logo=symfony&logoColor=white)](https://symfony.com)
+[![PHPStan](https://img.shields.io/badge/PHPStan-level%20max-2a5ea7)](https://phpstan.org)
+[![Last commit](https://img.shields.io/github/last-commit/msstc4symfony/dto-generator-bridge/main)](https://github.com/msstc4symfony/dto-generator-bridge/commits/main)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Symfony Validator constraints and Symfony Serializer attributes for the DTOs that
 [`msstc4php/dto-generator`](https://github.com/msstc4php/dto-generator) generates from OpenAPI 3.1.
 
-> **Status:** in development. Done: discovery and settings (B1), Symfony Validator constraints (B2), Serializer
-> attributes (B3), the version matrix (B4: Symfony 5.4, 6.4, 7.4 and 8 in CI), the Symfony bundle (B5) and the
-> first release with the generator's Docker image shipping the bridge (B6).
+The generator turns schemas into typed PHP classes; this extension reads the same schemas and adds what Symfony needs
+to validate and (de)serialize them: `#[Assert\Length(max: 254)]` from `maxLength`, `#[SerializedName('first_name')]`
+for a renamed property, `#[DiscriminatorMap]` for a `oneOf` with a discriminator, and so on. The attributes match the
+Symfony versions in your `composer.lock`.
+
+## Features
+
+- **Validator constraints** from `required`, string, number and array keywords, `enum`, `const`, formats, nested
+  objects and collection items — [the full table](#validator-constraints).
+- **Serializer attributes** for wire names, discriminator maps, date formats, groups and ignored properties —
+  [the full table](#serializer-attributes).
+- **Version-aware output** for Symfony 5.4, 6.4, 7.x and 8.x: the right namespaces, arguments and fallbacks for each,
+  and annotations when the DTOs target PHP 7.4 (Symfony 6.4 and older).
+- **No configuration:** the generator discovers the bridge when it is installed; `x-validator-*` and `x-serializer-*`
+  keys fine-tune single properties.
+- **An optional Symfony bundle** with a `dto-generator:generate` console command and a check on cache warmup.
+
+## Requirements
+
+- PHP >= 7.4 (the bridge runs inside the generator, which supports PHP 7.4).
+- `msstc4php/dto-generator` ^1.1.
+- In the application that uses the DTOs: `symfony/validator` and/or `symfony/serializer` 5.4, 6.4, 7.x or 8.x. By
+  default the bridge writes constraints and attributes only for the components it finds in `composer.lock`.
+- For the bundle: `symfony/framework-bundle` 5.4, 6.4, 7.x or 8.x.
 
 ## Installation
 
+The packages are not on Packagist yet, so register both GitHub repositories first:
+
 ```bash
+composer config repositories.msstc4php-dto-generator vcs https://github.com/msstc4php/dto-generator
+composer config repositories.msstc4symfony-dto-generator-bridge vcs https://github.com/msstc4symfony/dto-generator-bridge
 composer require --dev msstc4symfony/dto-generator-bridge
 ```
 
-The generator finds the bridge through `extra.dto-generator.extensions` — no configuration is needed.
+This installs the generator as well. The generator finds the bridge through `extra.dto-generator.extensions`, so no
+configuration is needed: the next `vendor/bin/dto-generator generate` writes the attributes. See the
+[generator's README](https://github.com/msstc4php/dto-generator#quick-start) for `dto-generator.yaml`.
 
 ## Configuration
 
@@ -22,10 +56,10 @@ The generator finds the bridge through `extra.dto-generator.extensions` — no c
 ```yaml
 extensionConfig:
   symfony:
-    validator: auto      # auto | true | false — auto: when symfony/validator is installed
-    serializer: auto     # auto | true | false — auto: when symfony/serializer is installed
+    validator: auto      # auto | true | false — auto: when composer.lock has symfony/validator
+    serializer: auto     # auto | true | false — auto: when composer.lock has symfony/serializer
     version: auto        # auto | '6.4' … — quote it: YAML reads 6.4 as a number
-    groups: []           # validation groups for every constraint
+    groups: []           # validation groups for every constraint, plus Default
 ```
 
 The Symfony version is read per component from the project's `composer.lock`.
@@ -50,9 +84,11 @@ nullable `oneOf`/`anyOf` (all apply, as in JSON Schema 2020-12):
 | an object or a collection of objects | `Valid` |
 | constraints of `items` / `additionalProperties` | `All` (not on PHP 8.0, whose attributes allow no `new`) |
 
-`x-validator-groups: [api]` sets the groups (plus `Default`, unless `x-validator-groups-exclusive: true`);
-`x-validator-skip: true` leaves a property alone. On PHP 7.4 the constraints are annotations, which
-Symfony Validator 7 no longer reads — the bridge reports that instead of writing them.
+`x-validator-groups: [api]` sets the groups of a property instead of `groups`; `Default` is added to either, unless
+`x-validator-groups-exclusive: true`. `x-validator-skip: true` leaves a property alone. On PHP 7.4 the constraints are
+annotations, which Symfony Validator 7 no longer reads: the bridge writes none and reports it, as an error under the
+default `target.strict: true` (a warning otherwise). Annotations also need `doctrine/annotations` in the project; the
+bridge warns when it is missing. With `target.metadata: none` the bridge writes nothing.
 
 Keywords of one kind of value (`minLength`, `minimum`, `minItems`…) are written only for a property of that type; for a
 value of several types, a pattern PHP cannot compile or a malformed keyword the bridge warns and writes nothing.
@@ -113,26 +149,44 @@ dto_generator:
 ```
 
 `bin/console dto-generator:generate [--config=...] [--check] [--dry-run] [--format=text|json]` takes the same options
-and gives the same output and exit codes as the generator's own `generate` command. A relative `config` or `--config`
+and gives the same output and exit codes as the generator's own `generate` command, except that it runs inside the
+console's PHP process: its `memory_limit` applies (the generator's CLI raises it to 1G), and a PHP fatal error ends
+with PHP's own exit code `255`. A relative `config` or `--config`
 is resolved against the project directory, not the current one; an empty `--config` keeps the bundle's. The warmup
 check never writes files and never fails the warmup: whatever goes wrong becomes a warning in the log.
 
-## Requirements
+## `x-` keywords
 
-- PHP >= 7.4 (the bridge runs inside the generator)
-- `msstc4php/dto-generator` ^1.1
+| Key | On | Effect |
+|---|---|---|
+| `x-validator-groups: [api]` | property | Validation groups of its constraints instead of `groups` from the config |
+| `x-validator-groups-exclusive: true` | property | Leaves out the `Default` group otherwise added |
+| `x-validator-skip: true` | property | No constraints |
+| `x-serializer-groups: [api]` | property | `Groups(['api'])` |
+| `x-serializer-ignore: true` | property | `Ignore` |
+| `x-serializer-skip: true` | property | No serializer attributes |
+
+For `$additionalProperties` the keys go on the `additionalProperties` schema. The generator's own keys
+(`x-php-name`, `x-php-type`, `x-php-attributes`…) are described in its
+[documentation](https://github.com/msstc4php/dto-generator/blob/main/docs/x-extensions.md).
 
 ## Development
 
 ```bash
-COMPOSER=composer-local.json composer install   # tools plus the sibling ../../msstc4php/dto-generator
+make install-ci   # the CI profile: Symfony components, tools, the generator from GitHub
 make check
 make test
-tests/Integration/Symfony/run-matrix.sh '5.4.*'   # the integration suite on one Symfony line, in Docker
+make infection
+tests/Integration/Symfony/run-matrix.sh '5.4.*'   # one Symfony line in Docker, against a generator checkout (CORE=…)
 ```
 
-The design lives in `docs/specs/2026-10-02-bridge-symfony-design.md`.
+CI runs the suite on Symfony 5.4, 6.4, 7.4 and 8 (and once with the lowest dependencies), PHPStan on the
+Symfony-bound code, and a PHP 7.4 job with only the generator installed.
+
+## Changelog and security
+
+See [CHANGELOG.md](CHANGELOG.md) and [SECURITY.md](SECURITY.md).
 
 ## License
 
-MIT.
+MIT, see [LICENSE](LICENSE).

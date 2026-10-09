@@ -7,7 +7,10 @@ under `.claude/docs/`; this file stays lean.
 
 An extension of `msstc4php/dto-generator`: it adds Symfony Validator constraints
 and Serializer attributes to the generated DTOs. Spec:
-`docs/specs/2026-10-02-bridge-symfony-design.md`; stage plans: `docs/plans/`.
+`docs/internal/specs/2026-10-02-bridge-symfony-design.md`; stage plans: `docs/internal/plans/`.
+The package ships `src/`, `composer.json`, `LICENSE` and the user documentation
+(`README.md`, `CHANGELOG.md`, `SECURITY.md`, in English); the rest is `export-ignore`d
+in `.gitattributes`.
 
 The bridge runs **inside the generator**, so its sources must run on **PHP 7.4**
 (bundle-standard runtime profile `php74`): no PHP 8 syntax or functions — no
@@ -28,3 +31,4 @@ All in `Makefile` (shared bundle-standard template):
 
 - Code comments in English, only the non-obvious "why".
 - Every change: tests first, `make check`, `make test`, `make infection`.
+- User-facing behaviour changes go into `CHANGELOG.md` (Unreleased) and `README.md`.
