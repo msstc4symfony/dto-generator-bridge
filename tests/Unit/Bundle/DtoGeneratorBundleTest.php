@@ -109,7 +109,7 @@ final class DtoGeneratorBundleTest extends TestCase
 
     public function testPreparesTheProcessAsTheGeneratorCliDoes(): void
     {
-        ini_set('memory_limit', '256M');
+        self::assertNotFalse(ini_set('memory_limit', '256M'), 'The suite must run below 256M for this test.');
         ini_set('display_errors', 'stdout');
 
         self::assertSame(0, $this->command([])->execute(['--dry-run' => true]));
@@ -123,7 +123,7 @@ final class DtoGeneratorBundleTest extends TestCase
         $kernel = $this->bootedKernel(['check_on_warmup' => true]);
         $warmer = $this->service($kernel, GenerationCheckWarmer::class);
         assert($warmer instanceof GenerationCheckWarmer);
-        ini_set('memory_limit', '256M');
+        self::assertNotFalse(ini_set('memory_limit', '256M'), 'The suite must run below 256M for this test.');
         ini_set('display_errors', 'stdout');
 
         $warmer->warmUp($kernel->getCacheDir());

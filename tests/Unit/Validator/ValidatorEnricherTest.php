@@ -200,6 +200,9 @@ final class ValidatorEnricherTest extends TestCase
             'either' => ['type' => ['integer', 'string'], 'format' => 'int32'],
             'fraction' => ['type' => 'number', 'format' => 'int32'],
             'loose' => ['format' => 'uuid'],
+            'below' => ['type' => 'integer', 'format' => 'int32', 'exclusiveMaximum' => 3000000000],
+            'above' => ['type' => 'integer', 'format' => 'int32', 'exclusiveMinimum' => -3000000000],
+            'top' => ['type' => 'integer', 'format' => 'int32', 'maximum' => 2147483647],
         ]]);
         $code = $this->code($output, 'Pet.php');
         $int32 = 'Assert\\Range(min: -2147483648, max: 2147483647)';
@@ -218,6 +221,9 @@ final class ValidatorEnricherTest extends TestCase
         self::assertSame([], $this->attributesOf($code, 'either'));
         self::assertSame([], $this->attributesOf($code, 'fraction'));
         self::assertSame([], $this->attributesOf($code, 'loose'));
+        self::assertSame([$int32], $this->attributesOf($code, 'below'));
+        self::assertSame([$int32], $this->attributesOf($code, 'above'));
+        self::assertSame([$int32], $this->attributesOf($code, 'top'));
         self::assertSame([
             'warning /api.yaml#/components/schemas/Pet/properties/either/format: Unknown string format "int32"; the property stays a string.',
             'warning /api.yaml#/components/schemas/Pet/properties/fraction/format: Unknown number format "int32"; the property stays a float.',
