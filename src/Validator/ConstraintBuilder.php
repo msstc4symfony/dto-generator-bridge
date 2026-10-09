@@ -37,7 +37,16 @@ final class ConstraintBuilder
         'ipv6' => ['Ip', 'version', '6'],
         'hostname' => ['Hostname', 'requireTld', false],
         'uuid' => ['Uuid', null, null],
+        'byte' => ['Regex', 'pattern', self::BASE64],
     ];
+
+    /**
+     * The alphabet of RFC 4648 base64, with padding only at the end; the length is not checked: a repeated group of
+     * four exhausts PCRE's stack on large payloads, and a failed match reads as a violation. Possessive, or a large
+     * invalid value exhausts the backtracking limit. D, as on the regexes of `pattern`, so that "$" takes no trailing
+     * newline.
+     */
+    private const BASE64 = '/^[A-Za-z0-9+\/]*+={0,2}$/D';
 
     /**
      * The keywords JSON Schema applies to one kind of value only.
@@ -49,6 +58,22 @@ final class ConstraintBuilder
         'number' => ['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf'],
         'collection' => ['minItems', 'maxItems', 'minProperties', 'maxProperties', 'uniqueItems'],
     ];
+
+    /**
+     * The bounds of `format: int32`; `int64` is PHP's own int on 64-bit platforms and needs none. The literal
+     * 2147483648 is a float on 32-bit PHP, so the minimum is computed.
+     */
+    private const INT32 = [-2147483647 - 1, 2147483647];
+
+    /** The name the int32 bounds go by, beside the keywords that compete with them. */
+    private const INT32_LABEL = 'format: int32';
+
+    /**
+     * The formats whose constraint checks one kind of value only, and that kind as a warning names it.
+     *
+     * @var array{int32: 'an integer', byte: 'a string'}
+     */
+    private const FORMAT_KINDS = ['int32' => 'an integer', 'byte' => 'a string'];
 
     private SchemaReferences $references;
 
@@ -76,10 +101,13 @@ final class ConstraintBuilder
         $kind = $this->kindOf($value);
         $at = $schema->location();
         $reader = new KeywordReader($keywords, $this->diagnostics, $at);
+        $this->warnAboutFormatsOfOneKind($keywords, $kind, $at);
 
         return array_merge(
             $this->checks($keywords, $kind, 'string', $at) ? $this->strings($keywords, $reader, $at) : [],
-            $this->checks($keywords, $kind, 'number', $at) ? $this->numbers($reader, $kind === 'integer', $at) : [],
+            $this->checks($keywords, $kind, 'number', $at)
+                ? $this->numbers($reader, $kind === 'integer', $this->implied($keywords, $kind), $at)
+                : [],
             $this->checks($keywords, $kind, 'collection', $at) ? $this->collections($keywords, $reader, $value, $at) : [],
             $this->values->choices($keywords, $value, $at),
             $this->values->constants($keywords, $value, $at),
@@ -137,6 +165,26 @@ final class ConstraintBuilder
     }
 
     /**
+     * The constraint of such a format would reject the value's other types, so a value of several gets none.
+     *
+     * @param 'string'|'integer'|'number'|'collection'|'several'|null $actual
+     */
+    private function warnAboutFormatsOfOneKind(Keywords $keywords, ?string $actual, SchemaLocation $at): void
+    {
+        if ($actual !== 'several') {
+            return;
+        }
+
+        foreach (array_intersect(array_keys(self::FORMAT_KINDS), $keywords->formats()) as $format) {
+            $this->diagnostics->warning(sprintf(
+                '"format: %s" checks only %s, and the value may be of another type; it is not checked.',
+                $format,
+                self::FORMAT_KINDS[$format],
+            ), $at);
+        }
+    }
+
+    /**
      * @return 'string'|'integer'|'number'|'collection'|'several'|null
      */
     private function kindOf(TypeModel $value): ?string
@@ -180,32 +228,54 @@ final class ConstraintBuilder
     }
 
     /**
-     * One lower and one upper bound: the strictest of the inclusive and exclusive keywords, exclusive on a tie.
+     * The inclusive bounds the format of an integer sets, each with the name a warning gives it.
+     *
+     * @param 'string'|'integer'|'number'|'collection'|'several'|null $kind
+     *
+     * @return array{array{int, 'format: int32'}, array{int, 'format: int32'}}|null
+     */
+    private function implied(Keywords $keywords, ?string $kind): ?array
+    {
+        if ($kind !== 'integer' || !in_array('int32', $keywords->formats(), true)) {
+            return null;
+        }
+
+        return [[self::INT32[0], self::INT32_LABEL], [self::INT32[1], self::INT32_LABEL]];
+    }
+
+    /**
+     * One lower and one upper bound: the strictest of the inclusive and exclusive keywords and the implied bounds,
+     * exclusive on a tie.
+     *
+     * @param array{array{int, 'format: int32'}, array{int, 'format: int32'}}|null $implied
      *
      * @return list<ConstraintSpec>
      */
-    private function numbers(KeywordReader $reader, bool $integer, SchemaLocation $at): array
+    private function numbers(KeywordReader $reader, bool $integer, ?array $implied, SchemaLocation $at): array
     {
-        $lower = $this->strictest($reader, 'exclusiveMinimum', 'minimum', true);
-        $upper = $this->strictest($reader, 'exclusiveMaximum', 'maximum', false);
+        [$impliedLower, $impliedUpper] = $implied ?? [null, null];
+        $lower = $this->strictest($reader, 'exclusiveMinimum', 'minimum', true, $impliedLower);
+        $upper = $this->strictest($reader, 'exclusiveMaximum', 'maximum', false, $impliedUpper);
         $constraints = [];
         if ($lower !== null && $upper !== null && !$this->satisfiable($lower, $upper, $integer, $at)) {
             $lower = null;
             $upper = null;
         }
 
-        if ($lower !== null && $upper !== null && $lower[1] === 'minimum' && $upper[1] === 'maximum') {
+        $lowerExclusive = $lower !== null && $lower[1] === 'exclusiveMinimum';
+        $upperExclusive = $upper !== null && $upper[1] === 'exclusiveMaximum';
+        if ($lower !== null && $upper !== null && !$lowerExclusive && !$upperExclusive) {
             $constraints[] = new ConstraintSpec('Range', [
                 AttributeArgument::named('min', ArgumentValue::literal($lower[0])),
                 AttributeArgument::named('max', ArgumentValue::literal($upper[0])),
             ]);
         } else {
             if ($lower !== null) {
-                $constraints[] = $this->comparison($lower[1] === 'minimum' ? 'GreaterThanOrEqual' : 'GreaterThan', $lower[0]);
+                $constraints[] = $this->comparison($lowerExclusive ? 'GreaterThan' : 'GreaterThanOrEqual', $lower[0]);
             }
 
             if ($upper !== null) {
-                $constraints[] = $this->comparison($upper[1] === 'maximum' ? 'LessThanOrEqual' : 'LessThan', $upper[0]);
+                $constraints[] = $this->comparison($upperExclusive ? 'LessThan' : 'LessThanOrEqual', $upper[0]);
             }
         }
 
@@ -217,18 +287,38 @@ final class ConstraintBuilder
     }
 
     /**
-     * @param bool $lower whether the greatest bound is the strictest
+     * The strictest bound and its keyword. On a tie the first candidate stays: an exclusive keyword before an inclusive
+     * one, a keyword before an implied bound.
      *
-     * @return array{int|float, string}|null the bound and its keyword
+     * @param 'exclusiveMinimum'|'exclusiveMaximum' $exclusive
+     * @param 'minimum'|'maximum' $inclusive
+     * @param bool $lower whether the greatest bound is the strictest
+     * @param array{int, 'format: int32'}|null $implied an inclusive bound a format sets, and its name
+     *
+     * @return array{int|float, 'exclusiveMinimum'|'minimum'|'exclusiveMaximum'|'maximum'|'format: int32'}|null
      */
-    private function strictest(KeywordReader $reader, string $exclusive, string $inclusive, bool $lower): ?array
-    {
-        $strictest = null;
+    private function strictest(
+        KeywordReader $reader,
+        string $exclusive,
+        string $inclusive,
+        bool $lower,
+        ?array $implied
+    ): ?array {
+        $candidates = [];
         foreach ([$exclusive, $inclusive] as $keyword) {
             foreach ($reader->numbers($keyword) as $bound) {
-                if ($strictest === null || ($lower ? $bound > $strictest[0] : $bound < $strictest[0])) {
-                    $strictest = [$bound, $keyword];
-                }
+                $candidates[] = [$bound, $keyword];
+            }
+        }
+
+        if ($implied !== null) {
+            $candidates[] = $implied;
+        }
+
+        $strictest = null;
+        foreach ($candidates as $candidate) {
+            if ($strictest === null || ($lower ? $candidate[0] > $strictest[0] : $candidate[0] < $strictest[0])) {
+                $strictest = $candidate;
             }
         }
 
@@ -236,8 +326,8 @@ final class ConstraintBuilder
     }
 
     /**
-     * @param array{int|float, string} $lower
-     * @param array{int|float, string} $upper
+     * @param array{int|float, 'exclusiveMinimum'|'minimum'|'exclusiveMaximum'|'maximum'|'format: int32'} $lower
+     * @param array{int|float, 'exclusiveMinimum'|'minimum'|'exclusiveMaximum'|'maximum'|'format: int32'} $upper
      */
     private function satisfiable(array $lower, array $upper, bool $integer, SchemaLocation $at): bool
     {

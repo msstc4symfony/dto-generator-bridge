@@ -183,6 +183,136 @@ final class ValidatorEnricherTest extends TestCase
         self::assertSame([], $this->attributesOf($code, 'born'));
     }
 
+    public function testBoundsInt32ValuesAndMergesTheSchemaBounds(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'plain' => ['type' => 'integer', 'format' => 'int32'],
+            'narrow' => ['type' => 'integer', 'format' => 'int32', 'minimum' => 0, 'maximum' => 10],
+            'low' => ['type' => 'integer', 'format' => 'int32', 'minimum' => 0],
+            'high' => ['type' => 'integer', 'format' => 'int32', 'maximum' => 10],
+            'wide' => ['type' => 'integer', 'format' => 'int32', 'minimum' => -3000000000, 'maximum' => 3000000000],
+            'open' => ['type' => 'integer', 'format' => 'int32', 'exclusiveMaximum' => 10],
+            'tie' => ['type' => 'integer', 'format' => 'int32', 'exclusiveMinimum' => -2147483648],
+            'maybe' => ['type' => ['integer', 'null'], 'format' => 'int32'],
+            'items' => ['type' => 'array', 'items' => ['type' => 'integer', 'format' => 'int32']],
+            'long' => ['type' => 'integer', 'format' => 'int64'],
+            'beyond' => ['type' => 'integer', 'format' => 'int32', 'minimum' => 3000000000],
+            'either' => ['type' => ['integer', 'string'], 'format' => 'int32'],
+            'fraction' => ['type' => 'number', 'format' => 'int32'],
+            'loose' => ['format' => 'uuid'],
+            'below' => ['type' => 'integer', 'format' => 'int32', 'exclusiveMaximum' => 3000000000],
+            'above' => ['type' => 'integer', 'format' => 'int32', 'exclusiveMinimum' => -3000000000],
+            'top' => ['type' => 'integer', 'format' => 'int32', 'maximum' => 2147483647],
+            'under' => ['type' => 'integer', 'format' => 'int32', 'exclusiveMaximum' => 2147483647],
+            'floor' => ['type' => 'integer', 'format' => 'int32', 'minimum' => -2147483648],
+            'sunk' => ['type' => 'integer', 'format' => 'int32', 'maximum' => -3000000000],
+        ]]);
+        $code = $this->code($output, 'Pet.php');
+        $int32 = 'Assert\\Range(min: -2147483648, max: 2147483647)';
+
+        self::assertSame([$int32], $this->attributesOf($code, 'plain'));
+        self::assertSame(['Assert\\Range(min: 0, max: 10)'], $this->attributesOf($code, 'narrow'));
+        self::assertSame(['Assert\\Range(min: 0, max: 2147483647)'], $this->attributesOf($code, 'low'));
+        self::assertSame(['Assert\\Range(min: -2147483648, max: 10)'], $this->attributesOf($code, 'high'));
+        self::assertSame([$int32], $this->attributesOf($code, 'wide'));
+        self::assertSame(['Assert\\GreaterThanOrEqual(value: -2147483648)', 'Assert\\LessThan(value: 10)'], $this->attributesOf($code, 'open'));
+        self::assertSame(['Assert\\GreaterThan(value: -2147483648)', 'Assert\\LessThanOrEqual(value: 2147483647)'], $this->attributesOf($code, 'tie'));
+        self::assertSame([$int32], $this->attributesOf($code, 'maybe'));
+        self::assertSame(['Assert\\All(constraints: [new \\Symfony\\Component\\Validator\\Constraints\\Range(min: -2147483648, max: 2147483647)])'], $this->attributesOf($code, 'items'));
+        self::assertSame([], $this->attributesOf($code, 'long'));
+        self::assertSame([], $this->attributesOf($code, 'beyond'));
+        self::assertSame([], $this->attributesOf($code, 'either'));
+        self::assertSame([], $this->attributesOf($code, 'fraction'));
+        self::assertSame([], $this->attributesOf($code, 'loose'));
+        self::assertSame([$int32], $this->attributesOf($code, 'below'));
+        self::assertSame([$int32], $this->attributesOf($code, 'above'));
+        self::assertSame([$int32], $this->attributesOf($code, 'top'));
+        self::assertSame(['Assert\\GreaterThanOrEqual(value: -2147483648)', 'Assert\\LessThan(value: 2147483647)'], $this->attributesOf($code, 'under'));
+        self::assertSame([$int32], $this->attributesOf($code, 'floor'));
+        self::assertSame([], $this->attributesOf($code, 'sunk'));
+        self::assertSame([
+            'warning /api.yaml#/components/schemas/Pet/properties/either/format: Unknown string format "int32"; the property stays a string.',
+            'warning /api.yaml#/components/schemas/Pet/properties/fraction/format: Unknown number format "int32"; the property stays a float.',
+            'warning /api.yaml#/components/schemas/Pet/properties/beyond: "minimum" and "format: int32" leave no valid value; they are not checked.',
+            'warning /api.yaml#/components/schemas/Pet/properties/either: "format: int32" checks only an integer, and the value may be of another type; it is not checked.',
+            'warning /api.yaml#/components/schemas/Pet/properties/sunk: "format: int32" and "maximum" leave no valid value; they are not checked.',
+        ], $this->messages($output));
+    }
+
+    public function testWritesTheInt32RangeAsAnAnnotationForPhp74(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => ['count' => ['type' => 'integer', 'format' => 'int32']]], [], '7.4', [], 'v6.4.1', ['doctrine/annotations' => '2.0.2']);
+
+        self::assertStringContainsString("     * @Assert\\Range(min=-2147483648, max=2147483647)\n", $this->code($output, 'Pet.php'));
+    }
+
+    public function testChecksBase64OfByteStrings(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'blob' => ['type' => 'string', 'format' => 'byte', 'maxLength' => 8],
+            'maybe' => ['type' => ['string', 'null'], 'format' => 'byte'],
+            'many' => ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'byte']],
+            'raw' => ['type' => 'string', 'format' => 'binary'],
+            'either' => ['type' => ['integer', 'string'], 'format' => 'byte'],
+        ]]);
+        $code = $this->code($output, 'Pet.php');
+        $base64 = "Regex(pattern: '/^[A-Za-z0-9+\\/]*+={0,2}\$/D')";
+
+        self::assertSame(['Assert\\Length(max: 8)', 'Assert\\' . $base64], $this->attributesOf($code, 'blob'));
+        self::assertSame(['Assert\\' . $base64], $this->attributesOf($code, 'maybe'));
+        self::assertSame(['Assert\\All(constraints: [new \\Symfony\\Component\\Validator\\Constraints\\' . $base64 . '])'], $this->attributesOf($code, 'many'));
+        self::assertSame([], $this->attributesOf($code, 'raw'));
+        self::assertSame([], $this->attributesOf($code, 'either'));
+        self::assertSame([
+            'warning /api.yaml#/components/schemas/Pet/properties/either/format: Unknown integer format "byte"; the property stays an int.',
+            'warning /api.yaml#/components/schemas/Pet/properties/either: "format: byte" checks only a string, and the value may be of another type; it is not checked.',
+        ], $this->messages($output));
+    }
+
+    /**
+     * A repeated group would exhaust PCRE's JIT stack or backtracking limit on a large payload, and preg_match()
+     * failing reads as a violation in Symfony's RegexValidator.
+     */
+    public function testChecksBase64OfAnySizeAndOnlyItsAlphabetAndPadding(): void
+    {
+        $code = $this->pet(['type' => 'object', 'properties' => ['blob' => ['type' => 'string', 'format' => 'byte']]]);
+        self::assertSame(1, preg_match("~pattern: '((?:[^'\\\\]|\\\\.)*)'~", implode("\n", $this->attributesOf($code, 'blob')), $match));
+        $pattern = strtr($match[1], ['\\\\' => '\\', "\\'" => "'"]);
+        $jit = ini_get('pcre.jit');
+
+        try {
+            // PHP caches a compiled pattern with its JIT setting; the ignored S modifier makes another cache entry.
+            foreach (['1' => $pattern, '0' => $pattern . 'S'] as $setting => $regex) {
+                ini_set('pcre.jit', (string) $setting);
+                $large = [];
+                foreach ([1, 8] as $megabytes) {
+                    $large[$megabytes] = base64_encode(str_repeat("\xFB\xEF\xBE", $megabytes * 349526));
+                    self::assertSame(1, $this->match($regex, $large[$megabytes]), sprintf('%d MB, pcre.jit=%s', $megabytes, $setting));
+                }
+
+                foreach (['', 'QUJD', 'QUI=', 'QQ==', 'a+/9', 'QUJ', '=', '=='] as $valid) {
+                    self::assertSame(1, $this->match($regex, $valid), $valid);
+                }
+
+                foreach (['QU*D', 'QQ==QQ==', 'QQ===', "QUJD\n", 'QU JD', 'QU-_'] as $invalid) {
+                    self::assertSame(0, $this->match($regex, $invalid), $invalid);
+                }
+
+                self::assertSame(0, $this->match($regex, $large[8] . '*'), '8 MB and "*", pcre.jit=' . $setting);
+                self::assertSame(0, $this->match($regex, substr($large[8], 0, 4) . '=' . $large[8]), '"=" inside 8 MB, pcre.jit=' . $setting);
+            }
+        } finally {
+            ini_set('pcre.jit', (string) $jit);
+        }
+    }
+
+    public function testWritesTheBase64PatternAsAnAnnotationForPhp74(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => ['blob' => ['type' => 'string', 'format' => 'byte']]], [], '7.4', [], 'v6.4.1', ['doctrine/annotations' => '2.0.2']);
+
+        self::assertStringContainsString('     * @Assert\\Regex(pattern="/^[A-Za-z0-9+\\/]*+={0,2}$/D")' . "\n", $this->code($output, 'Pet.php'));
+    }
+
     public function testComparesWithAConstant(): void
     {
         $output = $this->generate(['type' => 'object', 'properties' => [
@@ -381,6 +511,42 @@ final class ValidatorEnricherTest extends TestCase
             'warning /api.yaml#/components/schemas/Pet/properties/code: "minimum" checks only a number, and the value may be of another type; it is not checked.',
             'warning /api.yaml#/components/schemas/Pet/properties/free: "maxLength" checks only a string, and the value may be of another type; it is not checked.',
         ], $this->messages($output));
+    }
+
+    public function testChoosesAmongTheValuesOfAMixedEnumAndLeavesKeywordsOfOneKind(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'level' => ['enum' => ['low', 1], 'minLength' => 2, 'minimum' => 0],
+        ]]);
+
+        self::assertSame(["Assert\\Choice(choices: ['low', 1])"], $this->attributesOf($this->code($output, 'Pet.php'), 'level'));
+        self::assertSame([
+            'warning /api.yaml#/components/schemas/Pet/properties/level/enum: The enum mixes strings and integers, which no PHP enum can back; the property takes either.',
+            'warning /api.yaml#/components/schemas/Pet/properties/level: "minLength" checks only a string, and the value may be of another type; it is not checked.',
+            'warning /api.yaml#/components/schemas/Pet/properties/level: "minimum" checks only a number, and the value may be of another type; it is not checked.',
+        ], $this->messages($output));
+    }
+
+    public function testCascadesIntoHoistedUnionMembers(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'either' => ['oneOf' => [
+                ['type' => 'object', 'properties' => ['a' => ['type' => 'string', 'maxLength' => 2]]],
+                ['type' => 'object', 'title' => 'Bee', 'properties' => ['b' => ['type' => 'integer']]],
+            ]],
+            'many' => ['type' => 'array', 'maxItems' => 3, 'items' => ['anyOf' => [
+                ['type' => 'object', 'properties' => ['a' => ['type' => 'string']]],
+                ['type' => 'object', 'properties' => ['c' => ['type' => 'string']]],
+            ]]],
+        ]]);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertStringContainsString('PetEitherOption1|Bee|null $either', $code);
+        self::assertStringContainsString('@var list<PetManyItemOption1|PetManyItemOption2>|null', $code);
+        self::assertSame(['Assert\\Valid'], $this->attributesOf($code, 'either'));
+        self::assertSame(['Assert\\Count(max: 3)', 'Assert\\Valid'], $this->attributesOf($code, 'many'));
+        self::assertSame(['Assert\\Length(max: 2)'], $this->attributesOf($this->code($output, 'PetEitherOption1.php'), 'a'));
+        self::assertSame([], $this->messages($output));
     }
 
     public function testReadsKeywordsWrittenAsOtherNumbersAndWarnsAboutTheRest(): void
@@ -660,7 +826,7 @@ final class ValidatorEnricherTest extends TestCase
 
         self::assertSame(['Assert\\Uuid', "Assert\\Email(mode: 'html5')"], $this->attributesOf($code, 'contact'));
         self::assertSame(["Assert\\Email(mode: 'html5')"], $this->attributesOf($code, 'secret'));
-        self::assertSame([], $this->attributesOf($code, 'count'));
+        self::assertSame(['Assert\\Range(min: -2147483648, max: 2147483647)'], $this->attributesOf($code, 'count'));
         self::assertSame([], $this->messages($output));
     }
 
@@ -761,6 +927,16 @@ final class ValidatorEnricherTest extends TestCase
         ]]);
 
         self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/name: x-validator-groups-exclusive must be true or false; it is ignored.'], $this->messages($output));
+    }
+
+    /**
+     * preg_match() itself rather than PHPUnit's regex assertions, which do not tell a failed match (false) from none.
+     *
+     * @return 0|1|false
+     */
+    private function match(string $regex, string $subject)
+    {
+        return preg_match($regex, $subject);
     }
 
     /**

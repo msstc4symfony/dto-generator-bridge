@@ -8,6 +8,7 @@ use Composer\InstalledVersions;
 use DateTimeInterface;
 use Doctrine\Common\Annotations\AnnotationReader;
 use FilesystemIterator;
+use InvalidArgumentException;
 use MSSTC4PHP\DtoGenerator\Application\Service\Generate\Input;
 use MSSTC4PHP\DtoGenerator\Application\Service\Generate\Mode;
 use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostic;
@@ -66,6 +67,9 @@ final class RealSymfonyTest extends TestCase
         'legs' => 4,
         'tail' => 2,
         'nick' => 'rx',
+        'count' => 5,
+        'blob' => 'QUJD',
+        'level' => 'low',
     ];
 
     /**
@@ -170,6 +174,16 @@ final class RealSymfonyTest extends TestCase
             'friend name too long' => [$all, ['friends' => [['name' => 'toolong']]], ['friends[0].name'], []],
             'renamed property too long' => [$all, ['first_name' => 'abcdefghi'], ['firstName'], []],
             'note checked only in its group' => [$all, [], ['note'], ['strict']],
+            'count beyond int32' => [$all, ['count' => 2147483648], ['count'], []],
+            'count below the minimum' => [$all, ['count' => -1], ['count'], []],
+            'blob outside the base64 alphabet' => [$all, ['blob' => 'QU*D'], ['blob'], []],
+            'blob in base64url' => [$all, ['blob' => 'QU-_'], ['blob'], []],
+            'blob with padding inside' => [$all, ['blob' => 'QQ==QQ=='], ['blob'], []],
+            'blob of a length base64 has not, which the pattern does not check' => [$all, ['blob' => 'QUJ'], [], []],
+            'blob with a trailing newline' => [$all, ['blob' => "QUJD\n"], ['blob'], []],
+            'blob with padding' => [$all, ['blob' => 'QUI='], [], []],
+            'level outside the mixed enum' => [$all, ['level' => 'high'], ['level'], []],
+            'level as the integer of the mixed enum' => [$all, ['level' => 1], [], []],
         ];
     }
 
@@ -196,6 +210,22 @@ final class RealSymfonyTest extends TestCase
         if ($checked === 0) {
             self::markTestSkipped('No target of this case runs here.');
         }
+    }
+
+    /**
+     * Symfony's RegexValidator reports a failed preg_match() as a violation, so the pattern must hold any size.
+     */
+    public function testAcceptsLargeBase64(): void
+    {
+        $this->runTarget('8.2', function (string $namespace, bool $annotations): void {
+            foreach ([1, 8] as $megabytes) {
+                $blob = base64_encode(str_repeat("\xFB\xEF\xBE", $megabytes * 349526));
+                $pet = $this->serializer($annotations)->denormalize(['blob' => $blob] + self::VALID, $namespace . '\\Pet');
+                self::assertIsObject($pet);
+
+                self::assertSame([], $this->violationPaths($pet, $annotations), $megabytes . ' MB');
+            }
+        });
     }
 
     /**
@@ -270,6 +300,63 @@ final class RealSymfonyTest extends TestCase
     }
 
     /**
+     * The discriminator is an enum: a PHP enum on 8.1+ targets, a string with class constants before.
+     *
+     * @dataProvider targets
+     */
+    public function testBuildsTheVariantAnEnumDiscriminatorSelects(string $php): void
+    {
+        $this->runTarget($php, function (string $namespace, bool $annotations): void {
+            $serializer = $this->serializer($annotations);
+            $fish = $serializer->denormalize(['kind' => 'fish', 'fins' => -1], $namespace . '\Creature');
+            $bird = $serializer->denormalize(['kind' => 'bird', 'wings' => 2], $namespace . '\Creature');
+
+            self::assertIsObject($fish);
+            self::assertIsObject($bird);
+            self::assertSame($namespace . '\Fish', get_class($fish));
+            self::assertSame($namespace . '\Bird', get_class($bird));
+            self::assertSame(['kind' => 'fish', 'fins' => -1], $serializer->normalize($fish));
+            self::assertSame(['kind' => 'bird', 'wings' => 2], $serializer->normalize($bird));
+            self::assertSame(['fins'], $this->violationPaths($fish, $annotations));
+        });
+    }
+
+    /**
+     * A variant selected by one value takes it as the default of its constructor.
+     *
+     * @dataProvider targets
+     */
+    public function testTakesTheOnlyValueOfAVariantAsTheDefault(string $php): void
+    {
+        $this->runTarget($php, function (string $namespace, bool $annotations): void {
+            $serializer = $this->serializer($annotations);
+            $cat = $serializer->denormalize(['lives' => 3], $namespace . '\Cat');
+            $fish = $serializer->denormalize(['fins' => 2], $namespace . '\Fish');
+
+            self::assertIsObject($cat);
+            self::assertIsObject($fish);
+            self::assertSame(['animal_type' => 'cat', 'lives' => 3], $serializer->normalize($cat));
+            self::assertSame(['kind' => 'fish', 'fins' => 2], $serializer->normalize($fish));
+        });
+    }
+
+    /**
+     * Denormalizing straight into a variant hands the payload's discriminator to its constructor, which rejects
+     * another class's value; Symfony turns only a TypeError there into its own exception.
+     *
+     * @dataProvider targets
+     */
+    public function testRejectsAForeignDiscriminatorValueInAVariant(string $php): void
+    {
+        $this->runTarget($php, function (string $namespace, bool $annotations): void {
+            $serializer = $this->serializer($annotations);
+
+            self::assertSame('"dog" does not select Cat by "animal_type".', $this->rejection(static fn () => $serializer->denormalize(['animal_type' => 'dog'], $namespace . '\Cat')));
+            self::assertSame('"bird" does not select Fish by "kind".', $this->rejection(static fn () => $serializer->denormalize(['kind' => 'bird'], $namespace . '\Fish')));
+        });
+    }
+
+    /**
      * @dataProvider targets
      */
     public function testCarriesNoUndeclaredPropertiesButChecksTheirValues(string $php): void
@@ -284,6 +371,24 @@ final class RealSymfonyTest extends TestCase
             // PHP 8.0 attributes allow no "new", so the bridge writes no All there.
             self::assertSame($php === '8.0' ? [] : ['additionalProperties[apples]'], $this->violationPaths(new $class('x', ['apples' => -1]), $annotations));
         });
+    }
+
+    /**
+     * @param callable(): mixed $denormalize
+     *
+     * @return string the message of the \InvalidArgumentException it throws, exactly that class
+     */
+    private function rejection(callable $denormalize): string
+    {
+        try {
+            $denormalize();
+        } catch (InvalidArgumentException $exception) {
+            self::assertSame(InvalidArgumentException::class, get_class($exception));
+
+            return $exception->getMessage();
+        }
+
+        self::fail('No InvalidArgumentException');
     }
 
     /**
