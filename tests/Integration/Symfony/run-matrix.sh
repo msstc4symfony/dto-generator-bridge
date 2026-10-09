@@ -26,7 +26,7 @@ SYMFONY="$SYMFONY" PLATFORM="$(echo "$PHP_IMAGE" | grep -oE '^[0-9]+\.[0-9]+')" 
 import json, os, re, sys
 work = sys.argv[1]
 manifest = json.load(open(os.path.join(work, 'composer-ci.json')))
-manifest['repositories'] = [{'type': 'path', 'url': './core', 'options': {'symlink': False, 'versions': {'msstc4php/dto-generator': '1.1.0'}}}]
+manifest['repositories'] = [{'type': 'path', 'url': './core', 'options': {'symlink': False, 'versions': {'msstc4php/dto-generator': '1.2.0'}}}]
 for tool in ['roave/backward-compatibility-check', 'deptrac/deptrac']:
     manifest['require-dev'].pop(tool, None)
 listed = [p for p in list(manifest.get('require', {})) + list(manifest['require-dev'])
