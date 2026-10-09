@@ -37,7 +37,13 @@ final class ConstraintBuilder
         'ipv6' => ['Ip', 'version', '6'],
         'hostname' => ['Hostname', 'requireTld', false],
         'uuid' => ['Uuid', null, null],
+        'byte' => ['Regex', 'pattern', self::BASE64],
     ];
+
+    /**
+     * Base64 of RFC 4648 with padding; D, as on the regexes of `pattern`, so that "$" takes no trailing newline.
+     */
+    private const BASE64 = '/^(?:[A-Za-z0-9+\/]{4})*(?:[A-Za-z0-9+\/]{2}==|[A-Za-z0-9+\/]{3}=)?$/D';
 
     /**
      * The keywords JSON Schema applies to one kind of value only.
@@ -63,7 +69,7 @@ final class ConstraintBuilder
      *
      * @var array<non-empty-string, non-empty-string>
      */
-    private const FORMAT_KINDS = ['int32' => 'an integer'];
+    private const FORMAT_KINDS = ['int32' => 'an integer', 'byte' => 'a string'];
 
     private SchemaReferences $references;
 

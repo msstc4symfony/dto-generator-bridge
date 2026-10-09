@@ -233,6 +233,36 @@ final class ValidatorEnricherTest extends TestCase
         self::assertStringContainsString("     * @Assert\\Range(min=-2147483648, max=2147483647)\n", $this->code($output, 'Pet.php'));
     }
 
+    public function testChecksBase64OfByteStrings(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'blob' => ['type' => 'string', 'format' => 'byte', 'maxLength' => 8],
+            'maybe' => ['type' => ['string', 'null'], 'format' => 'byte'],
+            'many' => ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'byte']],
+            'raw' => ['type' => 'string', 'format' => 'binary'],
+            'either' => ['type' => ['integer', 'string'], 'format' => 'byte'],
+        ]]);
+        $code = $this->code($output, 'Pet.php');
+        $base64 = "Regex(pattern: '/^(?:[A-Za-z0-9+\\/]{4})*(?:[A-Za-z0-9+\\/]{2}==|[A-Za-z0-9+\\/]{3}=)?\$/D')";
+
+        self::assertSame(['Assert\\Length(max: 8)', 'Assert\\' . $base64], $this->attributesOf($code, 'blob'));
+        self::assertSame(['Assert\\' . $base64], $this->attributesOf($code, 'maybe'));
+        self::assertSame(['Assert\\All(constraints: [new \\Symfony\\Component\\Validator\\Constraints\\' . $base64 . '])'], $this->attributesOf($code, 'many'));
+        self::assertSame([], $this->attributesOf($code, 'raw'));
+        self::assertSame([], $this->attributesOf($code, 'either'));
+        self::assertSame([
+            'warning /api.yaml#/components/schemas/Pet/properties/either/format: Unknown integer format "byte"; the property stays an int.',
+            'warning /api.yaml#/components/schemas/Pet/properties/either: "format: byte" checks only a string, and the value may be of another type; it is not checked.',
+        ], $this->messages($output));
+    }
+
+    public function testWritesTheBase64PatternAsAnAnnotationForPhp74(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => ['blob' => ['type' => 'string', 'format' => 'byte']]], [], '7.4', [], 'v6.4.1', ['doctrine/annotations' => '2.0.2']);
+
+        self::assertStringContainsString('     * @Assert\\Regex(pattern="/^(?:[A-Za-z0-9+\\/]{4})*(?:[A-Za-z0-9+\\/]{2}==|[A-Za-z0-9+\\/]{3}=)?$/D")' . "\n", $this->code($output, 'Pet.php'));
+    }
+
     public function testComparesWithAConstant(): void
     {
         $output = $this->generate(['type' => 'object', 'properties' => [
