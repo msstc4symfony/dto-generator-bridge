@@ -65,7 +65,7 @@ final class ConstraintBuilder
     private const INT32_BOUND = 'format: int32';
 
     /**
-     * The formats whose constraint checks one kind of value only, and that kind.
+     * The formats whose constraint checks one kind of value only, and that kind as a warning names it.
      *
      * @var array<non-empty-string, non-empty-string>
      */
