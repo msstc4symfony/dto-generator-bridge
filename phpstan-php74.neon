@@ -2,6 +2,9 @@
 # phpstan.dist.neon does not catch what exists in the analysing runtime. Run on PHP 8.4 by the "Bridge checks" job.
 parameters:
     customRulesetUsed: true
+    # extension-installer registers strict-rules too; the main configs run them.
+    strictRules:
+        allRules: false
     paths:
         - src/
         - tests/
@@ -83,4 +86,4 @@ parameters:
             # A psr/log 3 signature in a test double of the bundle tests, which run only beside Symfony; an unused
             # import of a missing class is harmless on PHP 7.4.
             allowIn:
-                - tests/Unit/Bundle/*
+                - '*/tests/Unit/Bundle/*'

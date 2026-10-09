@@ -45,6 +45,14 @@ jobs:
           php-version: '8.4'
           coverage: none
           tools: composer:v2
+      - name: Locate the Composer cache
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v5
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-bridge-${{ hashFiles('composer-ci.json') }}
+          restore-keys: composer-bridge-
       - run: composer update --no-interaction --no-progress
         env:
           COMPOSER: composer-ci.json
