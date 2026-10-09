@@ -203,6 +203,9 @@ final class ValidatorEnricherTest extends TestCase
             'below' => ['type' => 'integer', 'format' => 'int32', 'exclusiveMaximum' => 3000000000],
             'above' => ['type' => 'integer', 'format' => 'int32', 'exclusiveMinimum' => -3000000000],
             'top' => ['type' => 'integer', 'format' => 'int32', 'maximum' => 2147483647],
+            'under' => ['type' => 'integer', 'format' => 'int32', 'exclusiveMaximum' => 2147483647],
+            'floor' => ['type' => 'integer', 'format' => 'int32', 'minimum' => -2147483648],
+            'sunk' => ['type' => 'integer', 'format' => 'int32', 'maximum' => -3000000000],
         ]]);
         $code = $this->code($output, 'Pet.php');
         $int32 = 'Assert\\Range(min: -2147483648, max: 2147483647)';
@@ -224,11 +227,15 @@ final class ValidatorEnricherTest extends TestCase
         self::assertSame([$int32], $this->attributesOf($code, 'below'));
         self::assertSame([$int32], $this->attributesOf($code, 'above'));
         self::assertSame([$int32], $this->attributesOf($code, 'top'));
+        self::assertSame(['Assert\\GreaterThanOrEqual(value: -2147483648)', 'Assert\\LessThan(value: 2147483647)'], $this->attributesOf($code, 'under'));
+        self::assertSame([$int32], $this->attributesOf($code, 'floor'));
+        self::assertSame([], $this->attributesOf($code, 'sunk'));
         self::assertSame([
             'warning /api.yaml#/components/schemas/Pet/properties/either/format: Unknown string format "int32"; the property stays a string.',
             'warning /api.yaml#/components/schemas/Pet/properties/fraction/format: Unknown number format "int32"; the property stays a float.',
             'warning /api.yaml#/components/schemas/Pet/properties/beyond: "minimum" and "format: int32" leave no valid value; they are not checked.',
             'warning /api.yaml#/components/schemas/Pet/properties/either: "format: int32" checks only an integer, and the value may be of another type; it is not checked.',
+            'warning /api.yaml#/components/schemas/Pet/properties/sunk: "format: int32" and "maximum" leave no valid value; they are not checked.',
         ], $this->messages($output));
     }
 
