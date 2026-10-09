@@ -12,8 +12,9 @@ All notable changes to this package are documented here. The format follows
   exclusive keywords: the strictest bound on each side wins, and two inclusive bounds stay one `Range`. `int64` gives
   none.
 - `format: byte` gives a `Regex` for base64: the standard alphabet of RFC 4648, `=` padding only at the end. The
-  length is not checked to be a multiple of four (`QUJ` passes): a pattern that counts groups of four fails on large
-  payloads, which Symfony reports as a violation.
+  length is not checked to be a multiple of four (`QUJ`, a lone `=` or `==` pass): a pattern that counts groups of
+  four fails on large payloads, which Symfony reports as a violation. The pattern is linear and possessive, so it
+  holds payloads of any size, valid or not.
 - A value of several types with `format: int32` or `format: byte` gets a warning ("…it is not checked") instead of the
   constraint.
 
@@ -21,8 +22,9 @@ All notable changes to this package are documented here. The format follows
 
 - Requires `msstc4php/dto-generator` ^1.2.
 - `dto-generator:generate` of the bundle prepares the process as the generator's CLI does
-  (`DtoGenerator::prepareProcess()`): `memory_limit` of at least 1G or `DTO_GENERATOR_MEMORY_LIMIT`, shown PHP errors
-  on stderr, exit code `2` on a fatal error. The warmup check leaves the process alone.
+  (`DtoGenerator::prepareProcess()`): `memory_limit` of at least 1G or `DTO_GENERATOR_MEMORY_LIMIT`, PHP errors moved
+  to stderr when `display_errors` shows them, exit code `2` on a later fatal error (`255` on PHP 7.4 for an error
+  inside a function). The warmup check leaves the process alone.
 - Existing DTOs with `format: int32` get the `Range` above when they are generated again.
 - Existing DTOs with `format: byte` get the `Regex` above: base64url (`-`, `_`), MIME base64 with line breaks,
   padding inside the value and a trailing newline are now violations (unpadded base64 still passes).

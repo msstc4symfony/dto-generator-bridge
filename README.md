@@ -108,8 +108,9 @@ does not take RFC 3339's `full-time` with a time zone.
 
 `format: byte` takes the standard alphabet only: base64url (`-`, `_`), MIME base64 with line breaks, a trailing newline
 and padding inside the string are rejected. The pattern checks the characters and that up to two `=` only end the
-string, not that the length is a multiple of four (`QUJ` and unpadded base64 pass): a pattern that counts groups of
-four exhausts PCRE's stack on payloads of a few hundred kilobytes, and Symfony reports the failed match as a violation.
+string, not that the length is a multiple of four: `QUJ`, unpadded base64 and even a lone `=` or `==` pass. A pattern
+that counts groups of four exhausts PCRE's JIT stack on payloads of about a hundred kilobytes, and Symfony reports the
+failed match as a violation; the pattern used is linear and possessive, so it holds payloads of any size.
 
 ## Serializer attributes
 
@@ -174,16 +175,18 @@ dto_generator:
 
 `bin/console dto-generator:generate [--config=...] [--check] [--dry-run] [--format=text|json]` takes the same options
 and gives the same output and exit codes as the generator's own `generate` command, with the same process settings: it
-raises a `memory_limit` below 1G to 1G (or takes `DTO_GENERATOR_MEMORY_LIMIT`), sends shown PHP errors to stderr and
-ends a PHP fatal error with exit code `2` (PHP 7.4 keeps its own `255`). A relative `config` or `--config` is
+raises a `memory_limit` below 1G to 1G (or takes `DTO_GENERATOR_MEMORY_LIMIT`), moves PHP errors to stderr when
+`display_errors` shows them (`On` or `stdout`), and ends a PHP fatal error with exit code `2` (on PHP 7.4, an error
+raised inside a function keeps PHP's own `255`). A relative `config` or `--config` is
 resolved against the project directory, not the current one; an empty `--config` keeps the bundle's. The warmup check
 never writes files, never changes the process and never fails the warmup: whatever goes wrong becomes a warning in the
 log.
 
 The command is meant for a `bin/console` process of its own. Run inside a long-lived process (`CommandTester` or
 `ApplicationTester` in a test suite, Messenger's `RunCommandMessage`, `Application::run()` from a controller), it leaves
-that process with `display_errors=stderr`, a `memory_limit` of at least 1G (or `DTO_GENERATOR_MEMORY_LIMIT`, which may
-also lower it) and a shutdown handler that turns a later fatal error into exit code `2`.
+that process with `display_errors=stderr` (when it showed errors), a `memory_limit` of at least 1G (or
+`DTO_GENERATOR_MEMORY_LIMIT`, which may also lower it) and a shutdown handler that ends a later fatal error with exit
+code `2` (`255` on PHP 7.4 for an error inside a function).
 
 `DTO_GENERATOR_MEMORY_LIMIT` must be a real environment variable of the process (`DTO_GENERATOR_MEMORY_LIMIT=2G
 bin/console dto-generator:generate`): Symfony's Dotenv does not call `putenv()` (since 5.0), so a value in `.env` does
