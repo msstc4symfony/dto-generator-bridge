@@ -176,7 +176,10 @@ final class RealSymfonyTest extends TestCase
             'note checked only in its group' => [$all, [], ['note'], ['strict']],
             'count beyond int32' => [$all, ['count' => 2147483648], ['count'], []],
             'count below the minimum' => [$all, ['count' => -1], ['count'], []],
-            'blob not base64' => [$all, ['blob' => 'QUJ'], ['blob'], []],
+            'blob outside the base64 alphabet' => [$all, ['blob' => 'QU*D'], ['blob'], []],
+            'blob in base64url' => [$all, ['blob' => 'QU-_'], ['blob'], []],
+            'blob with padding inside' => [$all, ['blob' => 'QQ==QQ=='], ['blob'], []],
+            'blob of a length base64 has not, which the pattern does not check' => [$all, ['blob' => 'QUJ'], [], []],
             'blob with a trailing newline' => [$all, ['blob' => "QUJD\n"], ['blob'], []],
             'blob with padding' => [$all, ['blob' => 'QUI='], [], []],
             'level outside the mixed enum' => [$all, ['level' => 'high'], ['level'], []],
@@ -207,6 +210,22 @@ final class RealSymfonyTest extends TestCase
         if ($checked === 0) {
             self::markTestSkipped('No target of this case runs here.');
         }
+    }
+
+    /**
+     * Symfony's RegexValidator reports a failed preg_match() as a violation, so the pattern must hold any size.
+     */
+    public function testAcceptsLargeBase64(): void
+    {
+        $this->runTarget('8.2', function (string $namespace, bool $annotations): void {
+            foreach ([1, 8] as $megabytes) {
+                $blob = base64_encode(str_repeat("\xFB\xEF\xBE", $megabytes * 349526));
+                $pet = $this->serializer($annotations)->denormalize(['blob' => $blob] + self::VALID, $namespace . '\\Pet');
+                self::assertIsObject($pet);
+
+                self::assertSame([], $this->violationPaths($pet, $annotations), $megabytes . ' MB');
+            }
+        });
     }
 
     /**

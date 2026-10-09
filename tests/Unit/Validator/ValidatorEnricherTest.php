@@ -243,7 +243,7 @@ final class ValidatorEnricherTest extends TestCase
             'either' => ['type' => ['integer', 'string'], 'format' => 'byte'],
         ]]);
         $code = $this->code($output, 'Pet.php');
-        $base64 = "Regex(pattern: '/^(?:[A-Za-z0-9+\\/]{4})*(?:[A-Za-z0-9+\\/]{2}==|[A-Za-z0-9+\\/]{3}=)?\$/D')";
+        $base64 = "Regex(pattern: '/^[A-Za-z0-9+\\/]*={0,2}\$/D')";
 
         self::assertSame(['Assert\\Length(max: 8)', 'Assert\\' . $base64], $this->attributesOf($code, 'blob'));
         self::assertSame(['Assert\\' . $base64], $this->attributesOf($code, 'maybe'));
@@ -256,11 +256,43 @@ final class ValidatorEnricherTest extends TestCase
         ], $this->messages($output));
     }
 
+    /**
+     * A repeated group would exhaust PCRE's JIT stack or backtracking limit on a large payload, and preg_match()
+     * failing reads as a violation in Symfony's RegexValidator.
+     */
+    public function testChecksBase64OfAnySizeAndOnlyItsAlphabetAndPadding(): void
+    {
+        $code = $this->pet(['type' => 'object', 'properties' => ['blob' => ['type' => 'string', 'format' => 'byte']]]);
+        self::assertSame(1, preg_match("~pattern: '((?:[^'\\\\]|\\\\.)*)'~", implode("\n", $this->attributesOf($code, 'blob')), $match));
+        $pattern = strtr($match[1], ['\\\\' => '\\', "\\'" => "'"]);
+        $jit = ini_get('pcre.jit');
+
+        try {
+            // PHP caches a compiled pattern with its JIT setting; the ignored S modifier makes another cache entry.
+            foreach (['1' => $pattern, '0' => $pattern . 'S'] as $setting => $regex) {
+                ini_set('pcre.jit', (string) $setting);
+                foreach ([1, 8] as $megabytes) {
+                    self::assertMatchesRegularExpression($regex, base64_encode(str_repeat("\xFB\xEF\xBE", $megabytes * 349526)), sprintf('%d MB, pcre.jit=%s', $megabytes, $setting));
+                }
+
+                foreach (['', 'QUJD', 'QUI=', 'QQ==', 'a+/9', 'QUJ'] as $valid) {
+                    self::assertMatchesRegularExpression($regex, $valid, $valid);
+                }
+
+                foreach (['QU*D', 'QQ==QQ==', 'QQ===', "QUJD\n", 'QU JD', 'QU-_'] as $invalid) {
+                    self::assertDoesNotMatchRegularExpression($regex, $invalid, $invalid);
+                }
+            }
+        } finally {
+            ini_set('pcre.jit', (string) $jit);
+        }
+    }
+
     public function testWritesTheBase64PatternAsAnAnnotationForPhp74(): void
     {
         $output = $this->generate(['type' => 'object', 'properties' => ['blob' => ['type' => 'string', 'format' => 'byte']]], [], '7.4', [], 'v6.4.1', ['doctrine/annotations' => '2.0.2']);
 
-        self::assertStringContainsString('     * @Assert\\Regex(pattern="/^(?:[A-Za-z0-9+\\/]{4})*(?:[A-Za-z0-9+\\/]{2}==|[A-Za-z0-9+\\/]{3}=)?$/D")' . "\n", $this->code($output, 'Pet.php'));
+        self::assertStringContainsString('     * @Assert\\Regex(pattern="/^[A-Za-z0-9+\\/]*={0,2}$/D")' . "\n", $this->code($output, 'Pet.php'));
     }
 
     public function testComparesWithAConstant(): void
