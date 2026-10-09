@@ -42,10 +42,11 @@ final class ConstraintBuilder
 
     /**
      * The alphabet of RFC 4648 base64, with padding only at the end; the length is not checked: a repeated group of
-     * four exhausts PCRE's stack on large payloads, and a failed match reads as a violation. D, as on the regexes of
-     * `pattern`, so that "$" takes no trailing newline.
+     * four exhausts PCRE's stack on large payloads, and a failed match reads as a violation. Possessive, or a large
+     * invalid value exhausts the backtracking limit. D, as on the regexes of `pattern`, so that "$" takes no trailing
+     * newline.
      */
-    private const BASE64 = '/^[A-Za-z0-9+\/]*={0,2}$/D';
+    private const BASE64 = '/^[A-Za-z0-9+\/]*+={0,2}$/D';
 
     /**
      * The keywords JSON Schema applies to one kind of value only.

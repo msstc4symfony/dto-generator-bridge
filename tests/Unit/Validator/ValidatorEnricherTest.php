@@ -249,7 +249,7 @@ final class ValidatorEnricherTest extends TestCase
             'either' => ['type' => ['integer', 'string'], 'format' => 'byte'],
         ]]);
         $code = $this->code($output, 'Pet.php');
-        $base64 = "Regex(pattern: '/^[A-Za-z0-9+\\/]*={0,2}\$/D')";
+        $base64 = "Regex(pattern: '/^[A-Za-z0-9+\\/]*+={0,2}\$/D')";
 
         self::assertSame(['Assert\\Length(max: 8)', 'Assert\\' . $base64], $this->attributesOf($code, 'blob'));
         self::assertSame(['Assert\\' . $base64], $this->attributesOf($code, 'maybe'));
@@ -277,17 +277,22 @@ final class ValidatorEnricherTest extends TestCase
             // PHP caches a compiled pattern with its JIT setting; the ignored S modifier makes another cache entry.
             foreach (['1' => $pattern, '0' => $pattern . 'S'] as $setting => $regex) {
                 ini_set('pcre.jit', (string) $setting);
+                $large = [];
                 foreach ([1, 8] as $megabytes) {
-                    self::assertMatchesRegularExpression($regex, base64_encode(str_repeat("\xFB\xEF\xBE", $megabytes * 349526)), sprintf('%d MB, pcre.jit=%s', $megabytes, $setting));
+                    $large[$megabytes] = base64_encode(str_repeat("\xFB\xEF\xBE", $megabytes * 349526));
+                    self::assertSame(1, $this->match($regex, $large[$megabytes]), sprintf('%d MB, pcre.jit=%s', $megabytes, $setting));
                 }
 
-                foreach (['', 'QUJD', 'QUI=', 'QQ==', 'a+/9', 'QUJ'] as $valid) {
-                    self::assertMatchesRegularExpression($regex, $valid, $valid);
+                foreach (['', 'QUJD', 'QUI=', 'QQ==', 'a+/9', 'QUJ', '=', '=='] as $valid) {
+                    self::assertSame(1, $this->match($regex, $valid), $valid);
                 }
 
                 foreach (['QU*D', 'QQ==QQ==', 'QQ===', "QUJD\n", 'QU JD', 'QU-_'] as $invalid) {
-                    self::assertDoesNotMatchRegularExpression($regex, $invalid, $invalid);
+                    self::assertSame(0, $this->match($regex, $invalid), $invalid);
                 }
+
+                self::assertSame(0, $this->match($regex, $large[8] . '*'), '8 MB and "*", pcre.jit=' . $setting);
+                self::assertSame(0, $this->match($regex, substr($large[8], 0, 4) . '=' . $large[8]), '"=" inside 8 MB, pcre.jit=' . $setting);
             }
         } finally {
             ini_set('pcre.jit', (string) $jit);
@@ -298,7 +303,7 @@ final class ValidatorEnricherTest extends TestCase
     {
         $output = $this->generate(['type' => 'object', 'properties' => ['blob' => ['type' => 'string', 'format' => 'byte']]], [], '7.4', [], 'v6.4.1', ['doctrine/annotations' => '2.0.2']);
 
-        self::assertStringContainsString('     * @Assert\\Regex(pattern="/^[A-Za-z0-9+\\/]*={0,2}$/D")' . "\n", $this->code($output, 'Pet.php'));
+        self::assertStringContainsString('     * @Assert\\Regex(pattern="/^[A-Za-z0-9+\\/]*+={0,2}$/D")' . "\n", $this->code($output, 'Pet.php'));
     }
 
     public function testComparesWithAConstant(): void
@@ -915,6 +920,16 @@ final class ValidatorEnricherTest extends TestCase
         ]]);
 
         self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/name: x-validator-groups-exclusive must be true or false; it is ignored.'], $this->messages($output));
+    }
+
+    /**
+     * preg_match() itself rather than PHPUnit's regex assertions, which do not tell a failed match (false) from none.
+     *
+     * @return 0|1|false
+     */
+    private function match(string $regex, string $subject)
+    {
+        return preg_match($regex, $subject);
     }
 
     /**
