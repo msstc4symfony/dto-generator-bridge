@@ -82,7 +82,7 @@ nullable `oneOf`/`anyOf` (all apply, as in JSON Schema 2020-12):
 | `const` | `IdenticalTo`, `IsNull` |
 | `format`: `email`, `ipv4`, `ipv6`, `hostname`, `uuid` | `Email(mode: 'html5')`, `Ip`, `Hostname(requireTld: false)`, `Uuid` |
 | `format: int32` | `Range(min: -2147483648, max: 2147483647)`, merged with `minimum` / `maximum` / `exclusive*` |
-| `format: byte` | `Regex` for base64 (RFC 4648, with padding) |
+| `format: byte` | `Regex` for base64: the standard alphabet of RFC 4648, padding only at the end |
 | an object or a collection of objects | `Valid` |
 | constraints of `items` / `additionalProperties` | `All` (not on PHP 8.0, whose attributes allow no `new`) |
 
@@ -94,7 +94,9 @@ bridge warns when it is missing. With `target.metadata: none` the bridge writes 
 
 Keywords of one kind of value (`minLength`, `minimum`, `minItems`…) are written only for a property of that type; for a
 value of several types, a pattern PHP cannot compile or a malformed keyword the bridge warns and writes nothing. The
-same holds for `format: int32` (integers) and `format: byte` (strings). A mixed `enum` such as `[low, 1]` gives a
+same holds for `format: int32` (integers) and `format: byte` (strings): a value of several types warns about them too,
+next to the generator's own warning about the format. The other formats (`email`, `uuid`…) are skipped on such a value
+without a warning. A mixed `enum` such as `[low, 1]` gives a
 `Choice` with both values; its property may hold a string or an int, so `minLength` or `minimum` beside it get that
 warning.
 
@@ -103,6 +105,11 @@ The `int32` bounds compete with the schema's: the strictest bound on each side w
 and `LessThan(value: 10)`. `int64` needs no constraint (it is PHP's int on 64-bit platforms). `uri` and `time` get none
 on purpose: Symfony's `Url` rejects valid URIs such as `urn:` and `mailto:` ones or relative references, and its `Time`
 does not take RFC 3339's `full-time` with a time zone.
+
+`format: byte` takes the standard alphabet only: base64url (`-`, `_`), MIME base64 with line breaks, a trailing newline
+and padding inside the string are rejected. The pattern checks the characters and that up to two `=` only end the
+string, not that the length is a multiple of four (`QUJ` and unpadded base64 pass): a pattern that counts groups of
+four exhausts PCRE's stack on payloads of a few hundred kilobytes, and Symfony reports the failed match as a violation.
 
 ## Serializer attributes
 
@@ -126,9 +133,10 @@ Notes:
   the bridge warns about it.
 - The constructor of a discriminated variant checks its discriminator (generator 1.2). Denormalizing through the base
   and its `DiscriminatorMap` builds the class the value selects, and a variant selected by one value takes it as the
-  default when the key is missing. Denormalizing straight into a variant with another class's value throws
-  `\InvalidArgumentException` from the constructor, which Symfony does not turn into a validation error:
-  `#[MapRequestPayload] Cat $cat` with `"petType": "dog"` answers 500. Map the payload to the base (`Pet $pet`) instead.
+  default when the key is missing. `deserialize()` or `denormalize()` straight into a variant with another class's
+  value throws `\InvalidArgumentException` from the constructor, which Symfony does not turn into a validation error;
+  from Symfony 6.3, `#[MapRequestPayload] Cat $cat` with `"petType": "dog"` answers 500. Map the payload to the base
+  (`Pet $pet`) instead.
 - Symfony Serializer cannot spread a map over the keys of its object: it would carry `$additionalProperties`, the
   properties a schema does not declare, as one key `"additionalProperties"`. The bridge ignores that property, with a
   warning, so undeclared keys are dropped when reading and not written. The validator checks each value with
@@ -171,6 +179,15 @@ ends a PHP fatal error with exit code `2` (PHP 7.4 keeps its own `255`). A relat
 resolved against the project directory, not the current one; an empty `--config` keeps the bundle's. The warmup check
 never writes files, never changes the process and never fails the warmup: whatever goes wrong becomes a warning in the
 log.
+
+The command is meant for a `bin/console` process of its own. Run inside a long-lived process (`CommandTester` or
+`ApplicationTester` in a test suite, Messenger's `RunCommandMessage`, `Application::run()` from a controller), it leaves
+that process with `display_errors=stderr`, a `memory_limit` of at least 1G (or `DTO_GENERATOR_MEMORY_LIMIT`, which may
+also lower it) and a shutdown handler that turns a later fatal error into exit code `2`.
+
+`DTO_GENERATOR_MEMORY_LIMIT` must be a real environment variable of the process (`DTO_GENERATOR_MEMORY_LIMIT=2G
+bin/console dto-generator:generate`): Symfony's Dotenv does not call `putenv()` (since 5.0), so a value in `.env` does
+not reach the generator.
 
 ## `x-` keywords
 
