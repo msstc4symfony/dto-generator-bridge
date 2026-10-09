@@ -4,7 +4,7 @@
 
 **Goal:** свойства и классы сгенерированных DTO получают атрибуты Symfony Serializer по §6 спецификации.
 
-**Spec:** `docs/specs/2026-10-02-bridge-symfony-design.md` §6 (и §5.4–§5.5 — версии и аннотации).
+**Spec:** `docs/internal/specs/2026-10-02-bridge-symfony-design.md` §6 (и §5.4–§5.5 — версии и аннотации).
 
 ## Global Constraints
 PHP ≥ 7.4; только SPI ядра; MSI 100 %; ядро не меняется.

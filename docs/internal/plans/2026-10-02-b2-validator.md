@@ -4,7 +4,7 @@
 
 **Goal:** свойства и классы сгенерированных DTO получают constraints Symfony Validator по таблице §5.1 спецификации.
 
-**Spec:** `docs/specs/2026-10-02-bridge-symfony-design.md` §4 (открытый вопрос о `$ref`), §5.1–§5.6.
+**Spec:** `docs/internal/specs/2026-10-02-bridge-symfony-design.md` §4 (открытый вопрос о `$ref`), §5.1–§5.6.
 
 ## Global Constraints
 PHP ≥ 7.4 (профиль `php74` bundle-standard); только SPI ядра; MSI 100 %; ядро — отдельная итерация со своим ревью (`~/PhpstormProjects/msstc4php/dto-generator`, ветка `feat/contract-schema-references`).
