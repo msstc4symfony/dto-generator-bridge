@@ -213,8 +213,9 @@ reads into `name: "Rex"` and `additionalProperties: {"colour": "brown", "age": 3
   type key is found as recent Serializer releases find it: by its converted name, then by the type property itself,
   then by the default type (7.3). Releases that read the type property only (5.4, 7.0 to 8.0 and some patches of 7.4
   and 8.1) do not support a name converter that renames the type property together with a default type.
-- On Symfony 5.4, PropertyInfo takes the key type `array-key` of the generated PHPDoc for a class, so a map of
-  objects (spread or a declared property) cannot be read; maps of scalars work. Symfony 6.4 and newer read both.
+- Some Serializer releases (5.4, 7.4.0) take the key type `array-key` of the generated PHPDoc for a class, so a map
+  of objects (spread or a declared property) cannot be read; maps of scalars work. 6.4 and later 7.4 releases read
+  both.
 - Serialization groups apply as usual: when the groups leave `$additionalProperties` out, nothing is spread.
 - `normalize()` returns a PHP array, so two shapes come out as JSON arrays rather than objects: with
   `preserve_empty_objects`, an object whose every property is left out (`[]`, not `{}`), and an object of which only

@@ -73,6 +73,12 @@ components:
       properties:
         label: {type: string}
       additionalProperties: {type: integer, minimum: 0}
+    Shelter:
+      type: object
+      properties:
+        residents:
+          type: object
+          additionalProperties: {$ref: '#/components/schemas/Owner'}
     Kennel:
       type: object
       properties:
