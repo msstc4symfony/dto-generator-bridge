@@ -98,7 +98,8 @@ final class TestRunTemporaryDirectoryTest extends TestCase
             var_export($this->base, true),
         );
         $errors = sys_get_temp_dir() . '/child-' . bin2hex(random_bytes(4)) . '.err';
-        $process = proc_open([PHP_BINARY, '-r', $code], [1 => ['pipe', 'w'], 2 => ['file', $errors, 'w']], $pipes);
+        // Deprecations of old dependencies, shown on stdout by default, would mix with the printed path.
+        $process = proc_open([PHP_BINARY, '-d', 'display_errors=stderr', '-r', $code], [1 => ['pipe', 'w'], 2 => ['file', $errors, 'w']], $pipes);
         self::assertIsResource($process);
         $run = (string) stream_get_contents($pipes[1]);
         fclose($pipes[1]);

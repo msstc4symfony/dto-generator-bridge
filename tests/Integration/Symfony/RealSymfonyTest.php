@@ -24,6 +24,7 @@ use SplFileInfo;
 use Symfony\Component\PropertyInfo\Extractor\PhpDocExtractor;
 use Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
 use Symfony\Component\PropertyInfo\PropertyInfoExtractor;
+use Symfony\Component\Serializer\Exception\NotNormalizableValueException;
 use Symfony\Component\Serializer\Mapping\ClassDiscriminatorFromClassMetadata;
 use Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactory;
 use Symfony\Component\Serializer\Mapping\Loader\LoaderInterface as SerializerLoader;
@@ -36,6 +37,8 @@ use Symfony\Component\Serializer\Serializer;
 use Symfony\Component\Validator\Mapping\Loader\LoaderInterface as ValidatorLoader;
 use Symfony\Component\Validator\Validation;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
+use Throwable;
+use TypeError;
 
 /**
  * DTOs the bridge generated, checked by the installed Symfony Validator and Serializer (bridge spec §8.1). CI runs it
@@ -394,9 +397,15 @@ final class RealSymfonyTest extends TestCase
 
             self::assertIsObject($tally);
             self::assertSame($data, $serializer->normalize($tally));
-            // PropertyInfo 5.4 reads the key type "array-key" of the generated PHPDoc as a class, so it reads no map of
-            // objects, spread or not.
-            if ($this->symfony() < 6.4) {
+            // Some releases (5.4, 7.4.0) take the key type "array-key" of the generated PHPDoc for a class, so they read no
+            // map of objects, declared or spread.
+            try {
+                $serializer->denormalize(['residents' => ['a' => ['name' => 'x']]], $namespace . '\Shelter');
+            } catch (Throwable $exception) {
+                if (!$exception instanceof TypeError && !$exception instanceof NotNormalizableValueException) {
+                    throw $exception;
+                }
+
                 return;
             }
 
