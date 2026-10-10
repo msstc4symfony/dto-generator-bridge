@@ -543,13 +543,14 @@ final class RealSymfonyTest extends TestCase
 
         copy(__DIR__ . '/api.yaml', $dir . '/api.yaml');
         file_put_contents($dir . '/composer.json', '{}');
-        file_put_contents($dir . '/dto-generator.yaml', (string) json_encode([
+        // Only the views name dto.readWriteModels, which a generator before 1.3 refuses.
+        $dto = $variant === 'views' ? ['dto' => ['readWriteModels' => 'split']] : [];
+        file_put_contents($dir . '/dto-generator.yaml', (string) json_encode($dto + [
             'version' => 1,
             'target' => ['php' => $php],
             'verifyClasses' => false,
             'discoverExtensions' => false,
             'extensions' => [SymfonyExtension::class],
-            'dto' => ['readWriteModels' => $variant === 'views' ? 'split' : 'single'],
             'extensionConfig' => ['symfony' => ['validator' => true, 'serializer' => true, 'version' => sprintf('%.1F', $this->symfony()), 'additionalProperties' => $variant === 'spread' ? 'spread' : 'ignore']],
             'sources' => [['spec' => 'api.yaml', 'namespace' => $namespace, 'outputDir' => 'out']],
         ]));
