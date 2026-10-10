@@ -8,6 +8,8 @@ All notable changes to this package are documented here. The format follows
 
 ### Added
 
+- The README describes the read and write models of the generator's `dto.readWriteModels: split`; the integration
+  suite reads and writes through them with each Symfony line.
 - `extensionConfig.symfony.additionalProperties: spread` carries the undeclared properties of a DTO through Symfony
   Serializer. The bridge writes `#[AdditionalProperties]` on `$additionalProperties` instead of `Ignore`, and
   `Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalPropertiesNormalizer` writes the map's entries as keys of the

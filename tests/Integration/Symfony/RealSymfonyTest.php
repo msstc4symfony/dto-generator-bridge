@@ -9,6 +9,7 @@ use DateTimeInterface;
 use Doctrine\Common\Annotations\AnnotationReader;
 use FilesystemIterator;
 use InvalidArgumentException;
+use MSSTC4PHP\DtoGenerator\Application\Config\ViewSuffixes;
 use MSSTC4PHP\DtoGenerator\Application\Service\Generate\Input;
 use MSSTC4PHP\DtoGenerator\Application\Service\Generate\Mode;
 use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostic;
@@ -413,7 +414,30 @@ final class RealSymfonyTest extends TestCase
             self::assertIsObject($kennel);
             self::assertSame(['name' => 'k', 'opened' => '2026-10-10', 'vet' => ['name' => 'bo']], $serializer->normalize($kennel));
             self::assertSame([], $this->violationPaths($kennel, $annotations));
-        }, true);
+        }, 'spread');
+    }
+
+    /**
+     * @dataProvider attributeTargets
+     */
+    public function testReadsAndWritesThroughTheReadAndWriteModels(string $php): void
+    {
+        if (!class_exists(ViewSuffixes::class)) {
+            self::markTestSkipped('The installed generator has no read and write models (dto.readWriteModels, 1.3).');
+        }
+
+        $this->runTarget($php, function (string $namespace, bool $annotations): void {
+            $serializer = $this->serializer($annotations);
+            $read = $serializer->denormalize(['id' => 7, 'login' => 'ann', 'password' => 'secret12'], $namespace . '\AccountRead');
+            $write = $serializer->denormalize(['id' => 7, 'login' => 'ann', 'password' => 'short'], $namespace . '\AccountWrite');
+
+            self::assertIsObject($read);
+            self::assertSame(['id' => 7, 'login' => 'ann'], $serializer->normalize($read));
+            self::assertIsObject($write);
+            self::assertSame(['login' => 'ann', 'password' => 'short'], $serializer->normalize($write));
+            self::assertSame(['password'], $this->violationPaths($write, $annotations));
+            self::assertFalse(class_exists($namespace . '\Account'));
+        }, 'views');
     }
 
     /**
@@ -452,9 +476,12 @@ final class RealSymfonyTest extends TestCase
     /**
      * @param callable(string, bool): void $check
      */
-    private function runTarget(string $php, callable $check, bool $spread = false): void
+    /**
+     * @param ''|'spread'|'views' $variant see generate()
+     */
+    private function runTarget(string $php, callable $check, string $variant = ''): void
     {
-        if (!$this->withTarget($php, $check, $spread)) {
+        if (!$this->withTarget($php, $check, $variant)) {
             self::markTestSkipped(sprintf('PHP %s targets do not run with PHP %s and Symfony %.1F.', $php, PHP_VERSION, $this->symfony()));
         }
     }
@@ -463,16 +490,16 @@ final class RealSymfonyTest extends TestCase
      * Whether the target runs here: its classes need that PHP, and annotations need Symfony < 7 with Doctrine's reader.
      *
      * @param callable(string, bool): void $check the namespace of the generated classes, and whether they carry annotations
-     * @param bool $spread whether the classes are generated with extensionConfig.symfony.additionalProperties: spread
+     * @param ''|'spread'|'views' $variant see generate()
      */
-    private function withTarget(string $php, callable $check, bool $spread = false): bool
+    private function withTarget(string $php, callable $check, string $variant = ''): bool
     {
         $annotations = $php === '7.4';
         if (version_compare(PHP_VERSION, $php, '<') || ($annotations && ($this->symfony() >= 7.0 || !class_exists(AnnotationReader::class)))) {
             return false;
         }
 
-        $namespace = self::$generated[$php . ($spread ? ' spread' : '')] ??= $this->generate($php, $spread);
+        $namespace = self::$generated[$php . ' ' . $variant] ??= $this->generate($php, $variant);
         $deprecations = [];
         $previous = null;
         $previous = set_error_handler(static function (int $level, string $message, string $file = '', int $line = 0) use (&$previous, &$deprecations): bool {
@@ -501,11 +528,15 @@ final class RealSymfonyTest extends TestCase
         return true;
     }
 
-    private function generate(string $php, bool $spread): string
+    /**
+     * @param ''|'spread'|'views' $variant with extensionConfig.symfony.additionalProperties: spread, or with
+     *                                     dto.readWriteModels: split
+     */
+    private function generate(string $php, string $variant): string
     {
-        $namespace = 'App\Matrix\V' . str_replace('.', '', $php) . ($spread ? 'Spread' : '');
+        $namespace = 'App\Matrix\V' . str_replace('.', '', $php) . ucfirst($variant);
         self::$root ??= sys_get_temp_dir() . '/dto-bridge-matrix-' . bin2hex(random_bytes(4));
-        $dir = self::$root . '/' . $php . ($spread ? '-spread' : '');
+        $dir = self::$root . '/' . $php . ($variant === '' ? '' : '-' . $variant);
         if (!is_dir($dir)) {
             mkdir($dir, 0777, true);
         }
@@ -518,7 +549,8 @@ final class RealSymfonyTest extends TestCase
             'verifyClasses' => false,
             'discoverExtensions' => false,
             'extensions' => [SymfonyExtension::class],
-            'extensionConfig' => ['symfony' => ['validator' => true, 'serializer' => true, 'version' => sprintf('%.1F', $this->symfony()), 'additionalProperties' => $spread ? 'spread' : 'ignore']],
+            'dto' => ['readWriteModels' => $variant === 'views' ? 'split' : 'single'],
+            'extensionConfig' => ['symfony' => ['validator' => true, 'serializer' => true, 'version' => sprintf('%.1F', $this->symfony()), 'additionalProperties' => $variant === 'spread' ? 'spread' : 'ignore']],
             'sources' => [['spec' => 'api.yaml', 'namespace' => $namespace, 'outputDir' => 'out']],
         ]));
 
@@ -526,7 +558,10 @@ final class RealSymfonyTest extends TestCase
         $messages = array_map(static fn (Diagnostic $diagnostic): string => str_replace($dir, '', $diagnostic->toString()), $output->diagnostics()->all());
         self::assertSame([], array_values(array_filter($messages, static fn (string $message): bool => strncmp($message, 'error', 5) === 0)));
         $dropped = array_values(array_filter($messages, static fn (string $message): bool => strpos($message, 'inside All') !== false));
-        self::assertCount($php === '8.0' ? 3 : 0, $dropped, implode("\n", $messages));
+        // The read and write models of a class repeat its warnings under their own names.
+        if ($variant !== 'views') {
+            self::assertCount($php === '8.0' ? 3 : 0, $dropped, implode("\n", $messages));
+        }
 
         $out = $dir . '/out/';
         $autoloader = static function (string $class) use ($namespace, $out): void {
