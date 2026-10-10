@@ -128,11 +128,11 @@ final class AdditionalPropertiesNormalizer implements NormalizerInterface, Denor
      */
     public function denormalize(mixed $data, string $type, ?string $format = null, array $context = []): mixed
     {
-        $class = is_array($data) ? $this->concrete($data, $type, $format) : null;
-        $layout = $class === null ? null : $this->layout($class, $format);
-        if ($layout instanceof ClassLayout && is_array($data)) {
-            // Read through another discriminated base than the one Symfony writes, its key selects the variant too.
-            $undeclared = array_diff_key($data, $layout->declared(), array_flip($this->typeKeys($type, $class, $format)));
+        $target = is_array($data) ? $this->target($data, $type, $format) : null;
+        $layout = $target === null ? null : $this->layout($target[0], $format);
+        if ($target !== null && $layout instanceof ClassLayout && is_array($data)) {
+            // Read through another discriminated base than the one Symfony writes, its keys select the variant too.
+            $undeclared = array_diff_key($data, $layout->declared(), array_flip($target[1]));
             $data = array_diff_key($data, $undeclared);
             if ($undeclared !== []) {
                 $data[$layout->key()] = $undeclared;
@@ -147,9 +147,9 @@ final class AdditionalPropertiesNormalizer implements NormalizerInterface, Denor
      */
     public function supportsDenormalization(mixed $data, string $type, ?string $format = null, array $context = []): bool
     {
-        $class = is_array($data) ? $this->concrete($data, $type, $format) : null;
+        $target = is_array($data) ? $this->target($data, $type, $format) : null;
 
-        return $class !== null && $this->layout($class, $format) instanceof ClassLayout;
+        return $target !== null && $this->layout($target[0], $format) instanceof ClassLayout;
     }
 
     /**
@@ -163,13 +163,15 @@ final class AdditionalPropertiesNormalizer implements NormalizerInterface, Denor
     }
 
     /**
-     * The class the data stands for: the variant a discriminated base or interface maps it to, else the type itself.
+     * The class the data stands for, as AbstractObjectNormalizer::getMappedClass() picks it: the variant a discriminated
+     * base or interface maps the data's type key (or its default type, Symfony 7.3+) to, else the type itself; with the
+     * keys that type key may have.
      *
      * @param array<array-key, mixed> $data
      *
-     * @return class-string|null
+     * @return array{class-string, list<string>}|null
      */
-    private function concrete(array $data, string $type, ?string $format): ?string
+    private function target(array $data, string $type, ?string $format): ?array
     {
         if (!class_exists($type) && !interface_exists($type)) {
             return null;
@@ -177,27 +179,30 @@ final class AdditionalPropertiesNormalizer implements NormalizerInterface, Denor
 
         $mapping = $this->mapping($type);
         if (!$mapping instanceof ClassDiscriminatorMapping) {
-            return class_exists($type) ? $type : null;
+            return class_exists($type) ? [$type, []] : null;
         }
 
-        $value = $data[$this->names->normalize($mapping->getTypeProperty(), $type, $format)] ?? null;
+        $keys = $this->typeKeysOf($mapping, $type, $format);
+        // Reason: PHPStan reads the installed Serializer, which has getDefaultType(); 5.4 to 7.2 do not.
+        // @phpstan-ignore function.alreadyNarrowedType
+        $default = method_exists($mapping, 'getDefaultType') ? $mapping->getDefaultType() : null;
+        $value = $data[$keys[0]] ?? $data[$keys[1]] ?? $default;
         $variant = is_string($value) || is_int($value) ? $mapping->getClassForType((string) $value) : null;
 
-        return $variant !== null && class_exists($variant) ? $variant : null;
+        return $variant !== null && class_exists($variant) ? [$variant, $keys] : null;
     }
 
     /**
-     * The key of the discriminator of the type the data is read as, if it has one.
+     * The converted key of the discriminator, which Symfony writes, and the type property itself, which Symfony reads
+     * when the converted key is missing (only that one before 8.1).
      *
-     * @param class-string $class the variant the data selects
+     * @param class-string $class
      *
-     * @return list<string>
+     * @return array{string, string}
      */
-    private function typeKeys(string $type, string $class, ?string $format): array
+    private function typeKeysOf(ClassDiscriminatorMapping $mapping, string $class, ?string $format): array
     {
-        $mapping = $this->mapping($type);
-
-        return $mapping instanceof ClassDiscriminatorMapping ? [$this->names->normalize($mapping->getTypeProperty(), $class, $format)] : [];
+        return [$this->names->normalize($mapping->getTypeProperty(), $class, $format), $mapping->getTypeProperty()];
     }
 
     private function mapping(string $class): ?ClassDiscriminatorMapping
@@ -246,7 +251,9 @@ final class AdditionalPropertiesNormalizer implements NormalizerInterface, Denor
 
         $mapping = $this->mappedBy($class);
         if ($mapping instanceof ClassDiscriminatorMapping) {
-            $declared[$this->names->normalize($mapping->getTypeProperty(), $class, $format)] = true;
+            foreach ($this->typeKeysOf($mapping, $class, $format) as $key) {
+                $declared[$key] = true;
+            }
         }
 
         return new ClassLayout($this->names->normalize($map, $class, $format), $declared);

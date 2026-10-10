@@ -209,7 +209,9 @@ reads into `name: "Rex"` and `additionalProperties: {"colour": "brown", "age": 3
   `Symfony\Component\Serializer\Exception\UnexpectedValueException` on normalizing. Names are read once per class
   and format, so a name converter that names by context (such as by groups) is not supported. Of several discriminated
   ancestors only the one Symfony writes counts: the class's own, else its parent's, else its interfaces' (each with
-  its parents). Reading through another discriminated base keeps its key out of the map, but it is not written back.
+  its parents). Reading through another discriminated base keeps its key out of the map, but it is not written back. The
+  type key is found as Symfony finds it: by its converted name, then by the type property itself, then by the default
+  type (Serializer 7.3).
 - On Symfony 5.4, PropertyInfo takes the key type `array-key` of the generated PHPDoc for a class, so a map of
   objects (spread or a declared property) cannot be read; maps of scalars work. Symfony 6.4 and newer read both.
 - Serialization groups apply as usual: when the groups leave `$additionalProperties` out, nothing is spread.

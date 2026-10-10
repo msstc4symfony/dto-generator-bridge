@@ -7,7 +7,9 @@ namespace Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime;
 use DateTimeImmutable;
 use Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalPropertiesNormalizer;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Animal;
+use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Apple;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Bag;
+use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\BodyStyled;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Box;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Car;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Cat;
@@ -15,6 +17,7 @@ use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Circle;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Coloured;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Crate;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Dog;
+use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Fruit;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Note;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Owner;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Pair;
@@ -31,8 +34,10 @@ use Symfony\Component\PropertyInfo\PropertyInfoExtractor;
 use Symfony\Component\Serializer\Attribute\SerializedName;
 use Symfony\Component\Serializer\Exception\ExceptionInterface;
 use Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use Symfony\Component\Serializer\Exception\NotNormalizableValueException;
 use Symfony\Component\Serializer\Exception\UnexpectedValueException;
 use Symfony\Component\Serializer\Mapping\ClassDiscriminatorFromClassMetadata;
+use Symfony\Component\Serializer\Mapping\ClassDiscriminatorMapping;
 use Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
 use Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactory;
 use Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
@@ -309,15 +314,55 @@ final class AdditionalPropertiesNormalizerTest extends TestCase
         $objects = new ObjectNormalizer($metadata, $names, null, null, new ClassDiscriminatorFromClassMetadata($metadata));
         $serializer = new Serializer([new AdditionalPropertiesNormalizer($objects, $metadata, $names), $objects]);
 
+        $raw = $serializer->denormalize(['vehicleType' => 'car', 'wheels' => 4, 'roof' => 'open'], Vehicle::class);
+
+        self::assertInstanceOf(Car::class, $raw);
+        self::assertSame(['roof' => 'open'], $raw->additionalProperties);
+        $raw->additionalProperties = ['vehicleType' => 'bus'];
+        try {
+            $serializer->normalize($raw);
+            self::fail('The type property itself is declared too.');
+        } catch (UnexpectedValueException $exception) {
+            self::assertStringContainsString('"vehicleType"', $exception->getMessage());
+        }
+
+        try {
+            $objects->denormalize(['vehicle_type' => 'car'], Vehicle::class);
+        } catch (NotNormalizableValueException $exception) {
+            self::markTestSkipped('This Serializer reads the discriminator by its type property only (before 8.1).');
+        }
+
         $car = $serializer->denormalize(['vehicle_type' => 'car', 'wheels' => 4, 'roof' => 'open'], Vehicle::class);
 
         self::assertInstanceOf(Car::class, $car);
         self::assertSame(['roof' => 'open'], $car->additionalProperties);
 
+        $both = $serializer->denormalize(['vehicle_type' => 'car', 'vehicleType' => 'bus', 'roof' => 'open'], Vehicle::class);
+        self::assertInstanceOf(Car::class, $both);
+        self::assertSame(['roof' => 'open'], $both->additionalProperties, 'the converted key wins, as in Symfony');
+
+        $styled = $serializer->denormalize(['vehicle_type' => 'car', 'body_style' => 'car', 'roof' => 'open'], BodyStyled::class);
+        self::assertInstanceOf(Car::class, $styled);
+        self::assertSame(['roof' => 'open'], $styled->additionalProperties);
+
         $car->additionalProperties = ['vehicle_type' => 'bus'];
         $this->expectException(UnexpectedValueException::class);
         $this->expectExceptionMessage('"vehicle_type"');
         $serializer->normalize($car);
+    }
+
+    public function testReadsTheDefaultTypeOfADiscriminator(): void
+    {
+        // Reason: PHPStan reads the installed Serializer, which has getDefaultType(); 5.4 to 7.2 do not.
+        // @phpstan-ignore function.alreadyNarrowedType
+        if (!method_exists(ClassDiscriminatorMapping::class, 'getDefaultType')) {
+            self::markTestSkipped('Discriminators have a default type from symfony/serializer 7.3.');
+        }
+
+        $apple = $this->serializer->denormalize(['size' => 3, 'ripe' => 'yes'], Fruit::class);
+
+        self::assertInstanceOf(Apple::class, $apple);
+        self::assertSame(['ripe' => 'yes'], $apple->additionalProperties);
     }
 
     public function testReadsTheNamesOfEachFormat(): void
