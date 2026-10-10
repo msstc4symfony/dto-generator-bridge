@@ -7,4 +7,6 @@ parameters:
     paths:
         - src/Bundle
         - tests/Unit/Bundle
+        - src/Runtime
+        - tests/Unit/Runtime
         - tests/Integration/Symfony

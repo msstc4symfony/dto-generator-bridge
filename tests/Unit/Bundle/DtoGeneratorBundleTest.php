@@ -10,6 +10,8 @@ use MSSTC4PHP\DtoGenerator\Application\Service\Generate\Status;
 use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostics;
 use MSSTC4PHP\DtoGenerator\DtoGenerator;
 use Msstc4Symfony\DtoGeneratorBridge\Bundle\CacheWarmer\GenerationCheckWarmer;
+use Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalPropertiesNormalizer;
+use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Box;
 use PHPUnit\Framework\TestCase;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -22,6 +24,8 @@ use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\DependencyInjection\ContainerInterface;
+use Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
 
 /**
  * The bundle in a real Symfony application (bridge spec §7).
@@ -296,6 +300,42 @@ final class DtoGeneratorBundleTest extends TestCase
     }
 
     /**
+     * Booting a kernel outlasts Infection's timeout, which would skip every mutant of the normalizer; its own tests
+     * cover it.
+     *
+     * @coversNothing
+     *
+     * @requires PHP 8.0
+     */
+    public function testSpreadsAdditionalPropertiesInTheApplicationsSerializer(): void
+    {
+        $serializer = $this->service($this->bootedKernel([], ['serializer' => ['enabled' => true], 'property_info' => ['enabled' => true]]), 'serializer');
+
+        self::assertInstanceOf(NormalizerInterface::class, $serializer);
+        self::assertInstanceOf(DenormalizerInterface::class, $serializer);
+        self::assertSame(['pears' => 1], $serializer->normalize(new Box(['pears' => 1])));
+        $box = $serializer->denormalize(['apples' => 2], Box::class);
+        self::assertInstanceOf(Box::class, $box);
+        self::assertSame(['apples' => 2], $box->getExtra());
+    }
+
+    public function testRegistersNoNormalizerWithoutTheObjectNormalizer(): void
+    {
+        $kernel = $this->bootedKernel([], ['serializer' => ['enabled' => true], 'property_access' => ['enabled' => false]]);
+
+        self::assertTrue($this->testContainer($kernel)->has('serializer'));
+        self::assertFalse($this->testContainer($kernel)->has(AdditionalPropertiesNormalizer::class));
+    }
+
+    public function testRegistersNoNormalizerWithoutTheSerializer(): void
+    {
+        $kernel = $this->bootedKernel([], ['serializer' => ['enabled' => false]]);
+
+        self::assertFalse($this->testContainer($kernel)->has('serializer'));
+        self::assertFalse($this->testContainer($kernel)->has(AdditionalPropertiesNormalizer::class));
+    }
+
+    /**
      * @param array<string, string|bool> $bundleConfig
      */
     private function command(array $bundleConfig): CommandTester
@@ -308,10 +348,11 @@ final class DtoGeneratorBundleTest extends TestCase
 
     /**
      * @param array<string, string|bool> $bundleConfig
+     * @param array<string, array<string, bool>> $frameworkConfig
      */
-    private function bootedKernel(array $bundleConfig): TestKernel
+    private function bootedKernel(array $bundleConfig, array $frameworkConfig = []): TestKernel
     {
-        $kernel = new TestKernel($this->project, $bundleConfig);
+        $kernel = new TestKernel($this->project, $bundleConfig, $frameworkConfig);
         $this->kernels[] = $kernel;
         $kernel->boot();
 

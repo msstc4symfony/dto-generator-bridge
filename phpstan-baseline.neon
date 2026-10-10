@@ -5,4 +5,6 @@ parameters:
 		# "mixed" becomes a class name, PHP 8.4 classes stay unknown). phpstan-symfony.neon analyses it for PHP 8.4.
 		- src/Bundle
 		- tests/Unit/Bundle
+		- src/Runtime
+		- tests/Unit/Runtime
 		- tests/Integration/Symfony

@@ -6,6 +6,18 @@ All notable changes to this package are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `extensionConfig.symfony.additionalProperties: spread` carries the undeclared properties of a DTO through Symfony
+  Serializer. The bridge writes `#[AdditionalProperties]` on `$additionalProperties` instead of `Ignore`, and
+  `Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalPropertiesNormalizer` writes the map's entries as keys of the
+  object and reads undeclared keys back into it, typed by the `additionalProperties` schema. It runs in the
+  application (PHP 8.0+, Symfony 5.4 to 8), so the bridge must be in `require` and the bundle registered for all
+  environments. Keys are named by the serializer's name converter; a discriminated base class or interface is read
+  as the variant its data selects. A target that writes annotations cannot carry the marker: that is an error.
+  `ignore`, the default, keeps the previous output.
+- The bundle registers the normalizer in the application's default serializer when it runs on PHP 8.0+.
+
 ## [1.1.0] - 2026-10-09
 
 ### Added

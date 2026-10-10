@@ -14,6 +14,7 @@ use MSSTC4PHP\DtoGenerator\Application\Service\Generate\Mode;
 use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostic;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use MSSTC4PHP\DtoGenerator\DtoGenerator;
+use Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalPropertiesNormalizer;
 use Msstc4Symfony\DtoGeneratorBridge\SymfonyExtension;
 use PHPUnit\Framework\TestCase;
 use RecursiveDirectoryIterator;
@@ -374,6 +375,39 @@ final class RealSymfonyTest extends TestCase
     }
 
     /**
+     * @return array<string, array{string}>
+     */
+    public static function attributeTargets(): array
+    {
+        return ['PHP 8.2' => ['8.2'], 'PHP 8.0' => ['8.0']];
+    }
+
+    /**
+     * @dataProvider attributeTargets
+     */
+    public function testSpreadsUndeclaredPropertiesWhenAskedTo(string $php): void
+    {
+        $this->runTarget($php, function (string $namespace, bool $annotations): void {
+            $serializer = $this->serializer($annotations, true);
+            $data = ['label' => 'x', 'apples' => 2, 'label2' => 0];
+            $tally = $serializer->denormalize($data, $namespace . '\Tally');
+
+            self::assertIsObject($tally);
+            self::assertSame($data, $serializer->normalize($tally));
+            // PropertyInfo 5.4 reads the key type "array-key" of the generated PHPDoc as a class, so it reads no map of
+            // objects, spread or not.
+            if ($this->symfony() < 6.4) {
+                return;
+            }
+
+            $kennel = $serializer->denormalize(['name' => 'k', 'opened' => '2026-10-10', 'vet' => ['name' => 'bo']], $namespace . '\Kennel');
+            self::assertIsObject($kennel);
+            self::assertSame(['name' => 'k', 'opened' => '2026-10-10', 'vet' => ['name' => 'bo']], $serializer->normalize($kennel));
+            self::assertSame([], $this->violationPaths($kennel, $annotations));
+        }, true);
+    }
+
+    /**
      * @param callable(): mixed $denormalize
      *
      * @return string the message of the \InvalidArgumentException it throws, exactly that class
@@ -409,9 +443,9 @@ final class RealSymfonyTest extends TestCase
     /**
      * @param callable(string, bool): void $check
      */
-    private function runTarget(string $php, callable $check): void
+    private function runTarget(string $php, callable $check, bool $spread = false): void
     {
-        if (!$this->withTarget($php, $check)) {
+        if (!$this->withTarget($php, $check, $spread)) {
             self::markTestSkipped(sprintf('PHP %s targets do not run with PHP %s and Symfony %.1F.', $php, PHP_VERSION, $this->symfony()));
         }
     }
@@ -420,15 +454,16 @@ final class RealSymfonyTest extends TestCase
      * Whether the target runs here: its classes need that PHP, and annotations need Symfony < 7 with Doctrine's reader.
      *
      * @param callable(string, bool): void $check the namespace of the generated classes, and whether they carry annotations
+     * @param bool $spread whether the classes are generated with extensionConfig.symfony.additionalProperties: spread
      */
-    private function withTarget(string $php, callable $check): bool
+    private function withTarget(string $php, callable $check, bool $spread = false): bool
     {
         $annotations = $php === '7.4';
         if (version_compare(PHP_VERSION, $php, '<') || ($annotations && ($this->symfony() >= 7.0 || !class_exists(AnnotationReader::class)))) {
             return false;
         }
 
-        $namespace = self::$generated[$php] ??= $this->generate($php);
+        $namespace = self::$generated[$php . ($spread ? ' spread' : '')] ??= $this->generate($php, $spread);
         $deprecations = [];
         $previous = null;
         $previous = set_error_handler(static function (int $level, string $message, string $file = '', int $line = 0) use (&$previous, &$deprecations): bool {
@@ -457,11 +492,11 @@ final class RealSymfonyTest extends TestCase
         return true;
     }
 
-    private function generate(string $php): string
+    private function generate(string $php, bool $spread): string
     {
-        $namespace = 'App\Matrix\V' . str_replace('.', '', $php);
+        $namespace = 'App\Matrix\V' . str_replace('.', '', $php) . ($spread ? 'Spread' : '');
         self::$root ??= sys_get_temp_dir() . '/dto-bridge-matrix-' . bin2hex(random_bytes(4));
-        $dir = self::$root . '/' . $php;
+        $dir = self::$root . '/' . $php . ($spread ? '-spread' : '');
         if (!is_dir($dir)) {
             mkdir($dir, 0777, true);
         }
@@ -474,7 +509,7 @@ final class RealSymfonyTest extends TestCase
             'verifyClasses' => false,
             'discoverExtensions' => false,
             'extensions' => [SymfonyExtension::class],
-            'extensionConfig' => ['symfony' => ['validator' => true, 'serializer' => true, 'version' => sprintf('%.1F', $this->symfony())]],
+            'extensionConfig' => ['symfony' => ['validator' => true, 'serializer' => true, 'version' => sprintf('%.1F', $this->symfony()), 'additionalProperties' => $spread ? 'spread' : 'ignore']],
             'sources' => [['spec' => 'api.yaml', 'namespace' => $namespace, 'outputDir' => 'out']],
         ]));
 
@@ -497,7 +532,7 @@ final class RealSymfonyTest extends TestCase
         return $namespace;
     }
 
-    private function serializer(bool $annotations): Serializer
+    private function serializer(bool $annotations, bool $spread = false): Serializer
     {
         $metadata = new ClassMetadataFactory($this->loader(SerializerLoader::class, 'Symfony\Component\Serializer\Mapping\Loader', $annotations));
         $types = new PropertyInfoExtractor([], [new PhpDocExtractor(), new ReflectionExtractor()]);
@@ -506,7 +541,12 @@ final class RealSymfonyTest extends TestCase
             $normalizers[] = new BackedEnumNormalizer();
         }
 
-        $normalizers[] = new ObjectNormalizer($metadata, new MetadataAwareNameConverter($metadata), null, $types, new ClassDiscriminatorFromClassMetadata($metadata));
+        $objects = new ObjectNormalizer($metadata, new MetadataAwareNameConverter($metadata), null, $types, new ClassDiscriminatorFromClassMetadata($metadata));
+        if ($spread) {
+            $normalizers[] = new AdditionalPropertiesNormalizer($objects, $metadata);
+        }
+
+        $normalizers[] = $objects;
 
         return new Serializer($normalizers);
     }

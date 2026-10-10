@@ -63,7 +63,6 @@ parameters:
             class:
                 - 'ValueError'
                 - 'WeakMap'
-                - 'Attribute'
                 - 'PhpToken'
                 - 'UnhandledMatchError'
                 - 'Fiber'
@@ -80,6 +79,12 @@ parameters:
                 - 'Random\Randomizer'
                 - 'DateMalformedStringException'
             message: 'PHP 8.0+ only; the package runs on PHP 7.4'
+        -
+            class: 'Attribute'
+            message: 'PHP 8.0+ only; the package runs on PHP 7.4'
+            # Only in #[...], which PHP 7.4 reads as a comment; the runtime classes themselves need PHP 8.0.
+            allowIn:
+                - '*/src/Runtime/AdditionalProperties.php'
         -
             class: 'Stringable'
             message: 'PHP 8.0+ only; the package runs on PHP 7.4'

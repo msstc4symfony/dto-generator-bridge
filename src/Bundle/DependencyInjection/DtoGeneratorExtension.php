@@ -6,6 +6,7 @@ namespace Msstc4Symfony\DtoGeneratorBridge\Bundle\DependencyInjection;
 
 use Msstc4Symfony\DtoGeneratorBridge\Bundle\CacheWarmer\GenerationCheckWarmer;
 use Msstc4Symfony\DtoGeneratorBridge\Bundle\Command\GenerateCommand;
+use Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalPropertiesNormalizer;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\Extension\Extension;
@@ -22,6 +23,20 @@ final class DtoGeneratorExtension extends Extension
     public function load(array $configs, ContainerBuilder $container): void
     {
         $config = $this->processConfiguration(new Configuration(), $configs);
+        // PHP 7.4 cannot load the normalizer, whose signatures use "mixed" (symfony/polyfill-php80 declares Attribute
+        // there, so a class check would not tell). Without the serializer nothing uses the private service and the
+        // container drops it with its references.
+        if (\PHP_VERSION_ID >= 80000) {
+            $container->register(AdditionalPropertiesNormalizer::class, AdditionalPropertiesNormalizer::class)
+                ->setArguments([
+                    new Reference('serializer.normalizer.object'),
+                    new Reference('serializer.mapping.class_metadata_factory'),
+                    new Reference('serializer.name_converter.metadata_aware'),
+                ])
+                ->addTag('serializer.normalizer')
+            ;
+        }
+
         $container->register(GenerateCommand::class, GenerateCommand::class)
             ->setArguments([$config['config'], '%kernel.project_dir%'])
             ->addTag('console.command', ['command' => GenerateCommand::NAME, 'description' => self::DESCRIPTION])

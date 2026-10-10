@@ -6,12 +6,17 @@ deptrac:
     - name: Bridge
       collectors:
         - type: classNameRegex
-          value: '#^Msstc4Symfony\\DtoGeneratorBridge\\(?!Bundle\\|((Validator|Serializer)\\)?Json(Value|Scalar)$)#'
+          value: '#^Msstc4Symfony\\DtoGeneratorBridge\\(?!Bundle\\|Runtime\\|((Validator|Serializer)\\)?Json(Value|Scalar)$)#'
     # The Symfony bundle: runs the generator, so it may also use the core's entry points.
     - name: Bundle
       collectors:
         - type: classNameRegex
           value: '#^Msstc4Symfony\\DtoGeneratorBridge\\Bundle\\#'
+    # Runs in the application beside symfony/serializer, not in the generator: Symfony only.
+    - name: Runtime
+      collectors:
+        - type: classNameRegex
+          value: '#^Msstc4Symfony\\DtoGeneratorBridge\\Runtime\\#'
     # The generator's SPI: what an extension may use of the core.
     - name: CoreSpi
       collectors:
@@ -27,8 +32,10 @@ deptrac:
         - type: classNameRegex
           value: '#^Msstc4Symfony\\DtoGeneratorBridge\\(Validator\\|Serializer\\)?Json(Value|Scalar)$#'
   ruleset:
-    Bridge: [CoreSpi, TypeAlias]
-    Bundle: [CoreSpi, CoreEntry]
+    # The generator names the runtime attribute in the code it writes.
+    Bridge: [CoreSpi, TypeAlias, Runtime]
+    Bundle: [CoreSpi, CoreEntry, Runtime]
+    Runtime: ~
     CoreSpi: ~
     CoreEntry: ~
     TypeAlias: ~

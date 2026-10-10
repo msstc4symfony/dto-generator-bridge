@@ -14,7 +14,7 @@ use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
  */
 final class Settings
 {
-    private const KEYS = ['validator', 'serializer', 'version', 'groups'];
+    private const KEYS = ['validator', 'serializer', 'version', 'groups', 'additionalProperties'];
 
     private ?bool $validator;
 
@@ -25,15 +25,18 @@ final class Settings
     /** @var list<non-empty-string> */
     private array $groups;
 
+    private bool $spreadsAdditionalProperties;
+
     /**
      * @param list<non-empty-string> $groups
      */
-    private function __construct(?bool $validator, ?bool $serializer, ?SymfonyVersion $version, array $groups)
+    private function __construct(?bool $validator, ?bool $serializer, ?SymfonyVersion $version, array $groups, bool $spreadsAdditionalProperties)
     {
         $this->validator = $validator;
         $this->serializer = $serializer;
         $this->version = $version;
         $this->groups = $groups;
+        $this->spreadsAdditionalProperties = $spreadsAdditionalProperties;
     }
 
     /**
@@ -54,11 +57,12 @@ final class Settings
         $serializer = self::parseSwitch($config, 'serializer', $problems);
         $version = self::parseVersion($config, $problems);
         $groups = self::parseGroups($config, $problems);
+        $spreads = self::parseAdditionalProperties($config, $problems);
         if ($problems !== []) {
             throw new InvalidArgumentException(implode(' ', $problems));
         }
 
-        return new self($validator, $serializer, $version, $groups);
+        return new self($validator, $serializer, $version, $groups, $spreads);
     }
 
     public function validator(): ?bool
@@ -82,6 +86,15 @@ final class Settings
     public function groups(): array
     {
         return $this->groups;
+    }
+
+    /**
+     * Whether the Serializer spreads $additionalProperties over the object (AdditionalPropertiesNormalizer) rather than
+     * ignoring it.
+     */
+    public function spreadsAdditionalProperties(): bool
+    {
+        return $this->spreadsAdditionalProperties;
     }
 
     /**
@@ -166,5 +179,19 @@ final class Settings
         }
 
         return $groups;
+    }
+
+    /**
+     * @param array<int|string, JsonValue> $config
+     * @param list<string> $problems
+     */
+    private static function parseAdditionalProperties(array $config, array &$problems): bool
+    {
+        $value = array_key_exists('additionalProperties', $config) ? $config['additionalProperties'] : 'ignore';
+        if ($value !== 'ignore' && $value !== 'spread') {
+            $problems[] = 'extensionConfig.symfony.additionalProperties must be ignore or spread.';
+        }
+
+        return $value === 'spread';
     }
 }
