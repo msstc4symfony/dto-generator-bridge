@@ -25,7 +25,10 @@ Symfony versions in your `composer.lock`.
   and annotations when the DTOs target PHP 7.4 (Symfony 6.4 and older).
 - **No configuration:** the generator discovers the bridge when it is installed; `x-validator-*` and `x-serializer-*`
   keys fine-tune single properties.
-- **An optional Symfony bundle** with a `dto-generator:generate` console command and a check on cache warmup.
+- **Undeclared properties over the wire:** an opt-in normalizer spreads `$additionalProperties` over the keys of its
+  object and reads undeclared keys back into it — [details](#undeclared-properties-additionalproperties).
+- **An optional Symfony bundle** with a `dto-generator:generate` console command, a check on cache warmup and the
+  normalizer wired into the application's serializer.
 
 ## Requirements
 
@@ -60,6 +63,7 @@ extensionConfig:
     serializer: auto     # auto | true | false — auto: when composer.lock has symfony/serializer
     version: auto        # auto | '6.4' … — quote it: YAML reads 6.4 as a number
     groups: []           # validation groups for every constraint, plus Default
+    additionalProperties: ignore   # ignore | spread — see "Undeclared properties"
 ```
 
 The Symfony version is read per component from the project's `composer.lock`.
@@ -121,7 +125,7 @@ failed match as a violation; the pattern used is linear and possessive, so it ho
 | `format: date` (also of list or map items, or behind a nullable union) | `Context` with the `Y-m-d` date format |
 | `x-serializer-groups: [api]` | `Groups(['api'])` |
 | `x-serializer-ignore: true` | `Ignore` |
-| `properties` beside an `additionalProperties` schema | `Ignore` on `$additionalProperties`, with a warning |
+| `properties` beside an `additionalProperties` schema | `Ignore` on `$additionalProperties`, with a warning; with `additionalProperties: spread`, `AdditionalProperties` instead |
 
 `x-serializer-skip: true` leaves a property alone. Before Symfony 6.4 the attributes come from
 `Symfony\Component\Serializer\Annotation`, from 6.4 from `Symfony\Component\Serializer\Attribute`.
@@ -139,21 +143,72 @@ Notes:
   from Symfony 6.3, `#[MapRequestPayload] Cat $cat` with `"petType": "dog"` answers 500. Map the payload to the base
   (`Pet $pet`) instead.
 - Symfony Serializer cannot spread a map over the keys of its object: it would carry `$additionalProperties`, the
-  properties a schema does not declare, as one key `"additionalProperties"`. The bridge ignores that property, with a
-  warning, so undeclared keys are dropped when reading and not written. The validator checks each value with
-  `All`/`Valid`, which covers the values a DTO is built with in code; keys of a JSON input never reach it. The bridge's
+  properties a schema does not declare, as one key `"additionalProperties"`. By default the bridge ignores that
+  property, with a warning, so undeclared keys are dropped when reading and not written;
+  [`additionalProperties: spread`](#undeclared-properties-additionalproperties) carries them instead. The validator
+  checks each value with `All`/`Valid`, which covers the values a DTO is built with in code. The bridge's
   `x-validator-*` and `x-serializer-*` keys for `$additionalProperties` go on the `additionalProperties` schema:
-  `x-serializer-ignore: true` there confirms the choice without the warning, while `x-serializer-skip: true` brings the
-  single key back.
+  `x-serializer-ignore: true` there confirms the choice without the warning (and keeps `Ignore` under `spread`),
+  while `x-serializer-skip: true` brings the single key back.
 - `date-time` gets no format: Symfony's RFC 3339 default fits it. From Serializer 8.1, which deprecates reading other
   forms such as fractions of a second, the bridge asks for the loose parser instead. A property attribute wins over the
   context of the call, so a `datetime_format` passed to `deserialize()` does not apply to those properties;
   `x-serializer-skip` turns this off. `readOnly` and `writeOnly` have no single attribute.
 
+## Undeclared properties (`additionalProperties`)
+
+A schema with `properties` and an `additionalProperties` schema gets a property `$additionalProperties`: a map of the
+keys the schema does not declare. To carry them through Symfony Serializer, set
+
+```yaml
+extensionConfig:
+  symfony:
+    additionalProperties: spread
+```
+
+The bridge then writes `#[\Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalProperties]` on that property instead of
+`Ignore`, and `AdditionalPropertiesNormalizer` does the rest at runtime:
+
+```json
+{"name": "Rex", "colour": "brown", "age": 3}
+```
+
+reads into `name: "Rex"` and `additionalProperties: {"colour": "brown", "age": 3}` (each value typed by the
+`additionalProperties` schema, nested DTOs included), and writes back the same JSON.
+
+- **The normalizer runs in your application,** so the bridge goes into `require`, not `require-dev`. It needs PHP 8.0+
+  and `symfony/serializer` 5.4, 6.4, 7.x or 8.x; the generated DTOs must use attributes (`target.metadata`), and a
+  target that writes annotations (PHP 7.4) is an error.
+- **With the bundle** the normalizer is in the application's serializer as soon as `framework.serializer` is enabled.
+  Without it, wrap the object normalizer and put both into the chain:
+
+  ```php
+  $objects = new ObjectNormalizer($classMetadataFactory, new MetadataAwareNameConverter($classMetadataFactory), null, $propertyTypeExtractor, new ClassDiscriminatorFromClassMetadata($classMetadataFactory));
+  $serializer = new Serializer([
+      new DateTimeNormalizer(),
+      new ArrayDenormalizer(),
+      new AdditionalPropertiesNormalizer($objects, $classMetadataFactory),
+      $objects,
+  ], [new JsonEncoder()]);
+  ```
+
+  The bundle registers it at the default priority 0, ahead of Symfony's built-in normalizers; a normalizer of yours
+  for the same DTOs needs a higher priority to win.
+- **Declared keys** are the serialized names of the class's properties (`SerializedName` included, inherited
+  properties too) and the type property of a discriminated base; everything else goes into the map. A map entry
+  named like a declared key throws `Symfony\Component\Serializer\Exception\UnexpectedValueException` on
+  normalizing. A global name converter that renames properties without `SerializedName` breaks this split, as it
+  breaks the wire names of the DTOs.
+- On Symfony 5.4, PropertyInfo takes the key type `array-key` of the generated PHPDoc for a class, so a map of
+  objects (spread or a declared property) cannot be read; maps of scalars work. Symfony 6.4 and newer read both.
+- Serialization groups apply as usual: when the groups leave `$additionalProperties` out, nothing is spread. With
+  `preserve_empty_objects`, an object whose every property is left out is written as `[]`, not `{}`.
+
 ## Symfony bundle
 
-The generator needs no bundle. In a Symfony application, `DtoGeneratorBundle` adds a console command and an optional
-check on cache warmup. With the bridge installed as a dev dependency (`composer require --dev`), register the bundle
+The generator needs no bundle. In a Symfony application, `DtoGeneratorBundle` adds a console command, an optional
+check on cache warmup and, on PHP 8.0+, [`AdditionalPropertiesNormalizer`](#undeclared-properties-additionalproperties)
+in the serializer. With the bridge installed as a dev dependency (`composer require --dev`), register the bundle
 for the environments that have it:
 
 ```php

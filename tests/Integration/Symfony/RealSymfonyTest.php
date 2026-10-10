@@ -391,10 +391,16 @@ final class RealSymfonyTest extends TestCase
             $serializer = $this->serializer($annotations, true);
             $data = ['label' => 'x', 'apples' => 2, 'label2' => 0];
             $tally = $serializer->denormalize($data, $namespace . '\Tally');
-            $kennel = $serializer->denormalize(['name' => 'k', 'opened' => '2026-10-10', 'vet' => ['name' => 'bo']], $namespace . '\Kennel');
 
             self::assertIsObject($tally);
             self::assertSame($data, $serializer->normalize($tally));
+            // PropertyInfo 5.4 reads the key type "array-key" of the generated PHPDoc as a class, so it reads no map of
+            // objects, spread or not.
+            if ($this->symfony() < 6.4) {
+                return;
+            }
+
+            $kennel = $serializer->denormalize(['name' => 'k', 'opened' => '2026-10-10', 'vet' => ['name' => 'bo']], $namespace . '\Kennel');
             self::assertIsObject($kennel);
             self::assertSame(['name' => 'k', 'opened' => '2026-10-10', 'vet' => ['name' => 'bo']], $serializer->normalize($kennel));
             self::assertSame([], $this->violationPaths($kennel, $annotations));
