@@ -13,6 +13,7 @@ use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Cat;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Circle;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Crate;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Dog;
+use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Note;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Owner;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Plain;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Shape;
@@ -217,11 +218,11 @@ final class AdditionalPropertiesNormalizerTest extends TestCase
 
     public function testReadsAVariantThroughADiscriminatedInterface(): void
     {
-        $circle = $this->serializer->denormalize(['type' => 'circle', 'radius' => 2, 'fill' => 'red'], Shape::class);
+        $circle = $this->serializer->denormalize(['type' => 'circle', 'radius' => 2, 'colour' => 'red'], Shape::class);
 
         self::assertInstanceOf(Circle::class, $circle);
-        self::assertSame(['fill' => 'red'], $circle->additionalProperties);
-        self::assertSame(['type' => 'circle', 'radius' => 2, 'fill' => 'red'], $this->serializer->normalize($circle));
+        self::assertSame(['colour' => 'red'], $circle->additionalProperties);
+        self::assertSame(['type' => 'circle', 'radius' => 2, 'colour' => 'red'], $this->serializer->normalize($circle));
         self::assertFalse($this->normalizer->supportsDenormalization(['radius' => 2], Shape::class));
 
         $circle->additionalProperties = ['type' => 'square'];
@@ -244,6 +245,34 @@ final class AdditionalPropertiesNormalizerTest extends TestCase
         self::assertSame('ann', $bag->getFirstName());
         self::assertSame(['vet'], array_keys($bag->getAdditionalProperties()));
         self::assertSame($data, $serializer->normalize($bag));
+    }
+
+    public function testNamesDeclaredKeysThroughTheConverter(): void
+    {
+        $metadata = new ClassMetadataFactory(new AttributeLoader());
+        $names = new MetadataAwareNameConverter($metadata, new CamelCaseToSnakeCaseNameConverter());
+        $objects = new ObjectNormalizer($metadata, $names);
+        $serializer = new Serializer([new AdditionalPropertiesNormalizer($objects, $metadata, $names), $objects]);
+
+        $note = $serializer->denormalize(['last_seen_at' => 'today', 'mood' => 'calm'], Note::class);
+
+        self::assertInstanceOf(Note::class, $note);
+        self::assertSame('today', $note->lastSeenAt);
+        self::assertSame(['mood' => 'calm'], $note->additionalProperties);
+
+        $note->additionalProperties = ['last_seen_at' => 'never'];
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage('"last_seen_at"');
+        $serializer->normalize($note);
+    }
+
+    public function testDeclaresOnlyTheDiscriminatorSymfonyWrites(): void
+    {
+        $cat = $this->serializer->denormalize(['kind' => 'cat', 'name' => 'tom', 'tag' => 'striped'], Animal::class);
+
+        self::assertInstanceOf(Cat::class, $cat);
+        self::assertSame(['tag' => 'striped'], $cat->additionalProperties);
+        self::assertSame(['kind' => 'cat', 'name' => 'tom', 'tag' => 'striped'], $this->serializer->normalize($cat));
     }
 
     public function testReadsTheNamesOfEachFormat(): void

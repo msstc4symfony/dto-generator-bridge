@@ -202,7 +202,7 @@ final class AdditionalPropertiesNormalizer implements NormalizerInterface, Denor
      */
     private function layout(string $class, ?string $format): ?ClassLayout
     {
-        $key = $class . "\0" . $format;
+        $key = serialize([$class, $format]);
         if (!array_key_exists($key, $this->layouts)) {
             $this->layouts[$key] = $this->read($class, $format);
         }
@@ -212,8 +212,8 @@ final class AdditionalPropertiesNormalizer implements NormalizerInterface, Denor
 
     /**
      * The keys a class declares are its serialized attributes other than the map, named as the wrapped normalizer
-     * names them, and the type property of every discriminated ancestor, whose mapping a subclass's metadata does not
-     * repeat.
+     * names them, and the type property of the discriminator Symfony writes for it. Names are read once per class and
+     * format, so a name converter must not name by context.
      *
      * @param class-string $class
      */
@@ -232,14 +232,34 @@ final class AdditionalPropertiesNormalizer implements NormalizerInterface, Denor
             }
         }
 
-        foreach (array_merge([$class], array_values(class_parents($class)), array_values(class_implements($class))) as $ancestor) {
-            $mapping = $this->mapping($ancestor);
-            if ($mapping instanceof ClassDiscriminatorMapping) {
-                $declared[$mapping->getTypeProperty()] = true;
-            }
+        $mapping = $this->mappedBy($class);
+        if ($mapping instanceof ClassDiscriminatorMapping) {
+            $declared[$mapping->getTypeProperty()] = true;
         }
 
-        return new ClassLayout($map, $this->names->normalize($map, $class, $format), $declared);
+        return new ClassLayout($this->names->normalize($map, $class, $format), $declared);
+    }
+
+    /**
+     * The discriminator Symfony writes for an object of the class: its own, else its parent's (recursively), else its
+     * interfaces' (ClassDiscriminatorFromClassMetadata::getMappingForMappedObject()). A subclass's metadata does not
+     * repeat the mapping of its base.
+     *
+     * @param class-string $class
+     */
+    private function mappedBy(string $class): ?ClassDiscriminatorMapping
+    {
+        $mapping = $this->mapping($class);
+        $parent = get_parent_class($class);
+        if (!$mapping instanceof ClassDiscriminatorMapping && $parent !== false) {
+            $mapping = $this->mappedBy($parent);
+        }
+
+        foreach ($mapping instanceof ClassDiscriminatorMapping ? [] : (new ReflectionClass($class))->getInterfaceNames() as $interface) {
+            $mapping ??= $this->mapping($interface);
+        }
+
+        return $mapping;
     }
 
     /**

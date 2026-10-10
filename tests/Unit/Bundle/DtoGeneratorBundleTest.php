@@ -300,6 +300,11 @@ final class DtoGeneratorBundleTest extends TestCase
     }
 
     /**
+     * Booting a kernel outlasts Infection's timeout, which would skip every mutant of the normalizer; its own tests
+     * cover it.
+     *
+     * @coversNothing
+     *
      * @requires PHP 8.0
      */
     public function testSpreadsAdditionalPropertiesInTheApplicationsSerializer(): void
@@ -312,6 +317,15 @@ final class DtoGeneratorBundleTest extends TestCase
         $box = $serializer->denormalize(['apples' => 2], Box::class);
         self::assertInstanceOf(Box::class, $box);
         self::assertSame(['apples' => 2], $box->getExtra());
+    }
+
+    public function testRegistersNoNormalizerWithoutTheObjectNormalizer(): void
+    {
+        // Without property access FrameworkBundle drops the object normalizer, which the bridge's normalizer wraps.
+        $kernel = $this->bootedKernel([], ['serializer' => ['enabled' => true], 'property_access' => ['enabled' => false]]);
+
+        self::assertTrue($this->testContainer($kernel)->has('serializer'));
+        self::assertFalse($this->testContainer($kernel)->has(AdditionalPropertiesNormalizer::class));
     }
 
     public function testRegistersNoNormalizerWithoutTheSerializer(): void

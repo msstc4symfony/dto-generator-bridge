@@ -6,9 +6,9 @@ namespace Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture;
 
 use Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalProperties;
 
-final class Cat extends Animal implements Tagged
+final class Note
 {
-    public string $name = '';
+    public ?string $lastSeenAt = null;
 
     /**
      * @var array<string, string>

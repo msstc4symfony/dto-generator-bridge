@@ -12,28 +12,19 @@ namespace Msstc4Symfony\DtoGeneratorBridge\Runtime;
  */
 final class ClassLayout
 {
-    private string $property;
-
     private string $key;
 
     /** @var array<string, true> */
     private array $declared;
 
     /**
-     * @param string $property the PHP name of the map
      * @param string $key the name the wrapped normalizer writes the map under
      * @param array<string, true> $declared the keys the class declares
      */
-    public function __construct(string $property, string $key, array $declared)
+    public function __construct(string $key, array $declared)
     {
-        $this->property = $property;
         $this->key = $key;
         $this->declared = $declared;
-    }
-
-    public function property(): string
-    {
-        return $this->property;
     }
 
     public function key(): string
