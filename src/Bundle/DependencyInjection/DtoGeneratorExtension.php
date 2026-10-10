@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\DtoGeneratorBridge\Bundle\DependencyInjection;
 
-use Attribute;
 use Msstc4Symfony\DtoGeneratorBridge\Bundle\CacheWarmer\GenerationCheckWarmer;
 use Msstc4Symfony\DtoGeneratorBridge\Bundle\Command\GenerateCommand;
 use Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalPropertiesNormalizer;
@@ -24,11 +23,16 @@ final class DtoGeneratorExtension extends Extension
     public function load(array $configs, ContainerBuilder $container): void
     {
         $config = $this->processConfiguration(new Configuration(), $configs);
-        // PHP 7.4 cannot load the normalizer, whose signatures use "mixed"; Attribute is the class PHP 8.0 brought.
-        // Without the serializer nothing uses the private service and the container drops it with its references.
-        if (class_exists(Attribute::class)) {
+        // PHP 7.4 cannot load the normalizer, whose signatures use "mixed" (symfony/polyfill-php80 declares Attribute
+        // there, so a class check would not tell). Without the serializer nothing uses the private service and the
+        // container drops it with its references.
+        if (\PHP_VERSION_ID >= 80000) {
             $container->register(AdditionalPropertiesNormalizer::class, AdditionalPropertiesNormalizer::class)
-                ->setArguments([new Reference('serializer.normalizer.object'), new Reference('serializer.mapping.class_metadata_factory')])
+                ->setArguments([
+                    new Reference('serializer.normalizer.object'),
+                    new Reference('serializer.mapping.class_metadata_factory'),
+                    new Reference('serializer.name_converter.metadata_aware'),
+                ])
                 ->addTag('serializer.normalizer')
             ;
         }

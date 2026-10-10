@@ -176,40 +176,48 @@ The bridge then writes `#[\Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalPr
 reads into `name: "Rex"` and `additionalProperties: {"colour": "brown", "age": 3}` (each value typed by the
 `additionalProperties` schema, nested DTOs included), and writes back the same JSON.
 
-- **The normalizer runs in your application,** so the bridge goes into `require`, not `require-dev`. It needs PHP 8.0+
-  and `symfony/serializer` 5.4, 6.4, 7.x or 8.x; the generated DTOs must use attributes (`target.metadata`), and a
-  target that writes annotations (PHP 7.4) is an error.
-- **With the bundle** the normalizer is in the application's serializer as soon as `framework.serializer` is enabled.
-  Without it, wrap the object normalizer and put both into the chain:
+- **The normalizer runs in your application,** in every environment: install the bridge with `composer require`, not
+  `--dev`, and register the bundle with `['all' => true]` (or register the normalizer yourself, below). Without it the
+  DTOs carry neither `Ignore` nor a normalizer, and Symfony writes and reads one literal key `"additionalProperties"`.
+  It needs PHP 8.0+ and `symfony/serializer` 5.4, 6.4, 7.x or 8.x; the generated DTOs must use attributes
+  (`target.metadata`), and a target that writes annotations (PHP 7.4) is an error.
+- **With the bundle** the normalizer is in the application's default serializer as soon as `framework.serializer` is
+  enabled, with its object normalizer and name converter. It is registered at the default priority 0, ahead of
+  Symfony's object, date and other built-in normalizers (all of a negative priority); a normalizer of yours for the
+  same DTOs needs a higher priority to win. A named serializer (`framework.serializer.named_serializers`, Symfony 7.2)
+  does not get it: register one by hand with that serializer's object normalizer.
+- **Without the bundle,** wrap the object normalizer and pass it the same metadata factory and name converter:
 
   ```php
-  $objects = new ObjectNormalizer($classMetadataFactory, new MetadataAwareNameConverter($classMetadataFactory), null, $propertyTypeExtractor, new ClassDiscriminatorFromClassMetadata($classMetadataFactory));
+  $names = new MetadataAwareNameConverter($classMetadataFactory);
+  $objects = new ObjectNormalizer($classMetadataFactory, $names, null, $propertyTypeExtractor, new ClassDiscriminatorFromClassMetadata($classMetadataFactory));
   $serializer = new Serializer([
       new DateTimeNormalizer(),
       new ArrayDenormalizer(),
-      new AdditionalPropertiesNormalizer($objects, $classMetadataFactory),
+      new AdditionalPropertiesNormalizer($objects, $classMetadataFactory, $names),
       $objects,
   ], [new JsonEncoder()]);
   ```
 
-  The bundle registers it at the default priority 0, ahead of Symfony's built-in normalizers; a normalizer of yours
-  for the same DTOs needs a higher priority to win.
-- **Declared keys** are the serialized names of the class's properties (`SerializedName` included, inherited
-  properties too) and the type property of a discriminated base; everything else goes into the map. A map entry
-  named like a declared key throws `Symfony\Component\Serializer\Exception\UnexpectedValueException` on
-  normalizing. A global name converter that renames properties without `SerializedName` breaks this split, as it
-  breaks the wire names of the DTOs.
+  The wrapped normalizer must denormalize too; the Serializer is handed on to it, so it works without being in the
+  chain, but the other DTOs need it there.
+- **Declared keys** are the class's serialized properties, named by the name converter (`SerializedName`, a global
+  converter such as `camel_case_to_snake_case`, inherited properties too), and the type property of a discriminated
+  base class or interface; everything else goes into the map. A map entry named like a declared key throws
+  `Symfony\Component\Serializer\Exception\UnexpectedValueException` on normalizing.
 - On Symfony 5.4, PropertyInfo takes the key type `array-key` of the generated PHPDoc for a class, so a map of
   objects (spread or a declared property) cannot be read; maps of scalars work. Symfony 6.4 and newer read both.
-- Serialization groups apply as usual: when the groups leave `$additionalProperties` out, nothing is spread. With
-  `preserve_empty_objects`, an object whose every property is left out is written as `[]`, not `{}`.
+- Serialization groups apply as usual: when the groups leave `$additionalProperties` out, nothing is spread.
+- `normalize()` returns a PHP array, so two shapes come out as JSON arrays rather than objects: with
+  `preserve_empty_objects`, an object whose every property is left out (`[]`, not `{}`), and an object of which only
+  map entries with the keys `0`, `1`, … remain (`["a","b"]`, not `{"0":"a","1":"b"}`).
 
 ## Symfony bundle
 
 The generator needs no bundle. In a Symfony application, `DtoGeneratorBundle` adds a console command, an optional
 check on cache warmup and, on PHP 8.0+, [`AdditionalPropertiesNormalizer`](#undeclared-properties-additionalproperties)
 in the serializer. With the bridge installed as a dev dependency (`composer require --dev`), register the bundle
-for the environments that have it:
+for the environments that have it (`additionalProperties: spread` needs it in all of them, see above):
 
 ```php
 // config/bundles.php

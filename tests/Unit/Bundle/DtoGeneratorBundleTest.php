@@ -299,6 +299,9 @@ final class DtoGeneratorBundleTest extends TestCase
         self::assertFalse($this->testContainer($kernel)->has(GenerationCheckWarmer::class));
     }
 
+    /**
+     * @requires PHP 8.0
+     */
     public function testSpreadsAdditionalPropertiesInTheApplicationsSerializer(): void
     {
         $serializer = $this->service($this->bootedKernel([], ['serializer' => ['enabled' => true], 'property_info' => ['enabled' => true]]), 'serializer');

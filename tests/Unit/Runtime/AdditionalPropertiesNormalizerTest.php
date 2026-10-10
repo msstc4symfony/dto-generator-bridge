@@ -10,10 +10,12 @@ use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Animal;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Bag;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Box;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Cat;
+use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Circle;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Crate;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Dog;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Owner;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Plain;
+use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Shape;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Tree;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\PropertyInfo\Extractor\PhpDocExtractor;
@@ -21,17 +23,21 @@ use Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
 use Symfony\Component\PropertyInfo\PropertyInfoExtractor;
 use Symfony\Component\Serializer\Attribute\SerializedName;
 use Symfony\Component\Serializer\Exception\ExceptionInterface;
+use Symfony\Component\Serializer\Exception\InvalidArgumentException;
 use Symfony\Component\Serializer\Exception\UnexpectedValueException;
 use Symfony\Component\Serializer\Mapping\ClassDiscriminatorFromClassMetadata;
 use Symfony\Component\Serializer\Mapping\ClassMetadataInterface;
 use Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactory;
 use Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
 use Symfony\Component\Serializer\Mapping\Loader\AttributeLoader;
+use Symfony\Component\Serializer\NameConverter\CamelCaseToSnakeCaseNameConverter;
 use Symfony\Component\Serializer\NameConverter\MetadataAwareNameConverter;
+use Symfony\Component\Serializer\NameConverter\NameConverterInterface;
 use Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
 use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Serializer\Normalizer\ArrayDenormalizer;
 use Symfony\Component\Serializer\Normalizer\DateTimeNormalizer;
+use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
 use Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
 use Symfony\Component\Serializer\Serializer;
 
@@ -207,6 +213,81 @@ final class AdditionalPropertiesNormalizerTest extends TestCase
         self::assertTrue($normalizer->supportsNormalization(new Bag('box')));
         self::assertFalse($normalizer->supportsNormalization($this->plain([])));
         self::assertFalse($normalizer->supportsNormalization($this->plain([])));
+    }
+
+    public function testReadsAVariantThroughADiscriminatedInterface(): void
+    {
+        $circle = $this->serializer->denormalize(['type' => 'circle', 'radius' => 2, 'fill' => 'red'], Shape::class);
+
+        self::assertInstanceOf(Circle::class, $circle);
+        self::assertSame(['fill' => 'red'], $circle->additionalProperties);
+        self::assertSame(['type' => 'circle', 'radius' => 2, 'fill' => 'red'], $this->serializer->normalize($circle));
+        self::assertFalse($this->normalizer->supportsDenormalization(['radius' => 2], Shape::class));
+
+        $circle->additionalProperties = ['type' => 'square'];
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage('The additional property "type" of ' . Circle::class . ' has the name of a declared property.');
+        $this->serializer->normalize($circle);
+    }
+
+    public function testNamesKeysAsTheWrappedNormalizerDoes(): void
+    {
+        $metadata = new ClassMetadataFactory(new AttributeLoader());
+        $names = new MetadataAwareNameConverter($metadata, new CamelCaseToSnakeCaseNameConverter());
+        $objects = new ObjectNormalizer($metadata, $names, null, new PropertyInfoExtractor([], [new PhpDocExtractor(), new ReflectionExtractor()]));
+        $serializer = new Serializer([new AdditionalPropertiesNormalizer($objects, $metadata, $names), new ArrayDenormalizer(), $objects]);
+        $data = ['label' => 'box', 'first_name' => 'ann', 'seen' => null, 'vet' => ['name' => 'bo']];
+
+        $bag = $serializer->denormalize($data, Bag::class);
+
+        self::assertInstanceOf(Bag::class, $bag);
+        self::assertSame('ann', $bag->getFirstName());
+        self::assertSame(['vet'], array_keys($bag->getAdditionalProperties()));
+        self::assertSame($data, $serializer->normalize($bag));
+    }
+
+    public function testReadsTheNamesOfEachFormat(): void
+    {
+        $metadata = new ClassMetadataFactory(new AttributeLoader());
+        $names = new class implements NameConverterInterface {
+            public function normalize(string $propertyName, ?string $class = null, ?string $format = null, array $context = []): string
+            {
+                return $format === 'upper' ? strtoupper($propertyName) : $propertyName;
+            }
+
+            public function denormalize(string $propertyName, ?string $class = null, ?string $format = null, array $context = []): string
+            {
+                return $format === 'upper' ? strtolower($propertyName) : $propertyName;
+            }
+        };
+        $objects = new ObjectNormalizer($metadata, $names);
+        $serializer = new Serializer([new AdditionalPropertiesNormalizer($objects, $metadata, $names), $objects]);
+
+        self::assertSame(['pears' => 1], $serializer->normalize(new Box(['pears' => 1]), 'upper'));
+        self::assertSame(['pears' => 1], $serializer->normalize(new Box(['pears' => 1])));
+    }
+
+    public function testGivesTheWrappedNormalizerTheSerializer(): void
+    {
+        $metadata = new ClassMetadataFactory(new AttributeLoader());
+        $serializer = new Serializer([new AdditionalPropertiesNormalizer(new ObjectNormalizer($metadata), $metadata)]);
+
+        self::assertSame(['pears' => 1], $serializer->normalize(new Box(['pears' => 1])));
+    }
+
+    public function testWrapsOnlyANormalizerThatAlsoDenormalizes(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('wraps a normalizer that also denormalizes');
+
+        new AdditionalPropertiesNormalizer($this->createMock(NormalizerInterface::class), new ClassMetadataFactory(new AttributeLoader()));
+    }
+
+    public function testNormalizesOnlyObjects(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        $this->normalizer->normalize(['label' => 'box']);
     }
 
     public function testHandlesOnlyClassesWithTheMap(): void

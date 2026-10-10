@@ -5,39 +5,71 @@ declare(strict_types=1);
 namespace Msstc4Symfony\DtoGeneratorBridge\Runtime;
 
 use ReflectionClass;
+use Symfony\Component\Serializer\Exception\InvalidArgumentException;
 use Symfony\Component\Serializer\Exception\UnexpectedValueException;
 use Symfony\Component\Serializer\Mapping\ClassDiscriminatorMapping;
 use Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
-use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
+use Symfony\Component\Serializer\NameConverter\MetadataAwareNameConverter;
+use Symfony\Component\Serializer\NameConverter\NameConverterInterface;
 use Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
 use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
+use Symfony\Component\Serializer\SerializerAwareInterface;
+use Symfony\Component\Serializer\SerializerInterface;
 
 /**
  * Writes the entries of the property marked with AdditionalProperties as keys of the object, and reads the keys the
- * class does not declare into it. The object itself goes to the wrapped normalizer, which must also be in the
- * Serializer's chain: values and nested objects go through the chain, so nested DTOs are spread too.
+ * class does not declare into it. The object itself goes to the wrapped object normalizer; its values and nested
+ * objects go through the Serializer, so nested DTOs are spread too.
  *
  * Runs on PHP 8.0+ with symfony/serializer 5.4 to 8, but stays parseable by PHP 7.4, which lints the whole package:
- * hence no union types, and normalize() declares array, the one type of the interface's union it returns.
+ * hence no union or intersection types, and normalize() declares array, the one type of the interface's union it
+ * returns.
  *
  * @api
  */
-final class AdditionalPropertiesNormalizer implements NormalizerInterface, DenormalizerInterface
+final class AdditionalPropertiesNormalizer implements NormalizerInterface, DenormalizerInterface, SerializerAwareInterface
 {
-    private AbstractObjectNormalizer $objects;
+    /** @var NormalizerInterface&DenormalizerInterface */
+    private NormalizerInterface $objects;
 
     private ClassMetadataFactoryInterface $metadata;
 
-    /** @var array<class-string, array{string, list<string>}|false> per class: its map and the keys it declares, or false */
-    private array $classes = [];
+    private NameConverterInterface $names;
+
+    /** @var array<string, ClassLayout|null> per class and format; null for a class without the marker */
+    private array $layouts = [];
+
+    /** @var array<string, ClassDiscriminatorMapping|null> per class or interface */
+    private array $mappings = [];
 
     /**
-     * @param ClassMetadataFactoryInterface $metadata the factory the wrapped normalizer reads, for the declared keys
+     * @param NormalizerInterface $objects the object normalizer, usually ObjectNormalizer; it must denormalize too
+     * @param ClassMetadataFactoryInterface $metadata the factory the wrapped normalizer reads
+     * @param NameConverterInterface|null $names the wrapped normalizer's name converter; by default the one that reads
+     *                                           SerializedName from the metadata
+     *
+     * @throws InvalidArgumentException when the wrapped normalizer cannot denormalize
      */
-    public function __construct(AbstractObjectNormalizer $objects, ClassMetadataFactoryInterface $metadata)
+    public function __construct(NormalizerInterface $objects, ClassMetadataFactoryInterface $metadata, ?NameConverterInterface $names = null)
     {
+        // Native intersection types need PHP 8.1, and the package must parse on 7.4.
+        if (!$objects instanceof DenormalizerInterface) {
+            throw new InvalidArgumentException(sprintf('%s wraps a normalizer that also denormalizes, %s does not.', self::class, get_class($objects)));
+        }
+
         $this->objects = $objects;
         $this->metadata = $metadata;
+        $this->names = $names ?? new MetadataAwareNameConverter($metadata);
+    }
+
+    /**
+     * Hands the Serializer on, so the wrapped normalizer works outside the Serializer's chain too.
+     */
+    public function setSerializer(SerializerInterface $serializer): void
+    {
+        if ($this->objects instanceof SerializerAwareInterface) {
+            $this->objects->setSerializer($serializer);
+        }
     }
 
     /**
@@ -49,23 +81,26 @@ final class AdditionalPropertiesNormalizer implements NormalizerInterface, Denor
      */
     public function normalize(mixed $data, ?string $format = null, array $context = []): array
     {
+        if (!is_object($data)) {
+            throw new InvalidArgumentException(sprintf('%s normalizes objects only.', self::class));
+        }
+
         $normalized = $this->objects->normalize($data, $format, $context);
         // An object with nothing to write; with preserve_empty_objects it is an ArrayObject, which array cannot carry.
-        if (!is_array($normalized) || !is_object($data)) {
+        if (!is_array($normalized)) {
             return [];
         }
 
         $class = get_class($data);
-        $described = $this->describe($class);
-        if ($described === false || !array_key_exists($described[0], $normalized)) {
+        $layout = $this->layout($class, $format);
+        if (!$layout instanceof ClassLayout || !array_key_exists($layout->key(), $normalized)) {
             return $normalized;
         }
 
-        [$property, $declared] = $described;
-        $entries = $normalized[$property];
-        unset($normalized[$property]);
+        $entries = $normalized[$layout->key()];
+        unset($normalized[$layout->key()]);
         foreach (is_array($entries) ? $entries : [] as $key => $value) {
-            if (in_array((string) $key, $declared, true)) {
+            if ($layout->declares((string) $key)) {
                 throw new UnexpectedValueException(sprintf('The additional property "%s" of %s has the name of a declared property.', $key, $class));
             }
 
@@ -80,7 +115,7 @@ final class AdditionalPropertiesNormalizer implements NormalizerInterface, Denor
      */
     public function supportsNormalization(mixed $data, ?string $format = null, array $context = []): bool
     {
-        return is_object($data) && $this->describe(get_class($data)) !== false;
+        return is_object($data) && $this->layout(get_class($data), $format) instanceof ClassLayout;
     }
 
     /**
@@ -94,13 +129,12 @@ final class AdditionalPropertiesNormalizer implements NormalizerInterface, Denor
     public function denormalize(mixed $data, string $type, ?string $format = null, array $context = []): mixed
     {
         $class = is_array($data) ? $this->concrete($data, $type) : null;
-        $described = $class === null ? false : $this->describe($class);
-        if ($described !== false && is_array($data)) {
-            [$property, $declared] = $described;
-            $undeclared = array_diff_key($data, array_flip($declared));
+        $layout = $class === null ? null : $this->layout($class, $format);
+        if ($layout instanceof ClassLayout && is_array($data)) {
+            $undeclared = array_diff_key($data, $layout->declared());
             $data = array_diff_key($data, $undeclared);
             if ($undeclared !== []) {
-                $data[$property] = $undeclared;
+                $data[$layout->key()] = $undeclared;
             }
         }
 
@@ -114,7 +148,7 @@ final class AdditionalPropertiesNormalizer implements NormalizerInterface, Denor
     {
         $class = is_array($data) ? $this->concrete($data, $type) : null;
 
-        return $class !== null && $this->describe($class) !== false;
+        return $class !== null && $this->layout($class, $format) instanceof ClassLayout;
     }
 
     /**
@@ -128,7 +162,7 @@ final class AdditionalPropertiesNormalizer implements NormalizerInterface, Denor
     }
 
     /**
-     * The class the data stands for: the variant a discriminated base maps it to, else the type itself.
+     * The class the data stands for: the variant a discriminated base or interface maps it to, else the type itself.
      *
      * @param array<array-key, mixed> $data
      *
@@ -136,13 +170,13 @@ final class AdditionalPropertiesNormalizer implements NormalizerInterface, Denor
      */
     private function concrete(array $data, string $type): ?string
     {
-        if (!class_exists($type)) {
+        if (!class_exists($type) && !interface_exists($type)) {
             return null;
         }
 
-        $mapping = $this->metadata->getMetadataFor($type)->getClassDiscriminatorMapping();
+        $mapping = $this->mapping($type);
         if (!$mapping instanceof ClassDiscriminatorMapping) {
-            return $type;
+            return class_exists($type) ? $type : null;
         }
 
         $value = $data[$mapping->getTypeProperty()] ?? null;
@@ -153,49 +187,64 @@ final class AdditionalPropertiesNormalizer implements NormalizerInterface, Denor
 
     /**
      * @param class-string $class
-     *
-     * @return array{string, list<string>}|false
      */
-    private function describe(string $class)
+    private function mapping(string $class): ?ClassDiscriminatorMapping
     {
-        return $this->classes[$class] ??= $this->read($class);
+        if (!array_key_exists($class, $this->mappings)) {
+            $this->mappings[$class] = $this->metadata->getMetadataFor($class)->getClassDiscriminatorMapping();
+        }
+
+        return $this->mappings[$class];
     }
 
     /**
-     * The property marked in the class or a parent, which may declare it private, and the keys the class declares: its
-     * serialized attributes other than the map, and the type property of every discriminated ancestor, whose mapping a
-     * subclass's metadata does not repeat.
+     * @param class-string $class
+     */
+    private function layout(string $class, ?string $format): ?ClassLayout
+    {
+        $key = $class . "\0" . $format;
+        if (!array_key_exists($key, $this->layouts)) {
+            $this->layouts[$key] = $this->read($class, $format);
+        }
+
+        return $this->layouts[$key];
+    }
+
+    /**
+     * The keys a class declares are its serialized attributes other than the map, named as the wrapped normalizer
+     * names them, and the type property of every discriminated ancestor, whose mapping a subclass's metadata does not
+     * repeat.
      *
      * @param class-string $class
-     *
-     * @return array{string, list<string>}|false
      */
-    private function read(string $class)
+    private function read(string $class, ?string $format): ?ClassLayout
     {
         $metadata = $this->metadata->getMetadataFor($class);
         $map = $this->marked($metadata->getReflectionClass());
         if ($map === null) {
-            return false;
+            return null;
         }
 
         $declared = [];
-        foreach ($metadata->getAttributesMetadata() as $name => $attribute) {
+        foreach (array_keys($metadata->getAttributesMetadata()) as $name) {
             if ($name !== $map) {
-                $declared[] = $attribute->getSerializedName() ?? $name;
+                $declared[$this->names->normalize($name, $class, $format)] = true;
             }
         }
 
-        for ($ancestor = $class; $ancestor !== false; $ancestor = get_parent_class($ancestor)) {
-            $mapping = $this->metadata->getMetadataFor($ancestor)->getClassDiscriminatorMapping();
+        foreach (array_merge([$class], array_values(class_parents($class)), array_values(class_implements($class))) as $ancestor) {
+            $mapping = $this->mapping($ancestor);
             if ($mapping instanceof ClassDiscriminatorMapping) {
-                $declared[] = $mapping->getTypeProperty();
+                $declared[$mapping->getTypeProperty()] = true;
             }
         }
 
-        return [$map, $declared];
+        return new ClassLayout($map, $this->names->normalize($map, $class, $format), $declared);
     }
 
     /**
+     * The property marked in the class or a parent, which may declare it private.
+     *
      * @param ReflectionClass<object> $class
      */
     private function marked(ReflectionClass $class): ?string
