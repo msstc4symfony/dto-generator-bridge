@@ -73,6 +73,13 @@ components:
       properties:
         label: {type: string}
       additionalProperties: {type: integer, minimum: 0}
+    Account:
+      type: object
+      required: [id, login, password]
+      properties:
+        id: {type: integer, readOnly: true}
+        login: {type: string}
+        password: {type: string, writeOnly: true, minLength: 8}
     Shelter:
       type: object
       properties:

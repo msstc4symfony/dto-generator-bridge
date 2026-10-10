@@ -221,6 +221,15 @@ reads into `name: "Rex"` and `additionalProperties: {"colour": "brown", "age": 3
   `preserve_empty_objects`, an object whose every property is left out (`[]`, not `{}`), and an object of which only
   map entries with the keys `0`, `1`, … remain (`["a","b"]`, not `{"0":"a","1":"b"}`).
 
+## Read and write models
+
+With the generator's `dto.readWriteModels: split` (generator 1.3), a schema with `readOnly` or `writeOnly` properties
+gives two classes, such as `AccountRead` (responses, no `writeOnly` properties) and `AccountWrite` (requests, no
+`readOnly` ones). The bridge treats them as any other class: each gets the constraints and attributes of its own
+properties, so a `writeOnly` password is validated in `AccountWrite` only, and a discriminated base maps the variants
+of its own model. Deserialize a request body into the write model (`#[MapRequestPayload] AccountWrite $account`) and
+serialize the read model in the response.
+
 ## Symfony bundle
 
 The generator needs no bundle. In a Symfony application, `DtoGeneratorBundle` adds a console command, an optional
