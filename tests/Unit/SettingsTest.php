@@ -18,17 +18,24 @@ final class SettingsTest extends TestCase
         self::assertNull($settings->serializer());
         self::assertNull($settings->version());
         self::assertSame([], $settings->groups());
+        self::assertFalse($settings->spreadsAdditionalProperties());
     }
 
     public function testReadsEveryKey(): void
     {
-        $settings = Settings::fromConfig(['validator' => true, 'serializer' => false, 'version' => '6.4', 'groups' => ['api', 'admin']]);
+        $settings = Settings::fromConfig(['validator' => true, 'serializer' => false, 'version' => '6.4', 'groups' => ['api', 'admin'], 'additionalProperties' => 'spread']);
 
         self::assertTrue($settings->validator());
         self::assertFalse($settings->serializer());
         self::assertNotNull($settings->version());
         self::assertSame('6.4', $settings->version()->toString());
         self::assertSame(['api', 'admin'], $settings->groups());
+        self::assertTrue($settings->spreadsAdditionalProperties());
+    }
+
+    public function testIgnoresTheUndeclaredPropertiesWhenAskedTo(): void
+    {
+        self::assertFalse(Settings::fromConfig(['additionalProperties' => 'ignore'])->spreadsAdditionalProperties());
     }
 
     public function testTakesAutoForTheProjectsChoice(): void
@@ -57,6 +64,8 @@ final class SettingsTest extends TestCase
         yield 'groups repeated' => [['groups' => ['api', 'admin', 'api']], 'extensionConfig.symfony.groups names "api" more than once.'];
         yield 'several' => [['colour' => 'red', 'validator' => 1, 'groups' => 'api'], 'extensionConfig.symfony.colour is not a setting of the Symfony bridge. extensionConfig.symfony.validator must be auto, true or false. extensionConfig.symfony.groups must be a list of group names.'];
         yield 'groups type' => [['groups' => 'api'], 'extensionConfig.symfony.groups must be a list of group names.'];
+        yield 'additionalProperties' => [['additionalProperties' => 'keep'], 'extensionConfig.symfony.additionalProperties must be ignore or spread.'];
+        yield 'additionalProperties type' => [['additionalProperties' => true], 'extensionConfig.symfony.additionalProperties must be ignore or spread.'];
         yield 'groups item' => [['groups' => ['api', '']], 'extensionConfig.symfony.groups must be a list of group names.'];
         yield 'groups map' => [['groups' => ['a' => 'api']], 'extensionConfig.symfony.groups must be a list of group names.'];
         yield 'groups items' => [['groups' => [1, 2]], 'extensionConfig.symfony.groups must be a list of group names.'];
