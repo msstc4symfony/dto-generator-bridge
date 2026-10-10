@@ -67,7 +67,10 @@
     "autoload-dev": {
         "psr-4": {
             "Msstc4Symfony\\DtoGeneratorBridge\\Test\\": "tests/"
-        }
+        },
+        "files": [
+            "tests/isolate-temporary-directory.php"
+        ]
     },
     "extra": {
         "symfony": {
