@@ -73,6 +73,12 @@ components:
       properties:
         label: {type: string}
       additionalProperties: {type: integer, minimum: 0}
+    Kennel:
+      type: object
+      properties:
+        name: {type: string}
+        opened: {type: string, format: date}
+      additionalProperties: {$ref: '#/components/schemas/Owner'}
     Creature:
       oneOf:
         - {$ref: '#/components/schemas/Fish'}
