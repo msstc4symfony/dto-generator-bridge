@@ -25,6 +25,7 @@ use MSSTC4PHP\DtoGenerator\Domain\Target\TargetProfile;
 use Msstc4Symfony\DtoGeneratorBridge\ComponentGate;
 use Msstc4Symfony\DtoGeneratorBridge\ExtensionReader;
 use Msstc4Symfony\DtoGeneratorBridge\Keywords;
+use Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalProperties;
 use Msstc4Symfony\DtoGeneratorBridge\Settings;
 use Msstc4Symfony\DtoGeneratorBridge\SymfonyVersion;
 
@@ -42,9 +43,14 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
 
     private ComponentGate $gate;
 
+    private Settings $settings;
+
+    private bool $refusedToSpread = false;
+
     public function __construct(Settings $settings)
     {
         $this->gate = ComponentGate::serializer($settings);
+        $this->settings = $settings;
     }
 
     public function enrichClass(ClassContext $context): array
@@ -78,14 +84,14 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
         }
 
         $property = $context->property();
+        $attributes = [];
         // x-serializer-ignore on the schema of the values confirms the choice, so it needs no warning.
         if ($property->isAdditionalProperties() && !$extensions->flag('x-serializer-ignore')) {
-            $context->diagnostics()->warning(
-                'Symfony Serializer would carry the undeclared properties as one key "additionalProperties", so $additionalProperties is ignored: they are dropped when reading and not written.',
-                $schema->location(),
-            );
+            if (!$this->spreads($context)) {
+                return [$this->attribute($version, 'Ignore')];
+            }
 
-            return [$this->attribute($version, 'Ignore')];
+            $attributes[] = new AttributeModel(ClassName::fromFqcn(AdditionalProperties::class));
         }
 
         if ($extensions->flag('x-serializer-ignore')) {
@@ -100,7 +106,6 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
             return [$this->attribute($version, 'Ignore')];
         }
 
-        $attributes = [];
         if ($property->wireName() !== $property->name()) {
             $attributes[] = $this->attribute($version, 'SerializedName', [AttributeArgument::positional(ArgumentValue::literal($property->wireName()))]);
         }
@@ -130,6 +135,33 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
         }
 
         return $attributes;
+    }
+
+    /**
+     * Whether $additionalProperties gets the marker of AdditionalPropertiesNormalizer rather than Ignore. A target that
+     * writes annotations cannot carry it: that is an error, once per run, and the run writes nothing.
+     */
+    private function spreads(PropertyContext $context): bool
+    {
+        $at = $context->schema()->location();
+        if (!$this->settings->spreadsAdditionalProperties()) {
+            $context->diagnostics()->warning(
+                'Symfony Serializer would carry the undeclared properties as one key "additionalProperties", so $additionalProperties is ignored: they are dropped when reading and not written.',
+                $at,
+            );
+
+            return false;
+        }
+
+        if (!$context->target()->metadata()->isAttributes() && !$this->refusedToSpread) {
+            $this->refusedToSpread = true;
+            $context->diagnostics()->error(
+                'extensionConfig.symfony.additionalProperties: spread needs PHP attributes, which AdditionalPropertiesNormalizer reads; the target writes annotations.',
+                $at,
+            );
+        }
+
+        return true;
     }
 
     /**

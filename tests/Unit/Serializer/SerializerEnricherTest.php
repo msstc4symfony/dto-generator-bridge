@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Serializer;
 
+use Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalProperties;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\GeneratesDtos;
 use PHPUnit\Framework\TestCase;
 
@@ -14,6 +15,8 @@ final class SerializerEnricherTest extends TestCase
     private const SERIALIZER = ['symfony/serializer' => 'v7.1.0'];
 
     private const ONLY_SERIALIZER = ['validator' => false];
+
+    private const SPREAD = ['validator' => false, 'additionalProperties' => 'spread'];
 
     public function testNamesAPropertyByItsWireNameAndGroupsIt(): void
     {
@@ -119,6 +122,38 @@ final class SerializerEnricherTest extends TestCase
 
         self::assertSame(['Serializer\\Ignore'], $this->attributesOf($confirmed, 'additionalProperties'));
         self::assertSame([], $this->attributesOf($skipped, 'additionalProperties'));
+    }
+
+    public function testMarksTheUndeclaredPropertiesForTheNormalizerWhenAskedToSpreadThem(): void
+    {
+        $schema = ['type' => 'object', 'properties' => ['name' => ['type' => 'string']], 'additionalProperties' => ['type' => 'integer', 'x-serializer-groups' => ['api']]];
+        $output = $this->generate($schema, [], '8.0', self::SPREAD, null, self::SERIALIZER);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame(['\\' . AdditionalProperties::class, "Serializer\\Groups(['api'])"], $this->attributesOf($code, 'additionalProperties'));
+        self::assertSame([], $this->messages($output));
+    }
+
+    public function testKeepsIgnoringOrSkippingUndeclaredPropertiesThatAskForIt(): void
+    {
+        $ignored = $this->code($this->generate(['type' => 'object', 'properties' => ['name' => ['type' => 'string']], 'additionalProperties' => ['type' => 'integer', 'x-serializer-ignore' => true]], [], '8.2', self::SPREAD, null, self::SERIALIZER), 'Pet.php');
+        $skipped = $this->code($this->generate(['type' => 'object', 'properties' => ['name' => ['type' => 'string']], 'additionalProperties' => ['type' => 'integer', 'x-serializer-skip' => true]], [], '8.2', self::SPREAD, null, self::SERIALIZER), 'Pet.php');
+
+        self::assertSame(['Serializer\\Ignore'], $this->attributesOf($ignored, 'additionalProperties'));
+        self::assertSame([], $this->attributesOf($skipped, 'additionalProperties'));
+    }
+
+    public function testCannotSpreadUndeclaredPropertiesThroughAnnotations(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'name' => ['type' => 'string'],
+            'owner' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']], 'additionalProperties' => ['type' => 'string']],
+        ], 'additionalProperties' => ['type' => 'integer']], [], '7.4', self::SPREAD, null, ['symfony/serializer' => 'v6.4.0', 'doctrine/annotations' => '2.0.0']);
+
+        self::assertSame(
+            ['error /api.yaml#/components/schemas/Pet/additionalProperties: extensionConfig.symfony.additionalProperties: spread needs PHP attributes, which AdditionalPropertiesNormalizer reads; the target writes annotations.'],
+            $this->messages($output),
+        );
     }
 
     public function testWarnsThatAnIgnoredRequiredPropertyCannotBeDenormalized(): void
