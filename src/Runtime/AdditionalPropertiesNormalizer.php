@@ -183,9 +183,8 @@ final class AdditionalPropertiesNormalizer implements NormalizerInterface, Denor
         }
 
         $keys = $this->typeKeysOf($mapping, $type, $format);
-        // Reason: PHPStan reads the installed Serializer, which has getDefaultType(); 5.4 to 7.2 do not.
-        // @phpstan-ignore function.alreadyNarrowedType
-        $default = method_exists($mapping, 'getDefaultType') ? $mapping->getDefaultType() : null;
+        // Serializer 7.3 added the default type.
+        $default = (new ReflectionClass($mapping))->hasMethod('getDefaultType') ? $mapping->getDefaultType() : null;
         $value = $data[$keys[0]] ?? $data[$keys[1]] ?? $default;
         $variant = is_string($value) || is_int($value) ? $mapping->getClassForType((string) $value) : null;
 

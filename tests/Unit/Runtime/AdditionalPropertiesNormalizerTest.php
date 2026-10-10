@@ -28,6 +28,7 @@ use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Tagged;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Tree;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Vehicle;
 use PHPUnit\Framework\TestCase;
+use ReflectionClass;
 use Symfony\Component\PropertyInfo\Extractor\PhpDocExtractor;
 use Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
 use Symfony\Component\PropertyInfo\PropertyInfoExtractor;
@@ -353,9 +354,7 @@ final class AdditionalPropertiesNormalizerTest extends TestCase
 
     public function testReadsTheDefaultTypeOfADiscriminator(): void
     {
-        // Reason: PHPStan reads the installed Serializer, which has getDefaultType(); 5.4 to 7.2 do not.
-        // @phpstan-ignore function.alreadyNarrowedType
-        if (!method_exists(ClassDiscriminatorMapping::class, 'getDefaultType')) {
+        if (!(new ReflectionClass(ClassDiscriminatorMapping::class))->hasMethod('getDefaultType')) {
             self::markTestSkipped('Discriminators have a default type from symfony/serializer 7.3.');
         }
 
