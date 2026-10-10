@@ -82,9 +82,10 @@ parameters:
         -
             class: 'Attribute'
             message: 'PHP 8.0+ only; the package runs on PHP 7.4'
-            # Only in #[...], which PHP 7.4 reads as a comment; the runtime classes themselves need PHP 8.0.
+            # In #[...], which PHP 7.4 reads as a comment, and in the bundle's check for PHP 8.0.
             allowIn:
                 - '*/src/Runtime/AdditionalProperties.php'
+                - '*/src/Bundle/DependencyInjection/DtoGeneratorExtension.php'
         -
             class: 'Stringable'
             message: 'PHP 8.0+ only; the package runs on PHP 7.4'

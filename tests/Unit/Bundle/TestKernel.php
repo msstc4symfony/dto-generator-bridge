@@ -20,13 +20,18 @@ final class TestKernel extends Kernel
     /** @var array<string, string|bool> */
     private array $bundleConfig;
 
+    /** @var array<string, array<string, bool>> */
+    private array $frameworkConfig;
+
     /**
      * @param array<string, string|bool> $bundleConfig the dto_generator section
+     * @param array<string, array<string, bool>> $frameworkConfig more of the framework section
      */
-    public function __construct(string $project, array $bundleConfig)
+    public function __construct(string $project, array $bundleConfig, array $frameworkConfig = [])
     {
         $this->project = $project;
         $this->bundleConfig = $bundleConfig;
+        $this->frameworkConfig = $frameworkConfig;
         parent::__construct('test', true);
     }
 
@@ -41,7 +46,7 @@ final class TestKernel extends Kernel
     public function registerContainerConfiguration(LoaderInterface $loader): void
     {
         $loader->load(function (ContainerBuilder $container): void {
-            $container->loadFromExtension('framework', ['secret' => 'test', 'test' => true]);
+            $container->loadFromExtension('framework', ['secret' => 'test', 'test' => true] + $this->frameworkConfig);
             $container->loadFromExtension('dto_generator', $this->bundleConfig);
             $container->register('logger', RecordingLogger::class)->setPublic(true);
         });
@@ -54,8 +59,8 @@ final class TestKernel extends Kernel
 
     public function getCacheDir(): string
     {
-        // One container per bundle config: a kernel reuses the container compiled in its cache directory.
-        return $this->project . '/var/cache/' . md5((string) json_encode($this->bundleConfig));
+        // One container per config: a kernel reuses the container compiled in its cache directory.
+        return $this->project . '/var/cache/' . md5((string) json_encode([$this->bundleConfig, $this->frameworkConfig]));
     }
 
     public function getLogDir(): string
