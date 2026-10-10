@@ -9,15 +9,21 @@ use Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalPropertiesNormalizer;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Animal;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Bag;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Box;
+use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Car;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Cat;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Circle;
+use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Coloured;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Crate;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Dog;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Note;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Owner;
+use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Pair;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Plain;
+use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Primary;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Shape;
+use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Tagged;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Tree;
+use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Vehicle;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\PropertyInfo\Extractor\PhpDocExtractor;
 use Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
@@ -273,6 +279,45 @@ final class AdditionalPropertiesNormalizerTest extends TestCase
         self::assertInstanceOf(Cat::class, $cat);
         self::assertSame(['tag' => 'striped'], $cat->additionalProperties);
         self::assertSame(['kind' => 'cat', 'name' => 'tom', 'tag' => 'striped'], $this->serializer->normalize($cat));
+    }
+
+    public function testReadsThroughADiscriminatorSymfonyDoesNotWrite(): void
+    {
+        $circle = $this->serializer->denormalize(['colour' => 'circle', 'radius' => 2, 'type' => 'circle'], Coloured::class);
+        $cat = $this->serializer->denormalize(['tag' => 'cat', 'name' => 'tom'], Tagged::class);
+
+        self::assertInstanceOf(Circle::class, $circle);
+        self::assertSame([], $circle->additionalProperties);
+        self::assertInstanceOf(Cat::class, $cat);
+        self::assertSame([], $cat->additionalProperties);
+        self::assertSame(['kind' => 'cat', 'name' => 'tom'], $this->serializer->normalize($cat));
+    }
+
+    public function testFollowsTheParentsOfEachInterfaceAsSymfonyDoes(): void
+    {
+        $pair = $this->serializer->denormalize(['p' => 'c', 'a' => 'x'], Primary::class);
+
+        self::assertInstanceOf(Pair::class, $pair);
+        self::assertSame(['a' => 'x'], $pair->additionalProperties);
+        self::assertSame(['p' => 'c', 'a' => 'x'], $this->serializer->normalize($pair));
+    }
+
+    public function testNamesTheDiscriminatorThroughTheConverter(): void
+    {
+        $metadata = new ClassMetadataFactory(new AttributeLoader());
+        $names = new MetadataAwareNameConverter($metadata, new CamelCaseToSnakeCaseNameConverter());
+        $objects = new ObjectNormalizer($metadata, $names, null, null, new ClassDiscriminatorFromClassMetadata($metadata));
+        $serializer = new Serializer([new AdditionalPropertiesNormalizer($objects, $metadata, $names), $objects]);
+
+        $car = $serializer->denormalize(['vehicle_type' => 'car', 'wheels' => 4, 'roof' => 'open'], Vehicle::class);
+
+        self::assertInstanceOf(Car::class, $car);
+        self::assertSame(['roof' => 'open'], $car->additionalProperties);
+
+        $car->additionalProperties = ['vehicle_type' => 'bus'];
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage('"vehicle_type"');
+        $serializer->normalize($car);
     }
 
     public function testReadsTheNamesOfEachFormat(): void

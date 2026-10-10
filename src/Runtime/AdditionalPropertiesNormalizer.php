@@ -128,10 +128,11 @@ final class AdditionalPropertiesNormalizer implements NormalizerInterface, Denor
      */
     public function denormalize(mixed $data, string $type, ?string $format = null, array $context = []): mixed
     {
-        $class = is_array($data) ? $this->concrete($data, $type) : null;
+        $class = is_array($data) ? $this->concrete($data, $type, $format) : null;
         $layout = $class === null ? null : $this->layout($class, $format);
         if ($layout instanceof ClassLayout && is_array($data)) {
-            $undeclared = array_diff_key($data, $layout->declared());
+            // Read through another discriminated base than the one Symfony writes, its key selects the variant too.
+            $undeclared = array_diff_key($data, $layout->declared(), array_flip($this->typeKeys($type, $class, $format)));
             $data = array_diff_key($data, $undeclared);
             if ($undeclared !== []) {
                 $data[$layout->key()] = $undeclared;
@@ -146,7 +147,7 @@ final class AdditionalPropertiesNormalizer implements NormalizerInterface, Denor
      */
     public function supportsDenormalization(mixed $data, string $type, ?string $format = null, array $context = []): bool
     {
-        $class = is_array($data) ? $this->concrete($data, $type) : null;
+        $class = is_array($data) ? $this->concrete($data, $type, $format) : null;
 
         return $class !== null && $this->layout($class, $format) instanceof ClassLayout;
     }
@@ -168,7 +169,7 @@ final class AdditionalPropertiesNormalizer implements NormalizerInterface, Denor
      *
      * @return class-string|null
      */
-    private function concrete(array $data, string $type): ?string
+    private function concrete(array $data, string $type, ?string $format): ?string
     {
         if (!class_exists($type) && !interface_exists($type)) {
             return null;
@@ -179,15 +180,26 @@ final class AdditionalPropertiesNormalizer implements NormalizerInterface, Denor
             return class_exists($type) ? $type : null;
         }
 
-        $value = $data[$mapping->getTypeProperty()] ?? null;
+        $value = $data[$this->names->normalize($mapping->getTypeProperty(), $type, $format)] ?? null;
         $variant = is_string($value) || is_int($value) ? $mapping->getClassForType((string) $value) : null;
 
         return $variant !== null && class_exists($variant) ? $variant : null;
     }
 
     /**
-     * @param class-string $class
+     * The key of the discriminator of the type the data is read as, if it has one.
+     *
+     * @param class-string $class the variant the data selects
+     *
+     * @return list<string>
      */
+    private function typeKeys(string $type, string $class, ?string $format): array
+    {
+        $mapping = $this->mapping($type);
+
+        return $mapping instanceof ClassDiscriminatorMapping ? [$this->names->normalize($mapping->getTypeProperty(), $class, $format)] : [];
+    }
+
     private function mapping(string $class): ?ClassDiscriminatorMapping
     {
         if (!array_key_exists($class, $this->mappings)) {
@@ -234,7 +246,7 @@ final class AdditionalPropertiesNormalizer implements NormalizerInterface, Denor
 
         $mapping = $this->mappedBy($class);
         if ($mapping instanceof ClassDiscriminatorMapping) {
-            $declared[$mapping->getTypeProperty()] = true;
+            $declared[$this->names->normalize($mapping->getTypeProperty(), $class, $format)] = true;
         }
 
         return new ClassLayout($this->names->normalize($map, $class, $format), $declared);
@@ -242,8 +254,8 @@ final class AdditionalPropertiesNormalizer implements NormalizerInterface, Denor
 
     /**
      * The discriminator Symfony writes for an object of the class: its own, else its parent's (recursively), else its
-     * interfaces' (ClassDiscriminatorFromClassMetadata::getMappingForMappedObject()). A subclass's metadata does not
-     * repeat the mapping of its base.
+     * interfaces', each with its own parents (ClassDiscriminatorFromClassMetadata::getMappingForMappedObject()). A
+     * subclass's metadata does not repeat the mapping of its base.
      *
      * @param class-string $class
      */
@@ -256,7 +268,7 @@ final class AdditionalPropertiesNormalizer implements NormalizerInterface, Denor
         }
 
         foreach ($mapping instanceof ClassDiscriminatorMapping ? [] : (new ReflectionClass($class))->getInterfaceNames() as $interface) {
-            $mapping ??= $this->mapping($interface);
+            $mapping ??= $this->mappedBy($interface);
         }
 
         return $mapping;

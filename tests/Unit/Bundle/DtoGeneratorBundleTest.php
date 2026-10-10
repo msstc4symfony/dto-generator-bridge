@@ -321,7 +321,6 @@ final class DtoGeneratorBundleTest extends TestCase
 
     public function testRegistersNoNormalizerWithoutTheObjectNormalizer(): void
     {
-        // Without property access FrameworkBundle drops the object normalizer, which the bridge's normalizer wraps.
         $kernel = $this->bootedKernel([], ['serializer' => ['enabled' => true], 'property_access' => ['enabled' => false]]);
 
         self::assertTrue($this->testContainer($kernel)->has('serializer'));
