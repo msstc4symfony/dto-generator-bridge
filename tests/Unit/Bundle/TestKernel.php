@@ -17,14 +17,14 @@ final class TestKernel extends Kernel
 {
     private string $project;
 
-    /** @var array<string, string|bool> */
+    /** @var array<string, string|bool|int> */
     private array $bundleConfig;
 
     /** @var array<string, array<string, bool>> */
     private array $frameworkConfig;
 
     /**
-     * @param array<string, string|bool> $bundleConfig the dto_generator section
+     * @param array<string, string|bool|int> $bundleConfig the dto_generator section
      * @param array<string, array<string, bool>> $frameworkConfig more of the framework section
      */
     public function __construct(string $project, array $bundleConfig, array $frameworkConfig = [])

@@ -224,6 +224,7 @@ The warmup check in production needs the bridge in `require` and the bundle regi
 # config/packages/dto_generator.yaml
 dto_generator:
   config: '%kernel.project_dir%/dto-generator.yaml'   # the default
+  mode: committed          # committed: the DTOs live in your sources; build: see "Building the DTOs with the container"
   check_on_warmup: false   # true: warn in the log on cache warmup when the DTOs are out of date
 ```
 
@@ -245,6 +246,35 @@ code `2` (`255` on PHP 7.4 for an error inside a function).
 `DTO_GENERATOR_MEMORY_LIMIT` must be a real environment variable of the process (`DTO_GENERATOR_MEMORY_LIMIT=2G
 bin/console dto-generator:generate`): Symfony's Dotenv does not call `putenv()` (since 5.0), so a value in `.env` does
 not reach the generator.
+
+### Building the DTOs with the container
+
+The recommended setup commits the generated DTOs: reviews show their changes, IDEs and PHPStan see them, and production
+needs neither the generator nor the bridge. When the DTOs should not live in the repository, `mode: build` generates
+them whenever Symfony builds its container (`cache:clear`, `cache:warmup`, the first request in `dev`):
+
+```yaml
+# config/packages/dto_generator.yaml
+dto_generator:
+  mode: build
+```
+
+- The bridge, and with it the generator, must then be in `require` and its bundle registered for all environments.
+- Each source's `outputDir` moves to `%kernel.build_dir%/dto-generator/`, at its path relative to the config's
+  directory (`src/Dto` becomes `var/cache/prod/dto-generator/src/Dto`); the project's sources are never written.
+  An `outputDir` outside the config's directory is an error.
+- The bundle loads the classes from there with an autoloader of its own, so Composer's `--classmap-authoritative`
+  does not hide them. The generation runs before the container reads controller signatures, so
+  `#[MapRequestPayload] Pet $pet` works.
+- The config and the specifications are resources of the container: in `dev`, an edit rebuilds the container and the
+  DTOs on the next request.
+- No network: remote `$ref`s come from the committed `remoteRefs.cacheDir`. `bin/console dto-generator:generate`
+  (which may fetch) fills it and writes the DTOs into the build directory too.
+- A generation error stops the container build with the generator's diagnostics; warnings go to the container's
+  compiler log.
+- `check_on_warmup` has nothing to compare and is an error together with `mode: build`.
+- IDEs and static analysis see the classes only after a local build; point them at the build directory
+  (PHPStan: `scanDirectories: [var/cache/dev/dto-generator]`).
 
 ## `x-` keywords
 

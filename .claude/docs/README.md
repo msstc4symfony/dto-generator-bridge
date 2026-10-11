@@ -77,3 +77,13 @@
 - Ядро: `required` у `mixed` (`{}`, `type: null`) остаётся — `null` допустим, `NotNull` нельзя. Enum из `float`/`bool` ядро в PHP-enum не превращает (warning ядра), тип остаётся скалярным.
 - Ядро само предупреждает о `minimum` > `maximum` в одной схеме («no range is applied»).
 - `infection.json5` — точная копия шаблона bundle-standard: игнорировать мутантов нельзя, эквивалентных убирать перестройкой кода (вынести проверку в класс с прямыми тестами).
+
+## Режим build (2026-10-11 UTC, спецификация `docs/internal/specs/2026-10-11-runtime-and-build-mode-design.md` §3)
+
+- `dto_generator.mode: committed|build` (`Configuration::COMMITTED/BUILD`); `build` + `check_on_warmup: true` — ошибка конфигурации.
+- Генерация — `Bundle\DependencyInjection\CompilerPass\BuildDtosPass` (BEFORE_OPTIMIZATION, приоритет 100: раньше `RegisterControllerArgumentLocatorsPass` и прочих проходов FrameworkBundle с приоритетом 0). Не в расширении: `MergeExtensionConfigurationContainerBuilder::addCompilerPass()` бросает исключение, а `ContainerBuilder::log()` требует проход. Расширение лишь кладёт параметры `dto_generator.build.config` / `.root` (`%kernel.build_dir%/dto-generator`).
+- Ядро: `Input::withOutputRoot()->withoutFetching()`; `Output::documents()` → `FileResource`, `remoteCache()` → `DirectoryResource`; `classes()` → параметр `dto_generator.build.classes` и `Bundle\Build\ClassMapLoader::register()` (сразу в проходе — для следующих проходов — и в `DtoGeneratorBundle::boot()`; повторная регистрация той же карты пропускается по md5).
+- `boot()`: `$this->container ?? null` — в Symfony 6.1+ типизированное свойство не инициализировано до `setContainer()`; прямое чтение бросает `Error`.
+- Команда в режиме build передаёт ядру `--output-root` (опция CLI ядра 1.3) и может скачивать удалённые документы — так наполняется кэш для сборки без сети.
+- Тесты: проход — на голом `ContainerBuilder` (`BuildDtosPassTest`, быстрый, для Infection), ядро Symfony — `@coversNothing` в `DtoGeneratorBundleTest`; каждый тест, загружающий классы, берёт уникальный namespace (`uniqueNamespace()`), т. к. класс грузится в процесс один раз.
+- Мост требует ядро `^1.3` (до релиза 1.3 CI моста не соберётся — `composer-local.json` берёт ядро path-репозиторием с версией 1.3.0).

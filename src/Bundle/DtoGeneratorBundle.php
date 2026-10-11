@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\DtoGeneratorBridge\Bundle;
 
+use Msstc4Symfony\DtoGeneratorBridge\Bundle\Build\ClassMapLoader;
+use Msstc4Symfony\DtoGeneratorBridge\Bundle\DependencyInjection\CompilerPass\BuildDtosPass;
 use Msstc4Symfony\DtoGeneratorBridge\Runtime\Bundle\DependencyInjection\CompilerPass\DropOrphanNormalizerPass;
 use Symfony\Component\DependencyInjection\Compiler\PassConfig;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpKernel\Bundle\Bundle;
 
 /**
@@ -19,8 +22,26 @@ final class DtoGeneratorBundle extends Bundle
     /** Ahead of SerializerPass, which FrameworkBundle adds at the default priority 0. */
     private const BEFORE_SERIALIZER_PASS = 1;
 
+    /** Ahead of every pass of FrameworkBundle, which reads controller signatures at the default priority 0 and later. */
+    private const BEFORE_CONTROLLER_PASSES = 100;
+
     public function build(ContainerBuilder $container): void
     {
         $container->addCompilerPass(new DropOrphanNormalizerPass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, self::BEFORE_SERIALIZER_PASS);
+        $container->addCompilerPass(new BuildDtosPass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, self::BEFORE_CONTROLLER_PASSES);
+    }
+
+    public function boot(): void
+    {
+        // "??": Symfony 6.1+ leaves the typed property uninitialized until the kernel sets the container.
+        $container = $this->container ?? null;
+        if (!$container instanceof ContainerInterface || !$container->hasParameter(BuildDtosPass::CLASSES)) {
+            return;
+        }
+
+        $classes = $container->getParameter(BuildDtosPass::CLASSES);
+        if (is_array($classes)) {
+            ClassMapLoader::register($classes);
+        }
     }
 }

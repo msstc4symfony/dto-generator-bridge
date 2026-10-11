@@ -26,13 +26,17 @@ final class GenerateCommand extends Command
 
     private string $projectDir;
 
+    private ?string $outputRoot;
+
     /**
      * @param string $config relative to the project directory, or absolute
+     * @param string|null $outputRoot where mode: build writes the DTOs; null writes them where the config says
      */
-    public function __construct(string $config, string $projectDir)
+    public function __construct(string $config, string $projectDir, ?string $outputRoot = null)
     {
         $this->config = Path::resolve($projectDir, $config);
         $this->projectDir = $projectDir;
+        $this->outputRoot = $outputRoot;
         parent::__construct(self::NAME);
     }
 
@@ -61,6 +65,10 @@ final class GenerateCommand extends Command
         // Command::run() binds the input anew, which would drop an option set here: the core gets its own input.
         $core = $this->core();
         $parameters = ['--config' => $this->config];
+        if ($this->outputRoot !== null) {
+            $parameters['--output-root'] = $this->outputRoot;
+        }
+
         foreach ($input->getOptions() as $name => $value) {
             $unset = $value === null || $value === false || ($name === 'config' && $value === '');
             if (!$unset && $core->getDefinition()->hasOption((string) $name)) {

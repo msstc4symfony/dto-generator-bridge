@@ -18,6 +18,11 @@ All notable changes to this package are documented here. The format follows
   bridge requires: production needs only that package and its `DtoGeneratorRuntimeBundle`. Keys are named by the serializer's name converter; a discriminated base class or interface is read
   as the variant its data selects. A target that writes annotations cannot carry the marker: that is an error.
   `ignore`, the default, keeps the previous output.
+- `dto_generator.mode: build` generates the DTOs while Symfony builds its container, into
+  `%kernel.build_dir%/dto-generator/` instead of the sources, and loads them with an autoloader of its own; the config
+  and the specifications become resources of the container, remote `$ref`s come from the committed cache only, and
+  `dto-generator:generate` writes into the build directory too. `committed`, the default, keeps the previous
+  behaviour. Requires the generator 1.3 (`Generate\Input::withOutputRoot()`).
 - The bundle registers the normalizer in the application's default serializer when it runs on PHP 8.0+, through the
   runtime's `Normalizers`: the same definition as the runtime's bundle, so the two may be enabled together.
 
