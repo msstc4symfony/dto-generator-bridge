@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Bundle;
 
 use FilesystemIterator;
+use MSSTC4PHP\DtoGenerator\Application\Service\Generate\GeneratedFile;
 use MSSTC4PHP\DtoGenerator\Application\Service\Generate\Input;
 use MSSTC4PHP\DtoGenerator\Application\Service\Generate\Output;
 use MSSTC4PHP\DtoGenerator\Application\Service\Generate\Status;
@@ -71,6 +72,8 @@ final class BuildDtosPassTest extends TestCase
         (new BuildDtosPass())->process($container);
 
         $file = $this->project . '/var/build/dto-generator/src/Dto/Pet.php';
+        self::assertFalse(class_exists($namespace . '\\Pet', false));
+        self::assertSame([], $container->getCompiler()->getLog());
         self::assertSame([$namespace . '\\Pet' => $file], $container->getParameter(BuildDtosPass::CLASSES));
         self::assertFileExists($file);
         self::assertDirectoryDoesNotExist($this->project . '/src');
@@ -147,6 +150,23 @@ final class BuildDtosPassTest extends TestCase
         }
 
         self::assertFalse($container->hasParameter(BuildDtosPass::CLASSES));
+        self::assertSame([], $container->getResources());
+    }
+
+    public function testWarnsAboutADtoLoadedBeforeTheBuild(): void
+    {
+        $class = 'App\\Early' . bin2hex(random_bytes(4)) . '\\Pet';
+        $old = $this->project . '/OldPet.php';
+        file_put_contents($old, sprintf("<?php\nnamespace %s;\nfinal class Pet {}\n", substr($class, 0, -4)));
+        require $old;
+        $container = $this->container('App\\Unused', 'dto-generator.yaml');
+        $built = static fn (string $directory): Output => new Output(Status::from(Status::OK), new Diagnostics(), null, [new GeneratedFile($directory, 'OldPet.php', '', $class)]);
+
+        (new BuildDtosPass(fn (): Output => $built($this->project)))->process($container);
+        self::assertSame([], $container->getCompiler()->getLog());
+
+        (new BuildDtosPass(static fn (): Output => $built('/build')))->process($container);
+        self::assertSame([BuildDtosPass::class . ': dto-generator: ' . $class . ' was loaded from ' . $old . ' before this build; the process keeps that version until it restarts.'], $container->getCompiler()->getLog());
     }
 
     public function testNeedsPathsForParameters(): void

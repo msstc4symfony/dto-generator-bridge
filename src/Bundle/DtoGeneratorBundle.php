@@ -39,9 +39,14 @@ final class DtoGeneratorBundle extends Bundle
             return;
         }
 
-        $classes = $container->getParameter(BuildDtosPass::CLASSES);
-        if (is_array($classes)) {
-            ClassMapLoader::register($classes);
+        $parameter = $container->getParameter(BuildDtosPass::CLASSES);
+        $classes = [];
+        foreach (is_array($parameter) ? $parameter : [] as $class => $file) {
+            if (is_string($class) && is_string($file)) {
+                $classes[$class] = $file;
+            }
         }
+
+        ClassMapLoader::replace($classes);
     }
 }

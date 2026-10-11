@@ -26,6 +26,11 @@ All notable changes to this package are documented here. The format follows
 - The bundle registers the normalizer in the application's default serializer when it runs on PHP 8.0+, through the
   runtime's `Normalizers`: the same definition as the runtime's bundle, so the two may be enabled together.
 
+### Changed
+
+- Requires `msstc4php/dto-generator` ^1.3 and `msstc4symfony/dto-generator-bridge-runtime` ^1.0. The normalizer of
+  `additionalProperties: spread`, unreleased so far, ships in the runtime package under the same class names.
+
 ## [1.1.0] - 2026-10-09
 
 ### Added

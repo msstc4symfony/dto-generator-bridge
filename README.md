@@ -34,7 +34,7 @@ Symfony versions in your `composer.lock`.
 ## Requirements
 
 - PHP >= 7.4 (the bridge runs inside the generator, which supports PHP 7.4).
-- `msstc4php/dto-generator` ^1.2 and `msstc4symfony/dto-generator-bridge-runtime` ^1.0 (both installed with the
+- `msstc4php/dto-generator` ^1.3 and `msstc4symfony/dto-generator-bridge-runtime` ^1.0 (both installed with the
   bridge).
 - In the application that uses the DTOs: `symfony/validator` and/or `symfony/serializer` 5.4, 6.4, 7.x or 8.x. By
   default the bridge writes constraints and attributes only for the components it finds in `composer.lock`.
@@ -268,13 +268,25 @@ dto_generator:
   `#[MapRequestPayload] Pet $pet` works.
 - The config and the specifications are resources of the container: in `dev`, an edit rebuilds the container and the
   DTOs on the next request.
-- No network: remote `$ref`s come from the committed `remoteRefs.cacheDir`. `bin/console dto-generator:generate`
-  (which may fetch) fills it and writes the DTOs into the build directory too.
+- No network: remote `$ref`s come from the committed `remoteRefs.cacheDir`. A container that cannot build cannot run
+  `bin/console` either, so fill the cache with the generator's own CLI, which writes the DTOs where the `dev`
+  container keeps them: `vendor/bin/dto-generator generate --output-root=var/cache/dev/dto-generator`.
+  `bin/console dto-generator:generate` writes into the build directory too; in `prod` run `cache:clear` afterwards,
+  as the container keeps the list of classes.
 - A generation error stops the container build with the generator's diagnostics; warnings go to the container's
-  compiler log.
+  compiler log (`var/cache/<env>/*Compiler.log`, written with `debug: true`).
+- The generation runs on every container build, in the process that builds it: in `dev` that may be a web request
+  with its `memory_limit` and time limit, which the generator's CLI would raise. The specifications' resources only
+  decide when the container is rebuilt.
+- Symfony loads `src/` as services before the generation runs, so a class of your own may not extend or implement a
+  generated type (such as a discriminated base); refer to the DTOs, as controllers and services usually do.
 - `check_on_warmup` has nothing to compare and is an error together with `mode: build`.
 - IDEs and static analysis see the classes only after a local build; point them at the build directory
-  (PHPStan: `scanDirectories: [var/cache/dev/dto-generator]`).
+  (PHPStan: `scanDirectories: [var/cache/dev/dto-generator]`). Unit tests that do not boot the kernel do not load
+  them either.
+- The paths of the DTOs stay the same from one deploy to the next: with `opcache.validate_timestamps=0`, reload PHP-FPM
+  after a deploy, as for any other code. A long-running worker (FrankenPHP, RoadRunner) keeps the DTOs it loaded until
+  it restarts.
 
 ## `x-` keywords
 

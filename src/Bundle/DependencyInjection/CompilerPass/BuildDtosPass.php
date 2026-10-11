@@ -13,6 +13,7 @@ use MSSTC4PHP\DtoGenerator\Domain\Shared\Path;
 use MSSTC4PHP\DtoGenerator\DtoGenerator;
 use Msstc4Symfony\DtoGeneratorBridge\Bundle\Build\ClassMapLoader;
 use Msstc4Symfony\DtoGeneratorBridge\Bundle\Build\GenerationFailed;
+use ReflectionClass;
 use Symfony\Component\Config\Resource\DirectoryResource;
 use Symfony\Component\Config\Resource\FileResource;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
@@ -53,6 +54,14 @@ final class BuildDtosPass implements CompilerPassInterface
         $generator = $this->generator ?? DtoGenerator::generator();
         $output = $generator((new Input($config, Mode::from(Mode::WRITE)))->withOutputRoot($root)->withoutFetching());
 
+        // A failed build caches no container, so it needs no resources; a missing config would fail them too.
+        $status = $output->status()->value();
+        if ($status !== Status::OK) {
+            $errors = array_map(static fn (Diagnostic $diagnostic): string => $diagnostic->toString(), $output->diagnostics()->errors());
+
+            throw new GenerationFailed(sprintf('dto-generator could not build the DTOs of %s: %s', $config, $errors === [] ? $status : implode(' ', $errors)));
+        }
+
         foreach ($output->documents() as $document) {
             $container->addResource(new FileResource($document));
         }
@@ -62,20 +71,20 @@ final class BuildDtosPass implements CompilerPassInterface
             $container->addResource(new DirectoryResource($cache));
         }
 
-        $status = $output->status()->value();
-        if ($status !== Status::OK) {
-            $errors = array_map(static fn (Diagnostic $diagnostic): string => $diagnostic->toString(), $output->diagnostics()->errors());
-
-            throw new GenerationFailed(sprintf('dto-generator could not build the DTOs of %s: %s', $config, $errors === [] ? $status : implode(' ', $errors)));
-        }
-
         foreach ($output->diagnostics()->all() as $diagnostic) {
             $container->log($this, 'dto-generator: ' . $diagnostic->toString());
         }
 
-        $container->setParameter(self::CLASSES, $output->classes());
+        $classes = $output->classes();
+        $container->setParameter(self::CLASSES, $classes);
         // The passes after this one reflect controllers and services, which may name the DTOs.
-        ClassMapLoader::register($output->classes());
+        ClassMapLoader::replace($classes);
+        foreach ($classes as $class => $file) {
+            $loaded = class_exists($class, false) ? (new ReflectionClass($class))->getFileName() : false;
+            if ($loaded !== false && $loaded !== $file) {
+                $container->log($this, sprintf('dto-generator: %s was loaded from %s before this build; the process keeps that version until it restarts.', $class, $loaded));
+            }
+        }
     }
 
     private function path(ContainerBuilder $container, string $name): string
