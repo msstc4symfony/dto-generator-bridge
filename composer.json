@@ -68,6 +68,9 @@
         }
     },
     "config": {
+        "audit": {
+            "abandoned": "report"
+        },
         "sort-packages": true,
         "allow-plugins": {
             "msstc4php/dto-generator": false
