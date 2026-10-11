@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture;
+namespace Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Bundle\Fixture;
 
 use Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalProperties;
 

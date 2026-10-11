@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\DtoGeneratorBridge\Bundle;
 
-use Msstc4Symfony\DtoGeneratorBridge\Bundle\DependencyInjection\CompilerPass\DropOrphanNormalizerPass;
+use Msstc4Symfony\DtoGeneratorBridge\Runtime\Bundle\DependencyInjection\CompilerPass\DropOrphanNormalizerPass;
 use Symfony\Component\DependencyInjection\Compiler\PassConfig;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\HttpKernel\Bundle\Bundle;

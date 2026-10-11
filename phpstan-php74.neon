@@ -81,15 +81,9 @@ parameters:
         -
             class: 'WeakMap'
             message: 'PHP 8.0+ only; the package runs on PHP 7.4'
-            # Only as the bundle's test for PHP 8.0, through class_exists().
-            allowIn:
-                - '*/src/Bundle/DependencyInjection/DtoGeneratorExtension.php'
         -
             class: 'Attribute'
             message: 'PHP 8.0+ only; the package runs on PHP 7.4'
-            # Only in #[...], which PHP 7.4 reads as a comment; the runtime classes themselves need PHP 8.0.
-            allowIn:
-                - '*/src/Runtime/AdditionalProperties.php'
         -
             class: 'Stringable'
             message: 'PHP 8.0+ only; the package runs on PHP 7.4'

@@ -11,7 +11,7 @@ use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostics;
 use MSSTC4PHP\DtoGenerator\DtoGenerator;
 use Msstc4Symfony\DtoGeneratorBridge\Bundle\CacheWarmer\GenerationCheckWarmer;
 use Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalPropertiesNormalizer;
-use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Box;
+use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Bundle\Fixture\Box;
 use PHPUnit\Framework\TestCase;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;

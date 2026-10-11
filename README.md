@@ -26,29 +26,35 @@ Symfony versions in your `composer.lock`.
 - **No configuration:** the generator discovers the bridge when it is installed; `x-validator-*` and `x-serializer-*`
   keys fine-tune single properties.
 - **Undeclared properties over the wire:** an opt-in normalizer spreads `$additionalProperties` over the keys of its
-  object and reads undeclared keys back into it — [details](#undeclared-properties-additionalproperties).
+  object and reads undeclared keys back into it — [details](#undeclared-properties-additionalproperties). It ships in
+  the small [runtime package](https://github.com/msstc4symfony/dto-generator-bridge-runtime), the only one production needs.
 - **An optional Symfony bundle** with a `dto-generator:generate` console command, a check on cache warmup and the
   normalizer wired into the application's serializer.
 
 ## Requirements
 
 - PHP >= 7.4 (the bridge runs inside the generator, which supports PHP 7.4).
-- `msstc4php/dto-generator` ^1.2.
+- `msstc4php/dto-generator` ^1.2 and `msstc4symfony/dto-generator-bridge-runtime` ^1.0 (both installed with the
+  bridge).
 - In the application that uses the DTOs: `symfony/validator` and/or `symfony/serializer` 5.4, 6.4, 7.x or 8.x. By
   default the bridge writes constraints and attributes only for the components it finds in `composer.lock`.
 - For the bundle: `symfony/framework-bundle` 5.4, 6.4, 7.x or 8.x.
 
 ## Installation
 
-The packages are not on Packagist yet, so register both GitHub repositories first:
+The packages are not on Packagist yet, so register the GitHub repositories first:
 
 ```bash
 composer config repositories.msstc4php-dto-generator vcs https://github.com/msstc4php/dto-generator
 composer config repositories.msstc4symfony-dto-generator-bridge vcs https://github.com/msstc4symfony/dto-generator-bridge
+composer config repositories.msstc4symfony-dto-generator-bridge-runtime vcs https://github.com/msstc4symfony/dto-generator-bridge-runtime
 composer require --dev msstc4symfony/dto-generator-bridge
 ```
 
-This installs the generator as well. The generator finds the bridge through `extra.dto-generator.extensions`, so no
+This installs the generator and the runtime as well. With `additionalProperties: spread`, require the runtime for
+production too: `composer require msstc4symfony/dto-generator-bridge-runtime`.
+
+The generator finds the bridge through `extra.dto-generator.extensions`, so no
 configuration is needed: the next `vendor/bin/dto-generator generate` writes the attributes. See the
 [generator's README](https://github.com/msstc4php/dto-generator#quick-start) for `dto-generator.yaml`.
 
@@ -176,50 +182,15 @@ The bridge then writes `#[\Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalPr
 reads into `name: "Rex"` and `additionalProperties: {"colour": "brown", "age": 3}` (each value typed by the
 `additionalProperties` schema, nested DTOs included), and writes back the same JSON.
 
-- **The normalizer runs in your application,** in every environment: install the bridge with `composer require`, not
-  `--dev`, and register the bundle with `['all' => true]` (or register the normalizer yourself, below). Without it the
-  DTOs carry neither `Ignore` nor a normalizer, and Symfony writes and reads one literal key `"additionalProperties"`.
-  It needs PHP 8.0+ and `symfony/serializer` 5.4, 6.4, 7.x or 8.x; the generated DTOs must use attributes
+- **The normalizer runs in your application,** in every environment. It lives in
+  [`msstc4symfony/dto-generator-bridge-runtime`](https://github.com/msstc4symfony/dto-generator-bridge-runtime), which the bridge requires: install it with
+  `composer require` and register its `DtoGeneratorRuntimeBundle` for all environments, so the bridge and the
+  generator can stay development dependencies. Without the normalizer the DTOs carry neither `Ignore` nor a
+  normalizer, and Symfony writes and reads one literal key `"additionalProperties"`.
+- It needs PHP 8.0+ and `symfony/serializer` 5.4, 6.4, 7.x or 8.x; the generated DTOs must use attributes
   (`target.metadata`), and a target that writes annotations (PHP 7.4) is an error.
-- **With the bundle** the normalizer is in the application's default serializer as soon as `framework.serializer` is
-  enabled, with its object normalizer and name converter (not when `framework.property_access` is off, which drops the
-  object normalizer). It is registered at the default priority 0, ahead of Symfony's object, date, array and other
-  built-in normalizers (negative priorities; only the unwrapping denormalizer of `UNWRAP_PATH` runs earlier); a
-  normalizer of yours for the same DTOs needs a higher priority to win. A named serializer
-  (`framework.serializer.named_serializers`, Symfony 7.2) does not get it: register one by hand with that serializer's
-  object normalizer.
-- **Without the bundle,** wrap the object normalizer and pass it the same metadata factory and name converter:
-
-  ```php
-  $names = new MetadataAwareNameConverter($classMetadataFactory);
-  $objects = new ObjectNormalizer($classMetadataFactory, $names, null, $propertyTypeExtractor, new ClassDiscriminatorFromClassMetadata($classMetadataFactory));
-  $serializer = new Serializer([
-      new DateTimeNormalizer(),
-      new ArrayDenormalizer(),
-      new AdditionalPropertiesNormalizer($objects, $classMetadataFactory, $names),
-      $objects,
-  ], [new JsonEncoder()]);
-  ```
-
-  The wrapped normalizer must denormalize too; the Serializer is handed on to it, so it works without being in the
-  chain, but the other DTOs need it there.
-- **Declared keys** are the class's serialized properties, named by the name converter (`SerializedName`, a global
-  converter such as `camel_case_to_snake_case`, inherited properties too), and the type property of a discriminated
-  base class or interface; everything else goes into the map. A map entry named like a declared key throws
-  `Symfony\Component\Serializer\Exception\UnexpectedValueException` on normalizing. Names are read once per class
-  and format, so a name converter that names by context (such as by groups) is not supported. Of several discriminated
-  ancestors only the one Symfony writes counts: the class's own, else its parent's, else its interfaces' (each with
-  its parents). Reading through another discriminated base keeps its key out of the map, but it is not written back. The
-  type key is found as recent Serializer releases find it: by its converted name, then by the type property itself,
-  then by the default type (7.3). Releases that read the type property only (5.4, 7.0 to 8.0 and some patches of 7.4
-  and 8.1) do not support a name converter that renames the type property together with a default type.
-- Some Serializer releases (5.4, 7.4.0) take the key type `array-key` of the generated PHPDoc for a class, so a map
-  of objects (spread or a declared property) cannot be read; maps of scalars work. 6.4 and later 7.4 releases read
-  both.
-- Serialization groups apply as usual: when the groups leave `$additionalProperties` out, nothing is spread.
-- `normalize()` returns a PHP array, so two shapes come out as JSON arrays rather than objects: with
-  `preserve_empty_objects`, an object whose every property is left out (`[]`, not `{}`), and an object of which only
-  map entries with the keys `0`, `1`, … remain (`["a","b"]`, not `{"0":"a","1":"b"}`).
+- How keys are declared and spread, its priority in the serializer, the setup without a bundle and the limits of
+  some Serializer releases: see [the runtime's README](https://github.com/msstc4symfony/dto-generator-bridge-runtime#undeclared-properties).
 
 ## Read and write models
 
@@ -235,12 +206,14 @@ serialize the read model in the response.
 The generator needs no bundle. In a Symfony application, `DtoGeneratorBundle` adds a console command, an optional
 check on cache warmup and, on PHP 8.0+, [`AdditionalPropertiesNormalizer`](#undeclared-properties-additionalproperties)
 in the serializer. With the bridge installed as a dev dependency (`composer require --dev`), register the bundle
-for the environments that have it (`additionalProperties: spread` needs it in all of them, see above):
+for the environments that have it, and the runtime's bundle for all of them when the DTOs use
+`additionalProperties: spread` (both register the same normalizer, so they may run together):
 
 ```php
 // config/bundles.php
 return [
     // ...
+    Msstc4Symfony\DtoGeneratorBridge\Runtime\Bundle\DtoGeneratorRuntimeBundle::class => ['all' => true],
     Msstc4Symfony\DtoGeneratorBridge\Bundle\DtoGeneratorBundle::class => ['dev' => true, 'test' => true],
 ];
 ```
