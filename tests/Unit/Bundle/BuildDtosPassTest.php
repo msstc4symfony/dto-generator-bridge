@@ -153,20 +153,25 @@ final class BuildDtosPassTest extends TestCase
         self::assertSame([], $container->getResources());
     }
 
-    public function testWarnsAboutADtoLoadedBeforeTheBuild(): void
+    public function testWarnsAboutADtoLoadedBeforeTheBuildThatChangedSince(): void
     {
         $class = 'App\\Early' . bin2hex(random_bytes(4)) . '\\Pet';
-        $old = $this->project . '/OldPet.php';
-        file_put_contents($old, sprintf("<?php\nnamespace %s;\nfinal class Pet {}\n", substr($class, 0, -4)));
-        require $old;
+        $source = sprintf("<?php\nnamespace %s;\nfinal class Pet {}\n", substr($class, 0, -4));
+        mkdir($this->project . '/old');
+        mkdir($this->project . '/same');
+        mkdir($this->project . '/changed');
+        file_put_contents($this->project . '/old/Pet.php', $source);
+        file_put_contents($this->project . '/same/Pet.php', $source);
+        file_put_contents($this->project . '/changed/Pet.php', $source . "// changed\n");
+        require $this->project . '/old/Pet.php';
         $container = $this->container('App\\Unused', 'dto-generator.yaml');
-        $built = static fn (string $directory): Output => new Output(Status::from(Status::OK), new Diagnostics(), null, [new GeneratedFile($directory, 'OldPet.php', '', $class)]);
+        $built = static fn (string $directory): Output => new Output(Status::from(Status::OK), new Diagnostics(), null, [new GeneratedFile($directory, 'Pet.php', '', $class)]);
 
-        (new BuildDtosPass(fn (): Output => $built($this->project)))->process($container);
+        (new BuildDtosPass(fn (): Output => $built($this->project . '/same')))->process($container);
         self::assertSame([], $container->getCompiler()->getLog());
 
-        (new BuildDtosPass(static fn (): Output => $built('/build')))->process($container);
-        self::assertSame([BuildDtosPass::class . ': dto-generator: ' . $class . ' was loaded from ' . $old . ' before this build; the process keeps that version until it restarts.'], $container->getCompiler()->getLog());
+        (new BuildDtosPass(fn (): Output => $built($this->project . '/changed')))->process($container);
+        self::assertSame([BuildDtosPass::class . ': dto-generator: ' . $class . ' was loaded from ' . $this->project . '/old/Pet.php before this build and changed since; the process and the metadata its warmers cache keep the old version, so clear the cache again.'], $container->getCompiler()->getLog());
     }
 
     public function testNeedsPathsForParameters(): void

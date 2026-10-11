@@ -78,11 +78,12 @@ final class BuildDtosPass implements CompilerPassInterface
         $classes = $output->classes();
         $container->setParameter(self::CLASSES, $classes);
         // The passes after this one reflect controllers and services, which may name the DTOs.
-        ClassMapLoader::replace($classes);
+        ClassMapLoader::add($classes);
         foreach ($classes as $class => $file) {
             $loaded = class_exists($class, false) ? (new ReflectionClass($class))->getFileName() : false;
-            if ($loaded !== false && $loaded !== $file) {
-                $container->log($this, sprintf('dto-generator: %s was loaded from %s before this build; the process keeps that version until it restarts.', $class, $loaded));
+            // By content: cache:clear builds into another directory, and a symlinked var/ resolves differently.
+            if ($loaded !== false && hash_file('sha256', $loaded) !== hash_file('sha256', $file)) {
+                $container->log($this, sprintf('dto-generator: %s was loaded from %s before this build and changed since; the process and the metadata its warmers cache keep the old version, so clear the cache again.', $class, $loaded));
             }
         }
     }

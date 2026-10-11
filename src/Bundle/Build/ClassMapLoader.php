@@ -6,8 +6,8 @@ namespace Msstc4Symfony\DtoGeneratorBridge\Bundle\Build;
 
 /**
  * Loads the DTOs of the build mode, which Composer does not know: they live in the build directory. One loader per
- * process, ahead of the others, with the latest map: `cache:clear` boots the old container, then builds the new one in
- * the same process, and the new files must win.
+ * process, prepended when first registered, over the maps of every kernel built or booted in it; a class in a later map
+ * takes the later file, as `cache:clear` boots the old container and builds the new one in the same process.
  *
  * @internal
  */
@@ -23,9 +23,10 @@ final class ClassMapLoader
     /**
      * @param array<string, string> $classes fully qualified class name → file
      */
-    public static function replace(array $classes): void
+    public static function add(array $classes): void
     {
-        self::$classes = $classes;
+        // Merged, not replaced: another kernel of the process may still load its own classes.
+        self::$classes = $classes + self::$classes;
         // spl_autoload_register() keeps one entry per callable, so a second call registers nothing.
         spl_autoload_register([self::class, 'load'], true, true);
     }

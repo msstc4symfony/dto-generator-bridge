@@ -269,12 +269,13 @@ dto_generator:
 - The config and the specifications are resources of the container: in `dev`, an edit rebuilds the container and the
   DTOs on the next request.
 - No network: remote `$ref`s come from the committed `remoteRefs.cacheDir`. A container that cannot build cannot run
-  `bin/console` either, so fill the cache with the generator's own CLI, which writes the DTOs where the `dev`
-  container keeps them: `vendor/bin/dto-generator generate --output-root=var/cache/dev/dto-generator`.
-  `bin/console dto-generator:generate` writes into the build directory too; in `prod` run `cache:clear` afterwards,
-  as the container keeps the list of classes.
-- A generation error stops the container build with the generator's diagnostics; warnings go to the container's
-  compiler log (`var/cache/<env>/*Compiler.log`, written with `debug: true`).
+  `bin/console` either, so fill the cache with the generator's own CLI, from the project directory (add `--config=`
+  for a config other than `dto-generator.yaml`): `vendor/bin/dto-generator generate --output-root=var/cache/dev/dto-generator`.
+  It writes the DTOs there too, which the `dev` container rebuilds anyway; the point is the cache. In `dev`,
+  `bin/console dto-generator:generate` writes into the build directory as well; in `prod` run only `cache:clear`.
+- A generation error stops the container build with the generator's diagnostics. Warnings go to the container's
+  compiler log (`<ContainerClass>Compiler.log` in the build directory), which Symfony writes only with `debug: true`
+  and not under PHPUnit: a `prod` build records none.
 - The generation runs on every container build, in the process that builds it: in `dev` that may be a web request
   with its `memory_limit` and time limit, which the generator's CLI would raise. The specifications' resources only
   decide when the container is rebuilt.

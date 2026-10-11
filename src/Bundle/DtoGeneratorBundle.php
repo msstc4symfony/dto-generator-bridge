@@ -47,6 +47,6 @@ final class DtoGeneratorBundle extends Bundle
             }
         }
 
-        ClassMapLoader::replace($classes);
+        ClassMapLoader::add($classes);
     }
 }

@@ -12,6 +12,12 @@ final class ClassMapLoaderTest extends TestCase
     /** @var list<string> */
     private array $files = [];
 
+    protected function setUp(): void
+    {
+        // Registered by an earlier test, the loader would stay where it is and hide whether it is prepended.
+        spl_autoload_unregister([ClassMapLoader::class, 'load']);
+    }
+
     protected function tearDown(): void
     {
         foreach ($this->files as $file) {
@@ -19,16 +25,16 @@ final class ClassMapLoaderTest extends TestCase
         }
     }
 
-    public function testLoadsTheClassesOfTheLatestMapOnly(): void
+    public function testKeepsTheClassesOfEveryMapWithTheLatestFileOfEach(): void
     {
         $first = $this->className();
         $second = $this->className();
 
-        ClassMapLoader::replace([$first => $this->file($first)]);
-        ClassMapLoader::replace([$second => $this->file($second)]);
+        ClassMapLoader::add([$first => $this->file($first, 'old'), $second => $this->file($second, 'old')]);
+        ClassMapLoader::add([$second => $this->file($second)]);
 
-        self::assertFalse(class_exists($first));
-        self::assertTrue(class_exists($second));
+        self::assertSame('old', constant($first . '::BY'));
+        self::assertSame('ours', constant($second . '::BY'));
     }
 
     public function testRunsAheadOfTheOtherLoaders(): void
@@ -42,7 +48,7 @@ final class ClassMapLoaderTest extends TestCase
         spl_autoload_register($theirs);
 
         try {
-            ClassMapLoader::replace([$class => $this->file($class)]);
+            ClassMapLoader::add([$class => $this->file($class)]);
 
             self::assertSame('ours', constant($class . '::BY'));
         } finally {
@@ -52,10 +58,10 @@ final class ClassMapLoaderTest extends TestCase
 
     public function testKeepsOneLoader(): void
     {
-        ClassMapLoader::replace([]);
+        ClassMapLoader::add([]);
         $count = count(spl_autoload_functions());
 
-        ClassMapLoader::replace([$this->className() => '/nowhere/Pet.php']);
+        ClassMapLoader::add([$this->className() => '/nowhere/Pet.php']);
 
         self::assertCount($count, spl_autoload_functions());
     }
@@ -64,7 +70,7 @@ final class ClassMapLoaderTest extends TestCase
     {
         $class = $this->className();
 
-        ClassMapLoader::replace([$class => '/nowhere/Pet.php']);
+        ClassMapLoader::add([$class => '/nowhere/Pet.php']);
 
         self::assertFalse(class_exists($class));
     }
@@ -74,10 +80,10 @@ final class ClassMapLoaderTest extends TestCase
         return 'App\\Mapped' . bin2hex(random_bytes(4)) . '\\Pet';
     }
 
-    private function file(string $class): string
+    private function file(string $class, string $by = 'ours'): string
     {
         $file = sys_get_temp_dir() . '/dto-bridge-map-' . bin2hex(random_bytes(4)) . '.php';
-        file_put_contents($file, sprintf("<?php\nnamespace %s;\nfinal class Pet { public const BY = 'ours'; }\n", substr($class, 0, -4)));
+        file_put_contents($file, sprintf("<?php\nnamespace %s;\nfinal class Pet { public const BY = '%s'; }\n", substr($class, 0, -4), $by));
         $this->files[] = $file;
 
         return $file;
