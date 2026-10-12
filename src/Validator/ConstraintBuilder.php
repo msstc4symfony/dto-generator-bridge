@@ -37,41 +37,10 @@ final class ConstraintBuilder
         'ipv6' => ['Ip', 'version', '6'],
         'hostname' => ['Hostname', 'requireTld', false],
         'uuid' => ['Uuid', null, null],
-        'byte' => ['Regex', 'pattern', self::BASE64],
-        'uri' => ['Regex', 'pattern', self::URI],
-        'time' => ['Regex', 'pattern', self::TIME],
+        'byte' => ['Regex', 'pattern', FormatPatterns::BASE64],
+        'uri' => ['Regex', 'pattern', FormatPatterns::URI],
+        'time' => ['Regex', 'pattern', FormatPatterns::TIME],
     ];
-
-    /**
-     * The alphabet of RFC 4648 base64, with padding only at the end; the length is not checked: a repeated group of
-     * four exhausts PCRE's stack on large payloads, and a failed match reads as a violation. Possessive, or a large
-     * invalid value exhausts the backtracking limit. D, as on the regexes of `pattern`, so that "$" takes no trailing
-     * newline.
-     */
-    private const BASE64 = '/^[A-Za-z0-9+\/]*+={0,2}$/D';
-
-    /** RFC 3986 unreserved characters and sub-delims. */
-    private const URI_CHARS = "A-Za-z0-9\\-._~!$&'()*+,;=";
-
-    /**
-     * RFC 3986 `URI`: a scheme, then an authority and a path that is empty or absolute, an absolute path, a rootless
-     * path or nothing, a query and a fragment. Symfony's Url takes only the schemes it lists, each with an authority, so
-     * `urn:` and `mailto:` would fail. IP literals are checked for their alphabet only. A group repeats only for a
-     * percent-encoded octet, so a large value fails only past about a million of them (`pcre.backtrack_limit`), as a
-     * violation.
-     */
-    private const URI = '/^[A-Za-z][A-Za-z0-9+\\-.]*+:(?:\\/\\/(?:[' . self::URI_CHARS . ':]*+(?:%[0-9A-Fa-f]{2}[' . self::URI_CHARS . ':]*+)*+@)?'
-        . "(?:\\[(?:[0-9A-Fa-f:.]++|v[0-9A-Fa-f]++\\.[A-Za-z0-9\\-._~!$&'()*+,;=:]++)\\]|" . '[' . self::URI_CHARS . ']*+(?:%[0-9A-Fa-f]{2}[' . self::URI_CHARS . ']*+)*+)'
-        . '(?::[0-9]*+)?(?:\\/[' . self::URI_CHARS . ':@\\/]*+(?:%[0-9A-Fa-f]{2}[' . self::URI_CHARS . ':@\\/]*+)*+)?'
-        . '|\\/(?!\\/)[' . self::URI_CHARS . ':@\\/]*+(?:%[0-9A-Fa-f]{2}[' . self::URI_CHARS . ':@\\/]*+)*+'
-        . '|(?:[' . self::URI_CHARS . ':@]|%[0-9A-Fa-f]{2})[' . self::URI_CHARS . ':@\\/]*+(?:%[0-9A-Fa-f]{2}[' . self::URI_CHARS . ':@\\/]*+)*+'
-        . '|)(?:\\?[' . self::URI_CHARS . ':@\\/?]*+(?:%[0-9A-Fa-f]{2}[' . self::URI_CHARS . ':@\\/?]*+)*+)?(?:#[' . self::URI_CHARS . ':@\\/?]*+(?:%[0-9A-Fa-f]{2}[' . self::URI_CHARS . ':@\\/?]*+)*+)?$/D';
-
-    /**
-     * RFC 3339 `full-time`. Symfony's Time takes no fraction and no offset, which `time` requires. A leap second is
-     * taken at any hour: whether it falls on 23:59 UTC depends on the offset.
-     */
-    private const TIME = '/^(?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\.[0-9]++)?(?:[Zz]|[+\-](?:[01][0-9]|2[0-3]):[0-5][0-9])$/D';
 
     /**
      * The keywords JSON Schema applies to one kind of value only.

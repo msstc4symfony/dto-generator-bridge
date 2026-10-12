@@ -106,11 +106,10 @@ bridge warns when it is missing. With `target.metadata: none` the bridge writes 
 
 Keywords of one kind of value (`minLength`, `minimum`, `minItems`…) are written only for a property of that type; for a
 value of several types, a pattern PHP cannot compile or a malformed keyword the bridge warns and writes nothing. The
-same holds for `format: int32` (integers) and `format: byte`, `uri`, `time` (strings): a value of several types warns about them too,
-next to the generator's own warning about the format. The other formats (`email`, `uuid`…) are skipped on such a value
-without a warning. A mixed `enum` such as `[low, 1]` gives a
-`Choice` with both values; its property may hold a string or an int, so `minLength` or `minimum` beside it get that
-warning.
+same holds for `format: int32` (integers) and `format: byte`, `uri`, `time` (strings): a value of several types warns
+about them too, next to the generator's own warning about the format. The other formats (`email`, `uuid`…) are
+skipped on such a value without a warning. A mixed `enum` such as `[low, 1]` gives a `Choice` with both values; its
+property may hold a string or an int, so `minLength` or `minimum` beside it get that warning.
 
 The `int32` bounds compete with the schema's: the strictest bound on each side wins, so `minimum: 0` gives
 `Range(min: 0, max: 2147483647)`, and an exclusive bound gives a pair such as `GreaterThanOrEqual(value: -2147483648)`
@@ -120,10 +119,11 @@ and `LessThan(value: 10)`. `int64` needs no constraint (it is PHP's int on 64-bi
 an authority, so `urn:` and `mailto:` URIs fail, and `Time` takes neither fractions of a second nor the offset that
 `full-time` requires. A `uri` must be absolute: a relative reference such as `/pets/1` is a violation
 (`uri-reference`, `iri` and `iri-reference` get no constraint). Percent-encoding must be complete (`%2` fails), and
-non-ASCII characters are rejected; IP literals in brackets are checked for their alphabet only. The pattern repeats
-groups only for percent-encoded octets, so a value of any size passes unless it holds about a million of them
-(`pcre.backtrack_limit`), which reads as a violation. A `time` takes a leap second (`:60`) at any hour, since whether it
-falls on 23:59 UTC depends on the offset.
+non-ASCII characters are rejected; IP literals in brackets are checked for their alphabet only. The pattern repeats a
+group only per percent-encoded octet, so a value of any size passes unless it holds more than about 500 000 of them
+(a million without PCRE's JIT; `pcre.backtrack_limit` at its default), which reads as a violation. A `time` takes a
+leap second only as `23:59:60` in UTC (`Z`, `+00:00`, `-00:00`); with another offset it takes `:60` at any hour, since
+whether that falls on 23:59 UTC needs arithmetic, so such values pass where JSON Schema's test suite expects a failure.
 
 `format: byte` takes the standard alphabet only: base64url (`-`, `_`), MIME base64 with line breaks, a trailing newline
 and padding inside the string are rejected. The pattern checks the characters and that up to two `=` only end the

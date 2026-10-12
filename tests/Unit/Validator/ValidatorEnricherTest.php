@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Validator;
 
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\GeneratesDtos;
+use Msstc4Symfony\DtoGeneratorBridge\Validator\FormatPatterns;
 use PHPUnit\Framework\TestCase;
 use stdClass;
 
@@ -269,43 +270,6 @@ final class ValidatorEnricherTest extends TestCase
         ], $this->messages($output));
     }
 
-    /**
-     * A repeated group would exhaust PCRE's JIT stack or backtracking limit on a large payload, and preg_match()
-     * failing reads as a violation in Symfony's RegexValidator.
-     */
-    public function testChecksBase64OfAnySizeAndOnlyItsAlphabetAndPadding(): void
-    {
-        $code = $this->pet(['type' => 'object', 'properties' => ['blob' => ['type' => 'string', 'format' => 'byte']]]);
-        self::assertSame(1, preg_match("~pattern: '((?:[^'\\\\]|\\\\.)*)'~", implode("\n", $this->attributesOf($code, 'blob')), $match));
-        $pattern = strtr($match[1], ['\\\\' => '\\', "\\'" => "'"]);
-        $jit = ini_get('pcre.jit');
-
-        try {
-            // PHP caches a compiled pattern with its JIT setting; the ignored S modifier makes another cache entry.
-            foreach (['1' => $pattern, '0' => $pattern . 'S'] as $setting => $regex) {
-                ini_set('pcre.jit', (string) $setting);
-                $large = [];
-                foreach ([1, 8] as $megabytes) {
-                    $large[$megabytes] = base64_encode(str_repeat("\xFB\xEF\xBE", $megabytes * 349526));
-                    self::assertSame(1, $this->match($regex, $large[$megabytes]), sprintf('%d MB, pcre.jit=%s', $megabytes, $setting));
-                }
-
-                foreach (['', 'QUJD', 'QUI=', 'QQ==', 'a+/9', 'QUJ', '=', '=='] as $valid) {
-                    self::assertSame(1, $this->match($regex, $valid), $valid);
-                }
-
-                foreach (['QU*D', 'QQ==QQ==', 'QQ===', "QUJD\n", 'QU JD', 'QU-_'] as $invalid) {
-                    self::assertSame(0, $this->match($regex, $invalid), $invalid);
-                }
-
-                self::assertSame(0, $this->match($regex, $large[8] . '*'), '8 MB and "*", pcre.jit=' . $setting);
-                self::assertSame(0, $this->match($regex, substr($large[8], 0, 4) . '=' . $large[8]), '"=" inside 8 MB, pcre.jit=' . $setting);
-            }
-        } finally {
-            ini_set('pcre.jit', (string) $jit);
-        }
-    }
-
     public function testWritesTheBase64PatternAsAnAnnotationForPhp74(): void
     {
         $output = $this->generate(['type' => 'object', 'properties' => ['blob' => ['type' => 'string', 'format' => 'byte']]], [], '7.4', [], 'v6.4.1', ['doctrine/annotations' => '2.0.2']);
@@ -323,15 +287,11 @@ final class ValidatorEnricherTest extends TestCase
             'either' => ['type' => ['integer', 'string'], 'format' => 'uri'],
         ]]);
         $code = $this->code($output, 'Pet.php');
-        [$uri, $time] = $this->patternsOf($code, 'link', 'opens');
+        $time = "Regex(pattern: '" . FormatPatterns::TIME . "')";
 
-        $timeRegex = "Regex(pattern: '" . strtr($time, ["'" => "\\'"]) . "')";
-
-        self::assertSame(['Assert\Length(max: 80)', "Assert\\Regex(pattern: '" . strtr($uri, ["'" => "\\'"]) . "')"], $this->attributesOf($code, 'link'));
-        self::assertSame(['Assert\\' . $timeRegex], $this->attributesOf($code, 'opens'));
-        self::assertSame(['Assert\All(constraints: [new \Symfony\Component\Validator\Constraints\\' . $timeRegex . '])'], $this->attributesOf($code, 'times'));
-        self::assertStringStartsWith('/^[A-Za-z][A-Za-z0-9+', $uri);
-        self::assertStringStartsWith('/^(?:[01][0-9]|2[0-3]):', $time);
+        self::assertSame(['Assert\\Length(max: 80)', "Assert\\Regex(pattern: '" . strtr(FormatPatterns::URI, ["'" => "\\'"]) . "')"], $this->attributesOf($code, 'link'));
+        self::assertSame(['Assert\\' . $time], $this->attributesOf($code, 'opens'));
+        self::assertSame(['Assert\\All(constraints: [new \\Symfony\\Component\\Validator\\Constraints\\' . $time . '])'], $this->attributesOf($code, 'times'));
         self::assertSame([], $this->attributesOf($code, 'relative'));
         self::assertSame([], $this->attributesOf($code, 'either'));
         self::assertSame([
@@ -340,78 +300,13 @@ final class ValidatorEnricherTest extends TestCase
         ], $this->messages($output));
     }
 
-    /**
-     * RFC 3986 `URI` (JSON Schema `uri`). Only character classes repeat, so a large value exhausts neither the JIT stack
-     * nor the backtracking limit, unless it holds about a million percent-encoded octets: preg_match() then fails, which
-     * Symfony's RegexValidator reports as a violation.
-     */
-    public function testMatchesAbsoluteUris(): void
-    {
-        [$pattern] = $this->patternsOf($this->pet(['type' => 'object', 'properties' => ['link' => ['type' => 'string', 'format' => 'uri']]]), 'link');
-        $valid = [
-            'http://example.com', 'https://user:pw@example.com:8080/a/b?c=d&e#f', 'urn:isbn:0451450523', 'mailto:a@b.example',
-            'file:///etc/hosts', 'tel:+1-816-555-1212', 'news:comp.lang.php', 'http://[::1]:80/', 'http://[v1.fe80::a+en1]/',
-            'ldap://[2001:db8::7]/c=GB?objectClass?one', 'http://a/%20b', 'http://a/b?c/d?e#f/g?h', 'foo:', 'x://', 'a+b-c.d:x',
-            "http://a/!$&'()*+,;=:@~", 'HTTP://EXAMPLE.COM', 'http://a:/',
-        ];
-        $invalid = [
-            '', '//example.com', '/path', 'path', 'example.com', '1http://a', ':foo', 'http://a b', 'http://a/%zz', 'http://a/%2',
-            'http://a#b#c', "http://a/\u{e9}", "http://a\n", 'http://a:b:c', 'http://[::1', 'http://a"b', 'http://a<b>', 'http://a\b',
-            'http://a/{b}', 'http://a|b', 'h_t://a', 'http://a^b', 'http://a`b',
-        ];
-        $jit = ini_get('pcre.jit');
-
-        try {
-            // PHP caches a compiled pattern with its JIT setting; the ignored S modifier makes another cache entry.
-            foreach (['1' => $pattern, '0' => $pattern . 'S'] as $setting => $regex) {
-                ini_set('pcre.jit', (string) $setting);
-                foreach ($valid as $uri) {
-                    self::assertSame(1, $this->match($regex, $uri), $uri);
-                }
-
-                foreach ($invalid as $uri) {
-                    self::assertSame(0, $this->match($regex, $uri), $uri);
-                }
-
-                $large = 'http://a/' . str_repeat('b/', 2097152) . '?' . str_repeat('c', 4194304);
-                self::assertSame(1, $this->match($regex, $large), '8 MB, pcre.jit=' . $setting);
-                self::assertSame(0, $this->match($regex, $large . ' '), '8 MB and " ", pcre.jit=' . $setting);
-                self::assertSame(1, $this->match($regex, 'data:,' . str_repeat('%20', 100000)), '100000 octets, pcre.jit=' . $setting);
-                self::assertFalse($this->match($regex, 'data:,' . str_repeat('%20', 2000000)), '2000000 octets, pcre.jit=' . $setting);
-            }
-        } finally {
-            ini_set('pcre.jit', (string) $jit);
-        }
-    }
-
-    /**
-     * RFC 3339 `full-time` (JSON Schema `time`): the offset is required, and a leap second is taken at any hour.
-     */
-    public function testMatchesFullTimes(): void
-    {
-        [$pattern] = $this->patternsOf($this->pet(['type' => 'object', 'properties' => ['opens' => ['type' => 'string', 'format' => 'time']]]), 'opens');
-
-        foreach (['08:30:06Z', '08:30:06z', '23:59:60Z', '08:30:06.283185Z', '08:30:06+01:00', '08:30:06-08:00', '00:00:00+23:59', '12:00:60+01:00'] as $valid) {
-            self::assertSame(1, $this->match($pattern, $valid), $valid);
-        }
-
-        $invalid = [
-            '', '8:30:06Z', '08:30:06', '24:00:00Z', '08:60:06Z', '08:30:61Z', '08:30:06+24:00', '08:30:06+01:60', '08:30:06.Z',
-            '08:30Z', '08:30:06 Z', "08:30:06Z\n", '08:30:06+0100', 'T08:30:06Z', "\u{660}8:30:06Z", '08:30:06+01:00Z',
-        ];
-        foreach ($invalid as $time) {
-            self::assertSame(0, $this->match($pattern, $time), $time);
-        }
-    }
-
     public function testWritesTheUriAndTimePatternsAsAnnotationsForPhp74(): void
     {
         $properties = ['link' => ['type' => 'string', 'format' => 'uri'], 'opens' => ['type' => 'string', 'format' => 'time']];
         $code = $this->code($this->generate(['type' => 'object', 'properties' => $properties], [], '7.4', [], 'v6.4.1', ['doctrine/annotations' => '2.0.2']), 'Pet.php');
-        [$uri, $time] = $this->patternsOf($this->pet(['type' => 'object', 'properties' => $properties]), 'link', 'opens');
 
-        self::assertStringContainsString("     * @Assert\\Regex(\n     *     pattern=\"" . $uri . "\"\n     * )\n", $code);
-        self::assertStringContainsString("     * @Assert\\Regex(\n     *     pattern=\"" . $time . "\"\n     * )\n", $code);
+        self::assertStringContainsString("     * @Assert\\Regex(\n     *     pattern=\"" . FormatPatterns::URI . "\"\n     * )\n", $code);
+        self::assertStringContainsString("     * @Assert\\Regex(\n     *     pattern=\"" . FormatPatterns::TIME . "\"\n     * )\n", $code);
     }
 
     public function testComparesWithAConstant(): void
@@ -1028,32 +923,6 @@ final class ValidatorEnricherTest extends TestCase
         ]]);
 
         self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/name: x-validator-groups-exclusive must be true or false; it is ignored.'], $this->messages($output));
-    }
-
-    /**
-     * The pattern of the one Regex of each property, as PHP reads the attribute.
-     *
-     * @return list<string>
-     */
-    private function patternsOf(string $code, string ...$properties): array
-    {
-        $patterns = [];
-        foreach ($properties as $property) {
-            self::assertSame(1, preg_match("~Regex\(pattern: '((?:[^'\\\\]|\\\\.)*)'~", implode("\n", $this->attributesOf($code, $property)), $match), $property);
-            $patterns[] = strtr($match[1], ['\\\\' => '\\', "\\'" => "'"]);
-        }
-
-        return $patterns;
-    }
-
-    /**
-     * preg_match() itself rather than PHPUnit's regex assertions, which do not tell a failed match (false) from none.
-     *
-     * @return 0|1|false
-     */
-    private function match(string $regex, string $subject)
-    {
-        return preg_match($regex, $subject);
     }
 
     /**

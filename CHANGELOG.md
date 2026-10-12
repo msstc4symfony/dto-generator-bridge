@@ -12,6 +12,11 @@ All notable changes to this package are documented here. The format follows
   and an RFC 3339 `full-time` with its offset. Symfony's `Url` and `Time` would reject valid values, so these formats
   were not checked before.
 
+### Changed
+
+- Regenerated DTOs reject what `format: uri` and `format: time` never allowed but went unchecked: a relative reference
+  such as `/pets/1` (use `format: uri-reference`, which stays unchecked) and a time without its offset (`08:30:06`).
+
 ## [1.2.0] - 2026-10-12
 
 ### Added

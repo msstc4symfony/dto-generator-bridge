@@ -4,11 +4,12 @@
 # pinned to the line, then the whole suite.
 #   tests/Integration/Symfony/run-matrix.sh '6.4.*' [php image tag, default 8.4-cli] [phpunit arguments...]
 # CORE and RUNTIME are checkouts of msstc4php/dto-generator and msstc4symfony/dto-generator-bridge-runtime used instead
-# of the published packages (default ../../msstc4php/dto-generator, ../dto-generator-bridge-runtime), each as the
-# version of its latest tag; LOWEST=1 resolves the lowest versions. Needs git, docker and python3.
+# of the published packages (default ../../msstc4php/dto-generator, ../dto-generator-bridge-runtime): their working
+# trees, labelled with the nearest tag reachable from HEAD unless CORE_VERSION / RUNTIME_VERSION say otherwise.
+# LOWEST=1 resolves the lowest versions. Needs git, docker and python3.
 set -euo pipefail
 if [ $# -lt 1 ]; then
-    sed -n '2,8p' "$0"
+    sed -n '2,9p' "$0"
     exit 2
 fi
 
@@ -20,13 +21,24 @@ fi
 BRIDGE="$(cd "$(dirname "$0")/../../.." && pwd)"
 CORE="${CORE:-$BRIDGE/../../msstc4php/dto-generator}"
 RUNTIME="${RUNTIME:-$BRIDGE/../dto-generator-bridge-runtime}"
-CORE_VERSION="$(git -C "$CORE" describe --tags --abbrev=0 | sed 's/^v//')"
-RUNTIME_VERSION="$(git -C "$RUNTIME" describe --tags --abbrev=0 | sed 's/^v//')"
+tag_of() {
+    git -C "$1" describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' | grep . || {
+        echo "No tag is reachable from HEAD in $1; set $2." >&2
+        exit 2
+    }
+}
+CORE_VERSION="${CORE_VERSION:-$(tag_of "$CORE" CORE_VERSION)}"
+RUNTIME_VERSION="${RUNTIME_VERSION:-$(tag_of "$RUNTIME" RUNTIME_VERSION)}"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
-(cd "$BRIDGE" && git ls-files -co --exclude-standard | grep -v '^vendor/' | while read -r file; do [ -e "$file" ] && echo "$file"; done | tar -cf - -T -) | tar -xf - -C "$WORK"
-mkdir "$WORK/core" && (cd "$CORE" && git ls-files | tar -cf - -T -) | tar -xf - -C "$WORK/core"
-mkdir "$WORK/runtime" && (cd "$RUNTIME" && git ls-files | tar -cf - -T -) | tar -xf - -C "$WORK/runtime"
+# The working tree as it is: files not added yet come along, files deleted but still tracked do not.
+copy_tree() {
+    mkdir -p "$2"
+    (cd "$1" && git ls-files -co --exclude-standard | grep -v '^vendor/' | while read -r file; do [ -e "$file" ] && echo "$file"; done | tar -cf - -T -) | tar -xf - -C "$2"
+}
+copy_tree "$BRIDGE" "$WORK"
+copy_tree "$CORE" "$WORK/core"
+copy_tree "$RUNTIME" "$WORK/runtime"
 CORE_VERSION="$CORE_VERSION" RUNTIME_VERSION="$RUNTIME_VERSION" SYMFONY="$SYMFONY" PLATFORM="$(echo "$PHP_IMAGE" | grep -oE '^[0-9]+\.[0-9]+')" python3 - "$WORK" <<'PY'
 import json, os, re, sys
 work = sys.argv[1]
