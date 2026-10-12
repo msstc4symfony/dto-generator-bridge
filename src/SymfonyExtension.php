@@ -19,7 +19,7 @@ final class SymfonyExtension implements Extension
      * The keywords the generator calls unsupported and the runtime's constraints check; the bridge warns where it
      * cannot.
      */
-    private const CHECKED_KEYWORDS = ['dependentRequired', 'propertyNames', 'contains', 'minContains', 'maxContains'];
+    public const CHECKED_KEYWORDS = ['dependentRequired', 'propertyNames', 'contains', 'minContains', 'maxContains'];
 
     public function name(): string
     {

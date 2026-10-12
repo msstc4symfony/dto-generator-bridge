@@ -44,13 +44,15 @@ final class RuntimeConstraintsTest extends TestCase
 
     public function testLeavesOutAContainsThatAnyListPasses(): void
     {
-        $code = $this->code($this->withRuntime(['type' => 'object', 'properties' => [
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
             'tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['const' => 'a'], 'minContains' => 0],
             'notes' => ['type' => 'array', 'items' => ['type' => 'string'], 'minContains' => 2],
-        ]]), 'Pet.php');
+        ]]);
+        $code = $this->code($output, 'Pet.php');
 
         self::assertSame([], $this->attributesOf($code, 'tags'));
         self::assertSame([], $this->attributesOf($code, 'notes'));
+        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/notes: "minContains" has no effect without "contains" in the same schema.'], $this->messages($output));
     }
 
     public function testMatchesEveryElementWithAnEmptySchema(): void
@@ -185,16 +187,38 @@ final class RuntimeConstraintsTest extends TestCase
         self::assertSame(['RuntimeAssert\\Contains(min: 2)', 'Assert\\Valid'], $this->attributesOf($code, 'friends'));
     }
 
+    public function testWarnsAboutAMemberOfAUnionThroughEveryProperty(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'tags' => ['$ref' => '#/components/schemas/Tags'],
+            'either' => ['oneOf' => [['$ref' => '#/components/schemas/Tags'], ['type' => 'string']]],
+            'owners' => ['anyOf' => [['$ref' => '#/components/schemas/Owner'], ['type' => 'string']]],
+            'mixed' => ['anyOf' => [['$ref' => '#/components/schemas/Owner'], ['type' => 'object', 'additionalProperties' => ['type' => 'string'], 'propertyNames' => ['maxLength' => 2]]]],
+        ]], [
+            'Tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['const' => 'a']],
+            'Owner' => ['type' => 'object', 'dependentRequired' => ['a' => ['b']], 'properties' => ['a' => ['type' => 'string'], 'b' => ['type' => 'string']]],
+        ]);
+
+        self::assertSame(['RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . "IdenticalTo(value: 'a')])"], $this->attributesOf($this->code($output, 'Pet.php'), 'tags'));
+        self::assertSame(["RuntimeAssert\\DependentRequired(requirements: ['a' => ['b']])"], $this->classAttributesOf($this->code($output, 'Owner.php')));
+        self::assertSame([
+            'warning /api.yaml#/components/schemas/Pet/properties/either: "contains" in a member of "oneOf" or "anyOf" is not checked.',
+            'warning /api.yaml#/components/schemas/Pet/properties/mixed: "propertyNames" in a member of "oneOf" or "anyOf" is not checked.',
+        ], $this->messages($output));
+    }
+
     public function testBoundsEachContainsByItsOwnSchema(): void
     {
-        $code = $this->code($this->withRuntime(['type' => 'object', 'properties' => [
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
             'tags' => ['allOf' => [
                 ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['const' => 'a'], 'minContains' => 2],
                 ['contains' => ['const' => 'b']],
             ]],
             'roles' => ['$ref' => '#/components/schemas/Roles', 'maxContains' => 1],
-        ]], ['Roles' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['const' => 'admin']]]), 'Pet.php');
+        ]], ['Roles' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['const' => 'admin']]]);
+        $code = $this->code($output, 'Pet.php');
 
+        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/roles: "maxContains" has no effect without "contains" in the same schema.'], $this->messages($output));
         self::assertSame([
             'RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . "IdenticalTo(value: 'a')], min: 2)",
             'RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . "IdenticalTo(value: 'b')])",
@@ -560,7 +584,7 @@ final class RuntimeConstraintsTest extends TestCase
         $at = 'warning /api.yaml#/components/schemas/Pet/properties/';
         $unsupported = 'is not supported and has no effect on the generated type.';
         self::assertSame([
-            $at . 'either/oneOf/0/contains: "contains" ' . $unsupported,
+            $at . 'either: "contains" in a member of "oneOf" or "anyOf" is not checked.',
             $at . 'owner/dependentRequired: "dependentRequired" ' . $unsupported,
             $at . 'owner/propertyNames: "propertyNames" ' . $unsupported,
             $at . 'skipped/contains: "contains" ' . $unsupported,
@@ -577,10 +601,12 @@ final class RuntimeConstraintsTest extends TestCase
         ]]);
 
         self::assertSame([], $this->attributesOf($this->code($output, 'Pet.php'), 'tags'));
-        $at = 'warning /api.yaml#/components/schemas/Pet/properties/tags';
+        $at = 'warning /api.yaml#/components/schemas/Pet/properties/tags/allOf/';
         self::assertSame([
-            $at . '/contains: "pattern" is no regular expression PHP can run; it is not checked.',
-            $at . ': "contains" is not checked, as part of its schema cannot be.',
+            $at . '0/contains: "pattern" is no regular expression PHP can run; it is not checked.',
+            $at . '0: "contains" is not checked, as part of its schema cannot be.',
+            $at . '1/contains: "pattern" is no regular expression PHP can run; it is not checked.',
+            $at . '1: "contains" is not checked, as part of its schema cannot be.',
         ], $this->messages($output));
     }
 

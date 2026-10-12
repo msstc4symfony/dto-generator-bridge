@@ -134,10 +134,12 @@ pass where JSON Schema's test suite expects a failure.
 [`msstc4symfony/dto-generator-bridge-runtime`](https://github.com/msstc4symfony/dto-generator-bridge-runtime#constraints),
 which the application needs in production then; without it in `composer.lock` the bridge warns and writes none of
 them. The bridge claims these keywords (unless `validator: false`) and marks each occurrence it checks or warns
-about; the generator still calls the others unsupported: those in a member of a `oneOf`/`anyOf` with several
-members, those written beside a `$ref` to a class (write them in the class's schema), those of a property with
-`x-validator-skip`, and all of them when the bridge writes no Validator constraints (no `symfony/validator`,
-`target.metadata: none`). In a schema with `x-php-type` they are not checked, without a warning, as in the generator.
+about, such as one in a member of a `oneOf`/`anyOf` with several members, which is not checked. The generator still
+calls the others unsupported: those written beside a `$ref` to a class (write them in the class's schema), those of
+a property or a class with `x-validator-skip`, and all of them when the bridge writes no Validator constraints (no
+`symfony/validator`, `target.metadata: none`). In a schema with `x-php-type` they are not checked, without a
+warning, as in the generator. A `minContains` or `maxContains` without `contains` in the same schema gives a warning:
+JSON Schema ignores it there.
 They follow JSON Schema with these limits:
 
 - **`contains`** counts the elements that pass the constraints of its schema, each checked on its own;

@@ -17,8 +17,8 @@ All notable changes to this package are documented here. The format follows
   unsupported, and warns itself where it cannot check one: a `contains` schema with `$ref` or `properties`, elements
   that are objects or PHP enums, a `dependentRequired` name that is not a property of the class, a trigger with a
   default, `propertyNames` on a class that keeps no undeclared properties, a project without the runtime. The
-  generator still warns about the occurrences the bridge does not reach (a member of a `oneOf`, beside a `$ref`
-  to a class, a property with `x-validator-skip`).
+  generator still warns about the occurrences the bridge does not reach (beside a `$ref` to a class, a property or
+  class with `x-validator-skip`).
 
 ### Changed
 

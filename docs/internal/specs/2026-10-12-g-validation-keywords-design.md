@@ -48,8 +48,9 @@ Namespace `Msstc4Symfony\DtoGeneratorBridge\Runtime\Constraints\`; атрибу�
 
 - `SymfonyExtension` заявляет пять слов, если `validator` не `false`. `ConstraintBuilder::claimed()` и
   `ValidatorEnricher::markChecked()` отмечают каждое место (`Keywords::schemas()`), которое мост проверил или о котором
-  предупредил; остальное (ветки `oneOf`/`anyOf`, слова рядом с `$ref` на класс, `x-validator-skip`, нет валидатора)
-  остаётся ядру. В схеме с `x-php-type` мост молчит, как ядро.
+  предупредил, в том числе члены `oneOf`/`anyOf` с несколькими значениями (предупреждение на свойстве: общий компонент
+  мог быть отмечен через другое свойство); остальное (слова рядом с `$ref` на класс, `x-validator-skip`, нет
+  валидатора) остаётся ядру. `minContains`/`maxContains` без `contains` в том же месте — предупреждение. В схеме с `x-php-type` мост молчит, как ядро.
 - Требует ядро ^1.4 и рантайм ^1.1; `RuntimeConstraints` всё же проверяет рантайм ≥ 1.1 в `composer.lock`
   (ветка `dev-*` — новая) и иначе предупреждает: lock может отставать.
 - `Subschema` (`contains`, `propertyNames`): только плоская схема; элементы — скаляры (иначе — только аннотации);

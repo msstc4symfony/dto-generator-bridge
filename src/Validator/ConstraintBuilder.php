@@ -22,6 +22,7 @@ use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use MSSTC4PHP\DtoGenerator\Domain\Target\Capability;
 use MSSTC4PHP\DtoGenerator\Domain\Target\TargetProfile;
 use Msstc4Symfony\DtoGeneratorBridge\Keywords;
+use Msstc4Symfony\DtoGeneratorBridge\SymfonyExtension;
 
 /**
  * The constraints a value's schema and type call for (bridge spec §5.1), in the order of that table.
@@ -131,6 +132,7 @@ final class ConstraintBuilder
             $this->checks($keywords, $kind, 'collection', $at) ? $this->collections($keywords, $reader, $value, $at) : [],
             $replaced ? [] : $this->contains($keywords, $reader, $value, $at),
             $replaced ? [] : $this->keys($keywords, $value, $at),
+            $replaced ? [] : $this->unreached($keywords, $at),
             $this->values->choices($keywords, $value, $at),
             $this->values->constants($keywords, $value, $at),
             $this->formats($keywords, $value),
@@ -172,14 +174,13 @@ final class ConstraintBuilder
     public function names(Keywords $keywords, SchemaLocation $at): array
     {
         $constraints = [];
-        $schemas = $this->claimed($keywords, 'propertyNames');
-        if ($schemas === [] || !$this->runtime->available('propertyNames', $at)) {
+        if ($this->claimed($keywords, 'propertyNames') === [] || !$this->runtime->available('propertyNames', $at)) {
             return [];
         }
 
         $name = ScalarType::string();
-        foreach ($schemas as $schema) {
-            $inner = $this->subschema('propertyNames', $schema, $name, $at);
+        foreach (array_filter($keywords->schemas(), static fn (Schema $place): bool => $place->hasKeyword('propertyNames')) as $place) {
+            $inner = $this->subschema('propertyNames', $place, $name);
             if ($inner !== null && $inner !== []) {
                 $constraints[] = ConstraintSpec::runtime('Keys', [AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner))]);
             }
@@ -467,6 +468,14 @@ final class ConstraintBuilder
         $this->claimed($keywords, 'minContains');
         $this->claimed($keywords, 'maxContains');
         $this->claimed($keywords, 'contains');
+        foreach ($keywords->schemas() as $place) {
+            foreach (['minContains', 'maxContains'] as $bound) {
+                if ($place->hasKeyword($bound) && !$place->hasKeyword('contains')) {
+                    $this->diagnostics->warning(sprintf('"%s" has no effect without "contains" in the same schema.', $bound), $place->location());
+                }
+            }
+        }
+
         if ($places === []) {
             return [];
         }
@@ -482,7 +491,7 @@ final class ConstraintBuilder
             $min = $this->bound($reader, $place, 'minContains') ?? 1;
             $max = $this->bound($reader, $place, 'maxContains');
             if (($min !== 0 || $max !== null) && ($max === null || $this->consistent('minContains', $min, 'maxContains', $max, $at))) {
-                $checked[] = [$place->keyword('contains'), $min, $max];
+                $checked[] = [$place, $min, $max];
             }
         }
 
@@ -491,8 +500,8 @@ final class ConstraintBuilder
         }
 
         $constraints = [];
-        foreach ($checked as [$schema, $min, $max]) {
-            $inner = $this->subschema('contains', $schema, $value->item(), $at);
+        foreach ($checked as [$place, $min, $max]) {
+            $inner = $this->subschema('contains', $place, $value->item());
             if ($inner !== null) {
                 $constraints[] = ConstraintSpec::runtime('Contains', array_merge(
                     $inner === [] ? [] : [AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner))],
@@ -503,6 +512,33 @@ final class ConstraintBuilder
         }
 
         return $constraints;
+    }
+
+    /**
+     * A member of a union of several values is no value of its own here, so its keywords go unchecked, with a warning
+     * at the property: a shared component may be checked through another property, which marks it. A member that is
+     * a class checks its keywords itself.
+     *
+     * @return list<ConstraintSpec> none
+     */
+    private function unreached(Keywords $keywords, SchemaLocation $at): array
+    {
+        foreach ($keywords->unreachedMembers() as $member) {
+            if ((new Keywords($member, $this->references))->describesObject()) {
+                continue;
+            }
+
+            foreach ($this->references->chain($member) as $link) {
+                foreach (SymfonyExtension::CHECKED_KEYWORDS as $keyword) {
+                    if ($link->hasKeyword($keyword)) {
+                        $this->checks->checked($link->location(), $keyword);
+                        $this->diagnostics->warning(sprintf('"%s" in a member of "oneOf" or "anyOf" is not checked.', $keyword), $at);
+                    }
+                }
+            }
+        }
+
+        return [];
     }
 
     /**
@@ -557,13 +593,14 @@ final class ConstraintBuilder
      * The constraints of a subschema as `new` arguments; null when it is not checked.
      *
      * @param non-empty-string $keyword
-     * @param JsonValue $schema
+     * @param Schema $place the schema that holds the keyword, where the warnings go
      *
      * @return list<ArgumentValue>|null
      */
-    private function subschema(string $keyword, $schema, TypeModel $type, SchemaLocation $at): ?array
+    private function subschema(string $keyword, Schema $place, TypeModel $type): ?array
     {
-        $parsed = Subschema::read($keyword, $schema, $type, $at, $this->diagnostics);
+        $at = $place->location();
+        $parsed = Subschema::read($keyword, $place->keyword($keyword), $type, $at, $this->diagnostics);
         if (!$parsed instanceof Subschema) {
             return null;
         }

@@ -57,6 +57,24 @@ final class Keywords
         return $this->schemas;
     }
 
+    /**
+     * The `oneOf`/`anyOf` members the keywords leave out: those of a union with more than one member besides null, which
+     * the generator types as several values.
+     *
+     * @return list<Schema>
+     */
+    public function unreachedMembers(): array
+    {
+        $members = [];
+        foreach ($this->schemas as $schema) {
+            if (!$this->soleValueMember($schema) instanceof Schema) {
+                array_push($members, ...$schema->oneOf(), ...$schema->anyOf());
+            }
+        }
+
+        return $members;
+    }
+
     public function has(string $name): bool
     {
         return $this->values($name) !== [];
