@@ -388,6 +388,7 @@ final class ConditionalsTest extends TestCase
             'part' => ['if' => ['type' => 'number', 'const' => 1.5], 'then' => ['type' => 'string']],
             'size' => ['if' => ['type' => 'number', 'minimum' => 1], 'then' => ['type' => 'string']],
             'code' => ['if' => ['type' => ['string', 'integer'], 'enum' => ['x', 1]], 'then' => ['const' => 'x']],
+            'none' => ['if' => ['type' => 'null', 'enum' => [null, 1]], 'then' => ['const' => 'x']],
         ]]);
         $code = $this->code($output, 'Pet.php');
 
@@ -406,6 +407,10 @@ final class ConditionalsTest extends TestCase
         self::assertSame(
             ['RuntimeAssert\\IfThenElse(if: [new ' . self::ASSERT . "Type(type: ['string', 'int']), new " . self::ASSERT . "Choice(choices: ['x', 1])], then: [new " . self::ASSERT . "IdenticalTo(value: 'x')])"],
             $this->attributesOf($code, 'code'),
+        );
+        self::assertSame(
+            ['RuntimeAssert\\IfThenElse(if: [new ' . self::ASSERT . 'IsNull(), new ' . self::ASSERT . 'Choice(choices: [1])], then: [new ' . self::ASSERT . "IdenticalTo(value: 'x')])"],
+            $this->attributesOf($code, 'none'),
         );
         $at = self::AT . '/properties/';
         self::assertSame([

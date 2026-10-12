@@ -249,7 +249,8 @@ final class Subschema
             return null;
         }
 
-        if ($this->listsAmbiguousNumbers($values, $named)) {
+        // IsNull of a schema that admits null alone leaves no number to tell apart.
+        if (!$this->admitsOnlyNull && $this->listsAmbiguousNumbers($values, $named)) {
             $diagnostics->warning(sprintf('"%s" lists whole numbers for a value of any type only with a "type" that admits no float, as 0 and 0.0 differ in PHP; it is not checked.', $keyword), $at);
 
             return null;

@@ -76,7 +76,10 @@ final class PatternPropertiesTest extends TestCase
 
     public function testWarnsAboutTheUndeclaredPropertiesOfAClassWithoutThem(): void
     {
-        $output = $this->withRuntime(['type' => 'object', 'patternProperties' => ['^x-' => ['type' => 'string', 'maxLength' => 3]], 'properties' => ['x-a' => ['type' => 'string']]]);
+        $output = $this->withRuntime(['type' => 'object', 'patternProperties' => ['^x-' => ['type' => 'string', 'maxLength' => 3]], 'properties' => [
+            'x-a' => ['type' => 'string'],
+            'x-gone' => ['type' => 'string', 'x-php-skip' => true],
+        ]]);
 
         self::assertSame(['Assert\\Length(max: 3)'], $this->attributesOf($this->code($output, 'Pet.php'), 'xA'));
         self::assertSame(
@@ -164,8 +167,8 @@ final class PatternPropertiesTest extends TestCase
     public function testLeavesToTheParentAPropertyAPatternOfAnotherBranchOfItMatches(): void
     {
         $output = $this->withRuntimeAnd(['allOf' => [
-            ['$ref' => '#/components/schemas/Base'],
             ['type' => 'object', 'properties' => ['b' => ['type' => 'string']]],
+            ['$ref' => '#/components/schemas/Base'],
         ]], ['Base' => ['allOf' => [
             ['type' => 'object', 'properties' => ['x-a' => ['type' => 'string']]],
             ['patternProperties' => ['^x-' => ['maxLength' => 3]]],
@@ -179,6 +182,47 @@ final class PatternPropertiesTest extends TestCase
         self::assertSame(
             [self::AT . ': "patternProperties" is checked on the undeclared properties a class keeps in its own $additionalProperties, which this class does not declare; they are not checked.'],
             array_values(array_filter($this->messages($output), static fn (string $message): bool => strpos($message, 'Pet') !== false)),
+        );
+    }
+
+    public function testWarnsAboutAPatternBesideTheReferenceToTheParent(): void
+    {
+        $output = $this->withRuntimeAnd(['allOf' => [
+            ['$ref' => '#/components/schemas/Base', 'patternProperties' => ['^x-' => ['maxLength' => 3]]],
+            ['type' => 'object', 'properties' => ['b' => ['type' => 'string']]],
+        ]], ['Base' => ['type' => 'object', 'properties' => ['x-a' => ['type' => 'string']]]]);
+
+        self::assertContains(self::AT . '/allOf/0: "patternProperties" matches "x-a", which this class inherits; it is not checked on it: write the pattern in the schema that declares the property.', $this->messages($output));
+    }
+
+    public function testWarnsAboutAPatternOfASchemaBetweenTheClassAndItsParent(): void
+    {
+        $output = $this->withRuntimeAnd(['allOf' => [
+            ['$ref' => '#/components/schemas/Mid'],
+            ['type' => 'object', 'properties' => ['b' => ['type' => 'string']]],
+        ]], [
+            'Mid' => ['allOf' => [['$ref' => '#/components/schemas/Base'], ['patternProperties' => ['^x-' => ['maxLength' => 3]]]]],
+            'Base' => ['type' => 'object', 'properties' => ['x-a' => ['type' => 'string']]],
+        ]);
+
+        self::assertContains('warning /api.yaml#/components/schemas/Mid/allOf/1: "patternProperties" matches "x-a", which this class inherits; it is not checked on it: write the pattern in the schema that declares the property.', $this->messages($output));
+    }
+
+    public function testChecksThePropertiesOfMergedReferences(): void
+    {
+        $output = $this->withRuntimeAnd(['allOf' => [
+            ['$ref' => '#/components/schemas/Named'],
+            ['$ref' => '#/components/schemas/Tagged'],
+            ['patternProperties' => ['^x-' => ['maxLength' => 3]]],
+        ]], [
+            'Named' => ['type' => 'object', 'properties' => ['x-a' => ['type' => 'string']]],
+            'Tagged' => ['type' => 'object', 'properties' => ['tag' => ['type' => 'string']]],
+        ]);
+
+        self::assertSame(['Assert\\Length(max: 3)'], $this->attributesOf($this->code($output, 'Pet.php'), 'xA'));
+        self::assertSame(
+            [self::AT . ': "patternProperties" is checked on the undeclared properties a class keeps in its own $additionalProperties, which this class does not declare; they are not checked.'],
+            $this->messages($output),
         );
     }
 

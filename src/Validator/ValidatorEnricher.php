@@ -8,6 +8,7 @@ use MSSTC4PHP\DtoGenerator\Contract\ClassContext;
 use MSSTC4PHP\DtoGenerator\Contract\ClassEnricher;
 use MSSTC4PHP\DtoGenerator\Contract\PropertyContext;
 use MSSTC4PHP\DtoGenerator\Contract\PropertyEnricher;
+use MSSTC4PHP\DtoGenerator\Contract\SchemaReferences;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ArgumentValue;
 use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeArgument;
 use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeModel;
@@ -148,19 +149,11 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             $own[] = $property->wireName();
         }
 
-        // The schemas each `$ref` of the class's `allOf` reaches: a class generated from them checks its own properties
-        // against every pattern among them.
-        $ancestors = [];
-        foreach ($context->schema()->allOf() as $branch) {
-            if ($branch->ref() !== null) {
-                $ancestors[] = array_map(static fn (Schema $reached): string => $reached->location()->toString(), (new Keywords($branch, $context->references()))->schemas());
-            }
-        }
-
+        $targets = $this->targets($keywords, $context->references());
         foreach ($keywords->schemas() as $place) {
             foreach (array_diff($place->propertyNames(), $own) as $name) {
                 foreach ($patterns as $pattern) {
-                    if ($pattern->matches($name) && !$this->reachTogether($ancestors, $pattern->place()->toString(), $place->location()->toString())) {
+                    if ($pattern->matches($name) && !$this->checkedByOwner($targets, $pattern->place()->toString(), $place->location()->toString())) {
                         $context->diagnostics()->warning(sprintf(
                             '"patternProperties" matches "%s", which this class inherits; it is not checked on it: write the pattern in the schema that declares the property.',
                             $name,
@@ -172,17 +165,48 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
     }
 
     /**
-     * @param list<list<string>> $ancestors the locations each `$ref` of the class reaches
+     * The schemas the `$ref`s of the `allOf` branches lead to, at any depth, each with the locations of its places.
+     *
+     * @return array<string, list<string>> by the target's location
      */
-    private function reachTogether(array $ancestors, string $pattern, string $declaration): bool
+    private function targets(Keywords $keywords, SchemaReferences $references): array
     {
-        foreach ($ancestors as $reached) {
-            if (in_array($pattern, $reached, true) && in_array($declaration, $reached, true)) {
-                return true;
+        $targets = [];
+        $queue = [$keywords];
+        while (($current = array_pop($queue)) instanceof Keywords) {
+            foreach ($current->schemas() as $place) {
+                foreach ($place->allOf() as $branch) {
+                    $target = $references->resolve($branch);
+                    $location = $target->location()->toString();
+                    if ($branch->ref() !== null && !isset($targets[$location])) {
+                        $reached = new Keywords($target, $references);
+                        $targets[$location] = array_map(static fn (Schema $schema): string => $schema->location()->toString(), $reached->schemas());
+                        $queue[] = $reached;
+                    }
+                }
             }
         }
 
-        return false;
+        return $targets;
+    }
+
+    /**
+     * The class an inherited property belongs to is generated from the narrowest target that reaches its declaration
+     * (each wider one reaches it through that one); it checks the property against the patterns of its own places
+     * only, not against those beside its `$ref` or in a schema between it and this class. A declaration no target
+     * reaches is not inherited: the class's own schema leaves it out (`x-php-skip`).
+     *
+     * @param array<string, list<string>> $targets
+     */
+    private function checkedByOwner(array $targets, string $pattern, string $declaration): bool
+    {
+        foreach ($targets as $places) {
+            if (in_array($declaration, $places, true) && !in_array($pattern, $places, true)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public function enrichProperty(PropertyContext $context): array
