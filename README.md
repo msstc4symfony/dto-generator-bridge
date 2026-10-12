@@ -26,29 +26,35 @@ Symfony versions in your `composer.lock`.
 - **No configuration:** the generator discovers the bridge when it is installed; `x-validator-*` and `x-serializer-*`
   keys fine-tune single properties.
 - **Undeclared properties over the wire:** an opt-in normalizer spreads `$additionalProperties` over the keys of its
-  object and reads undeclared keys back into it — [details](#undeclared-properties-additionalproperties).
+  object and reads undeclared keys back into it — [details](#undeclared-properties-additionalproperties). It ships in
+  the small [runtime package](https://github.com/msstc4symfony/dto-generator-bridge-runtime), the only one production needs.
 - **An optional Symfony bundle** with a `dto-generator:generate` console command, a check on cache warmup and the
   normalizer wired into the application's serializer.
 
 ## Requirements
 
 - PHP >= 7.4 (the bridge runs inside the generator, which supports PHP 7.4).
-- `msstc4php/dto-generator` ^1.2.
+- `msstc4php/dto-generator` ^1.3 and `msstc4symfony/dto-generator-bridge-runtime` ^1.0 (both installed with the
+  bridge).
 - In the application that uses the DTOs: `symfony/validator` and/or `symfony/serializer` 5.4, 6.4, 7.x or 8.x. By
   default the bridge writes constraints and attributes only for the components it finds in `composer.lock`.
 - For the bundle: `symfony/framework-bundle` 5.4, 6.4, 7.x or 8.x.
 
 ## Installation
 
-The packages are not on Packagist yet, so register both GitHub repositories first:
+The packages are not on Packagist yet, so register the GitHub repositories first:
 
 ```bash
 composer config repositories.msstc4php-dto-generator vcs https://github.com/msstc4php/dto-generator
 composer config repositories.msstc4symfony-dto-generator-bridge vcs https://github.com/msstc4symfony/dto-generator-bridge
+composer config repositories.msstc4symfony-dto-generator-bridge-runtime vcs https://github.com/msstc4symfony/dto-generator-bridge-runtime
 composer require --dev msstc4symfony/dto-generator-bridge
 ```
 
-This installs the generator as well. The generator finds the bridge through `extra.dto-generator.extensions`, so no
+This installs the generator and the runtime as well. With `additionalProperties: spread`, require the runtime for
+production too: `composer require msstc4symfony/dto-generator-bridge-runtime`.
+
+The generator finds the bridge through `extra.dto-generator.extensions`, so no
 configuration is needed: the next `vendor/bin/dto-generator generate` writes the attributes. See the
 [generator's README](https://github.com/msstc4php/dto-generator#quick-start) for `dto-generator.yaml`.
 
@@ -176,50 +182,15 @@ The bridge then writes `#[\Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalPr
 reads into `name: "Rex"` and `additionalProperties: {"colour": "brown", "age": 3}` (each value typed by the
 `additionalProperties` schema, nested DTOs included), and writes back the same JSON.
 
-- **The normalizer runs in your application,** in every environment: install the bridge with `composer require`, not
-  `--dev`, and register the bundle with `['all' => true]` (or register the normalizer yourself, below). Without it the
-  DTOs carry neither `Ignore` nor a normalizer, and Symfony writes and reads one literal key `"additionalProperties"`.
-  It needs PHP 8.0+ and `symfony/serializer` 5.4, 6.4, 7.x or 8.x; the generated DTOs must use attributes
+- **The normalizer runs in your application,** in every environment. It lives in
+  [`msstc4symfony/dto-generator-bridge-runtime`](https://github.com/msstc4symfony/dto-generator-bridge-runtime), which the bridge requires: install it with
+  `composer require` and register its `DtoGeneratorRuntimeBundle` for all environments, so the bridge and the
+  generator can stay development dependencies. Without the normalizer the DTOs carry neither `Ignore` nor a
+  normalizer, and Symfony writes and reads one literal key `"additionalProperties"`.
+- It needs PHP 8.0+ and `symfony/serializer` 5.4, 6.4, 7.x or 8.x; the generated DTOs must use attributes
   (`target.metadata`), and a target that writes annotations (PHP 7.4) is an error.
-- **With the bundle** the normalizer is in the application's default serializer as soon as `framework.serializer` is
-  enabled, with its object normalizer and name converter (not when `framework.property_access` is off, which drops the
-  object normalizer). It is registered at the default priority 0, ahead of Symfony's object, date, array and other
-  built-in normalizers (negative priorities; only the unwrapping denormalizer of `UNWRAP_PATH` runs earlier); a
-  normalizer of yours for the same DTOs needs a higher priority to win. A named serializer
-  (`framework.serializer.named_serializers`, Symfony 7.2) does not get it: register one by hand with that serializer's
-  object normalizer.
-- **Without the bundle,** wrap the object normalizer and pass it the same metadata factory and name converter:
-
-  ```php
-  $names = new MetadataAwareNameConverter($classMetadataFactory);
-  $objects = new ObjectNormalizer($classMetadataFactory, $names, null, $propertyTypeExtractor, new ClassDiscriminatorFromClassMetadata($classMetadataFactory));
-  $serializer = new Serializer([
-      new DateTimeNormalizer(),
-      new ArrayDenormalizer(),
-      new AdditionalPropertiesNormalizer($objects, $classMetadataFactory, $names),
-      $objects,
-  ], [new JsonEncoder()]);
-  ```
-
-  The wrapped normalizer must denormalize too; the Serializer is handed on to it, so it works without being in the
-  chain, but the other DTOs need it there.
-- **Declared keys** are the class's serialized properties, named by the name converter (`SerializedName`, a global
-  converter such as `camel_case_to_snake_case`, inherited properties too), and the type property of a discriminated
-  base class or interface; everything else goes into the map. A map entry named like a declared key throws
-  `Symfony\Component\Serializer\Exception\UnexpectedValueException` on normalizing. Names are read once per class
-  and format, so a name converter that names by context (such as by groups) is not supported. Of several discriminated
-  ancestors only the one Symfony writes counts: the class's own, else its parent's, else its interfaces' (each with
-  its parents). Reading through another discriminated base keeps its key out of the map, but it is not written back. The
-  type key is found as recent Serializer releases find it: by its converted name, then by the type property itself,
-  then by the default type (7.3). Releases that read the type property only (5.4, 7.0 to 8.0 and some patches of 7.4
-  and 8.1) do not support a name converter that renames the type property together with a default type.
-- Some Serializer releases (5.4, 7.4.0) take the key type `array-key` of the generated PHPDoc for a class, so a map
-  of objects (spread or a declared property) cannot be read; maps of scalars work. 6.4 and later 7.4 releases read
-  both.
-- Serialization groups apply as usual: when the groups leave `$additionalProperties` out, nothing is spread.
-- `normalize()` returns a PHP array, so two shapes come out as JSON arrays rather than objects: with
-  `preserve_empty_objects`, an object whose every property is left out (`[]`, not `{}`), and an object of which only
-  map entries with the keys `0`, `1`, … remain (`["a","b"]`, not `{"0":"a","1":"b"}`).
+- How keys are declared and spread, its priority in the serializer, the setup without a bundle and the limits of
+  some Serializer releases: see [the runtime's README](https://github.com/msstc4symfony/dto-generator-bridge-runtime#undeclared-properties).
 
 ## Read and write models
 
@@ -235,12 +206,14 @@ serialize the read model in the response.
 The generator needs no bundle. In a Symfony application, `DtoGeneratorBundle` adds a console command, an optional
 check on cache warmup and, on PHP 8.0+, [`AdditionalPropertiesNormalizer`](#undeclared-properties-additionalproperties)
 in the serializer. With the bridge installed as a dev dependency (`composer require --dev`), register the bundle
-for the environments that have it (`additionalProperties: spread` needs it in all of them, see above):
+for the environments that have it, and the runtime's bundle for all of them when the DTOs use
+`additionalProperties: spread` (both register the same normalizer, so they may run together):
 
 ```php
 // config/bundles.php
 return [
     // ...
+    Msstc4Symfony\DtoGeneratorBridge\Runtime\Bundle\DtoGeneratorRuntimeBundle::class => ['all' => true],
     Msstc4Symfony\DtoGeneratorBridge\Bundle\DtoGeneratorBundle::class => ['dev' => true, 'test' => true],
 ];
 ```
@@ -251,6 +224,7 @@ The warmup check in production needs the bridge in `require` and the bundle regi
 # config/packages/dto_generator.yaml
 dto_generator:
   config: '%kernel.project_dir%/dto-generator.yaml'   # the default
+  mode: committed          # committed: the DTOs live in your sources; build: see "Building the DTOs with the container"
   check_on_warmup: false   # true: warn in the log on cache warmup when the DTOs are out of date
 ```
 
@@ -272,6 +246,48 @@ code `2` (`255` on PHP 7.4 for an error inside a function).
 `DTO_GENERATOR_MEMORY_LIMIT` must be a real environment variable of the process (`DTO_GENERATOR_MEMORY_LIMIT=2G
 bin/console dto-generator:generate`): Symfony's Dotenv does not call `putenv()` (since 5.0), so a value in `.env` does
 not reach the generator.
+
+### Building the DTOs with the container
+
+The recommended setup commits the generated DTOs: reviews show their changes, IDEs and PHPStan see them, and production
+needs neither the generator nor the bridge. When the DTOs should not live in the repository, `mode: build` generates
+them whenever Symfony builds its container (`cache:clear`, `cache:warmup`, the first request in `dev`):
+
+```yaml
+# config/packages/dto_generator.yaml
+dto_generator:
+  mode: build
+```
+
+- The bridge, and with it the generator, must then be in `require` and its bundle registered for all environments.
+- Each source's `outputDir` moves to `%kernel.build_dir%/dto-generator/`, at its path relative to the config's
+  directory (`src/Dto` becomes `var/cache/prod/dto-generator/src/Dto`); the project's sources are never written.
+  An `outputDir` outside the config's directory is an error.
+- The bundle loads the classes from there with an autoloader of its own, so Composer's `--classmap-authoritative`
+  does not hide them. The generation runs before the container reads controller signatures, so
+  `#[MapRequestPayload] Pet $pet` works.
+- The config and the specifications are resources of the container: in `dev`, an edit rebuilds the container and the
+  DTOs on the next request.
+- No network: remote `$ref`s come from the committed `remoteRefs.cacheDir`. A container that cannot build cannot run
+  `bin/console` either, so fill the cache with the generator's own CLI, from the project directory (add `--config=`
+  for a config other than `dto-generator.yaml`): `vendor/bin/dto-generator generate --output-root=var/cache/dev/dto-generator`.
+  It writes the DTOs there too, which the `dev` container rebuilds anyway; the point is the cache. In `dev`,
+  `bin/console dto-generator:generate` writes into the build directory as well; in `prod` run only `cache:clear`.
+- A generation error stops the container build with the generator's diagnostics. Warnings go to the container's
+  compiler log (`<ContainerClass>Compiler.log` in the build directory), which Symfony writes only with `debug: true`
+  and not under PHPUnit: a `prod` build records none.
+- The generation runs on every container build, in the process that builds it: in `dev` that may be a web request
+  with its `memory_limit` and time limit, which the generator's CLI would raise. The specifications' resources only
+  decide when the container is rebuilt.
+- Symfony loads `src/` as services before the generation runs, so a class of your own may not extend or implement a
+  generated type (such as a discriminated base); refer to the DTOs, as controllers and services usually do.
+- `check_on_warmup` has nothing to compare and is an error together with `mode: build`.
+- IDEs and static analysis see the classes only after a local build; point them at the build directory
+  (PHPStan: `scanDirectories: [var/cache/dev/dto-generator]`). Unit tests that do not boot the kernel do not load
+  them either.
+- The paths of the DTOs stay the same from one deploy to the next: with `opcache.validate_timestamps=0`, reload PHP-FPM
+  after a deploy, as for any other code. A long-running worker (FrankenPHP, RoadRunner) keeps the DTOs it loaded until
+  it restarts.
 
 ## `x-` keywords
 

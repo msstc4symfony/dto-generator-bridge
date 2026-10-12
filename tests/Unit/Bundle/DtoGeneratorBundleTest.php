@@ -11,7 +11,7 @@ use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostics;
 use MSSTC4PHP\DtoGenerator\DtoGenerator;
 use Msstc4Symfony\DtoGeneratorBridge\Bundle\CacheWarmer\GenerationCheckWarmer;
 use Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalPropertiesNormalizer;
-use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Runtime\Fixture\Box;
+use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Bundle\Fixture\Box;
 use PHPUnit\Framework\TestCase;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -19,6 +19,7 @@ use RuntimeException;
 use SplFileInfo;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
+use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\Console\CommandLoader\CommandLoaderInterface;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
@@ -291,6 +292,77 @@ final class DtoGeneratorBundleTest extends TestCase
         self::assertSame(DtoGenerator::console()->find('generate')->getDescription(), $this->listedDescription($kernel));
     }
 
+    /**
+     * @coversNothing
+     */
+    public function testBuildsTheDtosWithTheContainerInBuildMode(): void
+    {
+        $namespace = $this->uniqueNamespace();
+
+        $kernel = $this->bootedKernel(['mode' => 'build']);
+
+        $file = $kernel->getBuildDir() . '/dto-generator/src/Dto/Pet.php';
+        self::assertFileExists($file);
+        self::assertDirectoryDoesNotExist($this->project . '/src');
+        self::assertSame([$namespace . '\Pet' => $file], $kernel->getContainer()->getParameter('dto_generator.build.classes'));
+        self::assertTrue(class_exists($namespace . '\Pet'));
+    }
+
+    /**
+     * @coversNothing
+     */
+    public function testRebuildsTheDtosWhenTheSpecChanges(): void
+    {
+        $this->uniqueNamespace();
+        $this->bootedKernel(['mode' => 'build']);
+        file_put_contents($this->project . '/api.yaml', "openapi: 3.1.0\ninfo: {title: Pets, version: '1'}\npaths: {}\ncomponents:\n  schemas:\n    Pet:\n      type: object\n      properties:\n        nickname: {type: string}\n");
+        touch($this->project . '/api.yaml', time() + 10);
+
+        $kernel = $this->bootedKernel(['mode' => 'build']);
+
+        self::assertStringContainsString('$nickname', (string) file_get_contents($kernel->getBuildDir() . '/dto-generator/src/Dto/Pet.php'));
+    }
+
+    public function testRefusesTheWarmupCheckInBuildMode(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('check_on_warmup compares the DTOs in the sources with the specifications; with mode: build there are none.');
+
+        $this->bootedKernel(['mode' => 'build', 'check_on_warmup' => true]);
+    }
+
+    public function testRefusesAConfigThatIsNoPath(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('dto_generator.config must be a path, not integer.');
+
+        $this->bootedKernel(['config' => 42]);
+    }
+
+    public function testRefusesAnUnknownMode(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+
+        $this->bootedKernel(['mode' => 'lazy']);
+    }
+
+    /**
+     * @coversNothing
+     */
+    public function testGeneratesIntoTheBuildDirectoryInBuildMode(): void
+    {
+        $this->uniqueNamespace();
+        $kernel = new TestKernel($this->project, ['mode' => 'build']);
+        $this->kernels[] = $kernel;
+        $command = new CommandTester((new Application($kernel))->find('dto-generator:generate'));
+        $file = $kernel->getBuildDir() . '/dto-generator/src/Dto/Pet.php';
+        unlink($file);
+
+        self::assertSame(0, $command->execute([]), $command->getDisplay());
+        self::assertFileExists($file);
+        self::assertDirectoryDoesNotExist($this->project . '/src');
+    }
+
     public function testChecksNothingOnWarmupByDefault(): void
     {
         $kernel = $this->bootedKernel([]);
@@ -336,7 +408,18 @@ final class DtoGeneratorBundleTest extends TestCase
     }
 
     /**
-     * @param array<string, string|bool> $bundleConfig
+     * Each test that loads the DTOs needs classes of its own: a PHP process loads a class once.
+     */
+    private function uniqueNamespace(): string
+    {
+        $namespace = 'App\\Built' . bin2hex(random_bytes(4));
+        file_put_contents($this->project . '/dto-generator.yaml', sprintf("version: 1\ntarget: {php: '8.2'}\nverifyClasses: false\ndiscoverExtensions: false\nsources:\n  - {spec: api.yaml, namespace: '%s', outputDir: src/Dto}\n", $namespace));
+
+        return $namespace;
+    }
+
+    /**
+     * @param array<string, string|bool|int> $bundleConfig
      */
     private function command(array $bundleConfig): CommandTester
     {
@@ -347,7 +430,7 @@ final class DtoGeneratorBundleTest extends TestCase
     }
 
     /**
-     * @param array<string, string|bool> $bundleConfig
+     * @param array<string, string|bool|int> $bundleConfig
      * @param array<string, array<string, bool>> $frameworkConfig
      */
     private function bootedKernel(array $bundleConfig, array $frameworkConfig = []): TestKernel
