@@ -29,7 +29,7 @@ All notable changes to this package are documented here. The format follows
   `$additionalProperties`, a pattern PHP cannot run, an `additionalProperties` schema that also types the matching
   keys, a branch with other keywords, a name that is not a property of the class, a property with a default.
 - The subschemas of `contains`, `propertyNames` and the new keywords may describe PHP enums (`type`, `const`, `enum`)
-  and values of any type (a `Type` constraint for their `type`).
+  and values of any type (a `Type` constraint for their `type`); one that allows `null` alone gets `IsNull`.
 
 ### Changed
 
@@ -38,6 +38,8 @@ All notable changes to this package are documented here. The format follows
   such as `/pets/1` (use `format: uri-reference`, which stays unchecked) and a time without its offset (`08:30:06`).
 - Regenerated DTOs with `dependentRequired`, `propertyNames`, `contains`, `patternProperties` or `if`/`then`/`else`
   reject what these keywords forbid.
+- The warning about `propertyNames` on a class without `$additionalProperties` names the cause: the class does not
+  declare its own.
 - An `enum` that allows fewer cases than the PHP enum of its property (one beside a `$ref` to the enum) gets a
   `Choice` of those cases instead of the warning that the narrowing is not checked.
 

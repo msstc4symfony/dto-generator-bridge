@@ -188,6 +188,7 @@ final class ConditionalsTest extends TestCase
             ['if' => ['required' => ['name']], 'then' => ['properties' => ['tags' => ['minItems' => 2]]]],
             ['if' => ['required' => ['name']], 'else' => ['properties' => ['tags' => ['maxItems' => 2]]]],
             ['if' => ['properties' => [['const' => 1]]], 'then' => ['required' => ['name']]],
+            ['if' => ['type' => 'string'], 'then' => ['required' => ['name']]],
         ]]);
 
         self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
@@ -206,6 +207,7 @@ final class ConditionalsTest extends TestCase
             self::AT . '/allOf/11: "then" is checked only on values of a string, number, boolean or enum type, or of any type; it is not checked.',
             self::AT . '/allOf/12: "else" is checked only on values of a string, number, boolean or enum type, or of any type; it is not checked.',
             self::AT . '/allOf/13: "if" is checked on a class only with "properties" and "required"; with "properties" it is not checked.',
+            self::AT . '/allOf/14: "if" is checked on a class only with "properties" and "required"; with "type" it is not checked.',
         ], $this->messages($output));
     }
 
@@ -359,6 +361,76 @@ final class ConditionalsTest extends TestCase
 
         self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
         self::assertSame([self::AT . ': "if" is checked on a value of an enum type only with "type", "const" and "enum"; with "minLength" it is not checked.'], $this->messages($output));
+    }
+
+    public function testChecksABranchThatAdmitsOnlyNull(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'value' => ['if' => ['type' => 'null'], 'then' => ['type' => 'integer', 'const' => 1], 'else' => ['type' => 'string']],
+            'code' => ['type' => 'string', 'enum' => ['a', 'b'], 'if' => ['enum' => [null]], 'then' => ['const' => 'a']],
+        ]]);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame(
+            ['RuntimeAssert\\IfThenElse(if: [new ' . self::ASSERT . 'IsNull()], then: [new ' . self::ASSERT . "Type(type: 'int'), new " . self::ASSERT . 'IdenticalTo(value: 1)], else: [new ' . self::ASSERT . "Type(type: 'string')])"],
+            $this->attributesOf($code, 'value'),
+        );
+        self::assertSame(['RuntimeAssert\\IfThenElse(if: [new ' . self::ASSERT . 'IsNull()], then: [new ' . self::ASSERT . 'IdenticalTo(value: PetCode::A)])'], $this->attributesOf($code, 'code'));
+        self::assertSame([], $this->messages($output));
+    }
+
+    public function testWarnsAboutListedNumbersOnAValueOfAnyType(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'value' => ['if' => ['type' => 'number', 'const' => 0], 'then' => ['type' => 'integer', 'enum' => [0, 1]], 'else' => ['type' => 'string']],
+            'listed' => ['if' => ['enum' => ['a', 0]], 'then' => ['const' => 'a']],
+            'whole' => ['if' => ['type' => 'number', 'enum' => [2.0]], 'then' => ['const' => 'a']],
+            'part' => ['if' => ['type' => 'number', 'const' => 1.5], 'then' => ['type' => 'string']],
+            'size' => ['if' => ['type' => 'number', 'minimum' => 1], 'then' => ['type' => 'string']],
+        ]]);
+        $code = $this->code($output, 'Pet.php');
+
+        foreach (['value', 'listed', 'whole'] as $property) {
+            self::assertSame([], $this->attributesOf($code, $property), $property);
+        }
+
+        self::assertSame(
+            ['RuntimeAssert\\IfThenElse(if: [new ' . self::ASSERT . "Type(type: ['int', 'float']), new " . self::ASSERT . 'IdenticalTo(value: 1.5)], then: [new ' . self::ASSERT . "Type(type: 'string')])"],
+            $this->attributesOf($code, 'part'),
+        );
+        self::assertSame(
+            ['RuntimeAssert\\IfThenElse(if: [new ' . self::ASSERT . "Type(type: ['int', 'float']), new " . self::ASSERT . 'GreaterThanOrEqual(value: 1)], then: [new ' . self::ASSERT . "Type(type: 'string')])"],
+            $this->attributesOf($code, 'size'),
+        );
+        $at = self::AT . '/properties/';
+        self::assertSame([
+            $at . 'value: "if" lists numbers for a value of any type only with "type: integer", as 0 and 0.0 differ in PHP; it is not checked.',
+            $at . 'listed: "if" lists numbers for a value of any type only with "type: integer", as 0 and 0.0 differ in PHP; it is not checked.',
+            $at . 'whole: "if" lists numbers for a value of any type only with "type: integer", as 0 and 0.0 differ in PHP; it is not checked.',
+        ], $this->messages($output));
+    }
+
+    public function testAcceptsTheTypeObjectInTheBranchesOfAClass(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => ['a' => ['type' => 'string']], 'if' => ['type' => 'object', 'required' => ['a']], 'then' => ['type' => ['object', 'null'], 'properties' => ['a' => ['minLength' => 2]]]]);
+
+        self::assertSame(
+            ['RuntimeAssert\\IfThenElse(if: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['a'])], then: [new " . self::RUNTIME_ASSERT . "Property(name: 'a', constraints: [new " . self::ASSERT . 'Length(min: 2)])])'],
+            $this->classAttributesOf($this->code($output, 'Pet.php')),
+        );
+        self::assertSame([], $this->messages($output));
+    }
+
+    public function testNamesTheBranchThatNeedsNewInInitializers(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'a' => ['type' => 'string', 'then' => ['minLength' => 2], 'if' => true],
+        ], 'if' => true, 'else' => ['required' => ['a']]], [], '8.0');
+
+        self::assertSame([
+            self::AT . ': "else" goes into the attribute as "new", which PHP 8.0 does not allow; it is not checked.',
+            self::AT . '/properties/a: "then" goes into the attribute as "new", which PHP 8.0 does not allow; it is not checked.',
+        ], $this->messages($output));
     }
 
     /**

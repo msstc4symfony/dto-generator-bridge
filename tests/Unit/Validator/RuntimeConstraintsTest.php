@@ -221,7 +221,7 @@ final class RuntimeConstraintsTest extends TestCase
             $at . 'both: ' . sprintf($member, 'contains'),
             $at . 'linked: ' . sprintf($member, 'minContains'),
             $at . 'repeated: ' . sprintf($member, 'propertyNames'),
-            $at . 'joined/oneOf/0: "propertyNames" is checked on the undeclared properties of a class, which this class does not keep; it is not checked.',
+            $at . 'joined/oneOf/0: "propertyNames" is checked on the undeclared properties a class keeps in its own $additionalProperties, which this class does not declare; it is not checked.',
         ], $this->messages($output));
     }
 
@@ -421,7 +421,7 @@ final class RuntimeConstraintsTest extends TestCase
 
         self::assertSame([], $this->attributesOf($this->code($output, 'Pet.php'), 'name'));
         self::assertSame(
-            ['warning /api.yaml#/components/schemas/Pet: "propertyNames" is checked on the undeclared properties of a class, which this class does not keep; it is not checked.'],
+            ['warning /api.yaml#/components/schemas/Pet: "propertyNames" is checked on the undeclared properties a class keeps in its own $additionalProperties, which this class does not declare; it is not checked.'],
             $this->messages($output),
         );
     }

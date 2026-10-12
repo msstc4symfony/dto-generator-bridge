@@ -56,15 +56,26 @@ final class Subschema
     /** @var list<SchemaType> the types a Type constraint checks: none on a value of a known type */
     private array $checkedTypes;
 
+    private bool $admitsOnlyNull;
+
     /**
      * @param list<SchemaType> $checkedTypes
      */
-    private function __construct(Schema $schema, bool $excludesNull, TypeModel $type, array $checkedTypes)
+    private function __construct(Schema $schema, bool $excludesNull, TypeModel $type, array $checkedTypes, bool $admitsOnlyNull)
     {
         $this->schema = $schema;
         $this->excludesNull = $excludesNull;
         $this->type = $type;
         $this->checkedTypes = $checkedTypes;
+        $this->admitsOnlyNull = $admitsOnlyNull;
+    }
+
+    /**
+     * Whether `type` or `enum` allows `null` alone, which the other constraints, letting `null` pass, do not check.
+     */
+    public function admitsOnlyNull(): bool
+    {
+        return $this->admitsOnlyNull;
     }
 
     public function schema(): Schema
@@ -120,7 +131,7 @@ final class Subschema
         $builder = new SchemaBuilder($at->child($keyword));
         $inner = $type instanceof NullableType ? $type->inner() : $type;
         if ($value === true) {
-            return new self($builder->build(), false, $inner, []);
+            return new self($builder->build(), false, $inner, [], false);
         }
 
         if (!is_array($value) || ($value !== [] && Json::isList($value))) {
@@ -151,7 +162,9 @@ final class Subschema
         }
 
         $excludesNull = false;
+        $onlyNull = false;
         $types = [];
+        $values = [];
         foreach ($value as $name => $listed) {
             $name = (string) $name;
             $setting = Json::value($listed);
@@ -164,6 +177,7 @@ final class Subschema
                 }
 
                 $excludesNull = $excludesNull || !in_array(SchemaType::NULL, self::names($types), true);
+                $onlyNull = $onlyNull || array_diff(self::names($types), [SchemaType::NULL]) === [];
             } elseif ($name === 'enum') {
                 if (!is_array($setting) || $setting === [] || !Json::isList($setting)) {
                     $diagnostics->warning(sprintf('"%s" is checked only with a non-empty list in "enum"; it is not checked.', $keyword), $at);
@@ -178,11 +192,16 @@ final class Subschema
 
                 $builder->enum($enum);
                 $excludesNull = $excludesNull || !in_array(null, $enum, true);
+                $onlyNull = $onlyNull || array_filter($enum, static fn ($option): bool => $option !== null) === [];
+                array_push($values, ...$enum);
             } elseif ($name === 'format' && is_string($setting)) {
                 $builder->format($setting);
             } elseif (in_array($name, self::KEYWORDS, true)) {
                 $builder->keyword($name, $setting);
                 $excludesNull = $excludesNull || ($name === 'const' && $setting !== null);
+                if ($name === 'const') {
+                    $values[] = $setting;
+                }
             } elseif (!self::annotates($name)) {
                 $diagnostics->warning(sprintf(
                     '"%s" is checked only with a schema of "type", "format", "enum", "const" and the keywords of strings and numbers; with "%s" it is not checked.',
@@ -195,10 +214,12 @@ final class Subschema
         }
 
         if (!$inner instanceof MixedType) {
-            return new self($builder->build(), $excludesNull, $inner, []);
+            return new self($builder->build(), $excludesNull, $inner, [], $onlyNull);
         }
 
-        return self::ofAnyType($keyword, $builder->build(), $excludesNull, $types, $ofOneKind !== [], $at, $diagnostics);
+        $any = new self($builder->build(), $excludesNull, new MixedType(), [], $onlyNull);
+
+        return $any->ofAnyType($keyword, $types, $values, $ofOneKind !== [], $at, $diagnostics);
     }
 
     /**
@@ -206,8 +227,9 @@ final class Subschema
      * as Symfony checks them on other kinds too (Length counts the digits of a number).
      *
      * @param list<SchemaType> $types
+     * @param list<JsonValue> $values the values of `const` and `enum`
      */
-    private static function ofAnyType(string $keyword, Schema $schema, bool $excludesNull, array $types, bool $ofOneKind, SchemaLocation $at, Diagnostics $diagnostics): ?self
+    private function ofAnyType(string $keyword, array $types, array $values, bool $ofOneKind, SchemaLocation $at, Diagnostics $diagnostics): ?self
     {
         $named = [];
         $scalar = true;
@@ -227,10 +249,38 @@ final class Subschema
             return null;
         }
 
-        return new self($schema, $excludesNull, count($named) === 1 ? self::scalar($named[0]) : new MixedType(), $named);
+        if ($this->listsAmbiguousNumbers($values, $named)) {
+            $diagnostics->warning(sprintf('"%s" lists numbers for a value of any type only with "type: integer", as 0 and 0.0 differ in PHP; it is not checked.', $keyword), $at);
+
+            return null;
+        }
+
+        return new self($this->schema, $this->excludesNull, count($named) === 1 ? $this->scalar($named[0]) : $this->type, $named, $this->admitsOnlyNull);
     }
 
-    private static function scalar(SchemaType $type): ScalarType
+    /**
+     * A JSON number without a fraction decodes to an int or a float, which IdenticalTo and Choice tell apart; only
+     * `type: integer` pins it to one (Type rejects the float).
+     *
+     * @param list<JsonValue> $values the values of `const` and `enum`
+     * @param list<SchemaType> $types
+     */
+    private function listsAmbiguousNumbers(array $values, array $types): bool
+    {
+        if (self::names($types) === [SchemaType::INTEGER]) {
+            return false;
+        }
+
+        foreach ($values as $value) {
+            if (is_int($value) || (is_float($value) && (float) (int) $value === $value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function scalar(SchemaType $type): ScalarType
     {
         switch ($type->value()) {
             case SchemaType::STRING:

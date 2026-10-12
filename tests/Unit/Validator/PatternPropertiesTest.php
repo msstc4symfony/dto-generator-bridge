@@ -80,7 +80,7 @@ final class PatternPropertiesTest extends TestCase
 
         self::assertSame(['Assert\\Length(max: 3)'], $this->attributesOf($this->code($output, 'Pet.php'), 'xA'));
         self::assertSame(
-            [self::AT . ': "patternProperties" is checked on the undeclared properties of a class, which this class does not keep; they are not checked.'],
+            [self::AT . ': "patternProperties" is checked on the undeclared properties a class keeps in its own $additionalProperties, which this class does not declare; they are not checked.'],
             $this->messages($output),
         );
     }
@@ -117,7 +117,7 @@ final class PatternPropertiesTest extends TestCase
         self::assertSame(['Assert\\Length(max: 3)'], $this->attributesOf($code, 'xA'));
         self::assertSame([], $this->attributesOf($code, 'labels'));
         self::assertSame([
-            self::AT . ': "patternProperties" is checked on the undeclared properties of a class, which this class does not keep; they are not checked.',
+            self::AT . ': "patternProperties" is checked on the undeclared properties a class keeps in its own $additionalProperties, which this class does not declare; they are not checked.',
             self::AT . '/properties/labels: "patternProperties" is checked by msstc4symfony/dto-generator-bridge-runtime 1.1 or newer, which the project does not install; it is not checked.',
         ], $this->messages($output));
     }
@@ -145,11 +145,55 @@ final class PatternPropertiesTest extends TestCase
         self::assertSame([self::AT . '/properties/labels/allOf/0: "patternProperties" must map patterns to schemas; it is not checked.'], $this->messages($output));
     }
 
+    public function testWarnsAboutAnInheritedPropertyAPatternOfTheChildMatches(): void
+    {
+        $output = $this->withRuntimeAnd(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['type' => 'object', 'additionalProperties' => true, 'patternProperties' => ['^x-' => ['maxLength' => 3]], 'properties' => ['x-own' => ['type' => 'string']]],
+        ]], ['Base' => ['type' => 'object', 'patternProperties' => ['^x-' => ['minLength' => 1]], 'properties' => ['x-a' => ['type' => 'string'], 'plain' => ['type' => 'string']]]]);
+
+        self::assertSame(['Assert\\Length(min: 1)', 'Assert\\Length(max: 3)'], $this->attributesOf($this->code($output, 'Pet.php'), 'xOwn'));
+        self::assertSame(['Assert\\Length(min: 1)'], $this->attributesOf($this->code($output, 'Base.php'), 'xA'));
+        self::assertSame([
+            self::AT . ': "patternProperties" is checked on the undeclared properties a class keeps in its own $additionalProperties, which this class does not declare; they are not checked.',
+            self::AT . '/allOf/1: "patternProperties" matches "x-a", which this class inherits; it is not checked on it: write the pattern in the schema that declares the property.',
+            'warning /api.yaml#/components/schemas/Base: "patternProperties" is checked on the undeclared properties a class keeps in its own $additionalProperties, which this class does not declare; they are not checked.',
+        ], $this->messages($output));
+    }
+
+    public function testChecksThatAPatternAdmitsOnlyNull(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'marks' => ['type' => 'object', 'patternProperties' => ['^n' => ['type' => 'null'], '^d' => ['description' => 'Anything.']]],
+        ]]);
+
+        self::assertSame(["RuntimeAssert\\PatternProperty(pattern: '/^n/uD', constraints: [new " . self::ASSERT . 'IsNull()])'], $this->attributesOf($this->code($output, 'Pet.php'), 'marks'));
+        self::assertSame([], $this->messages($output));
+    }
+
+    public function testChecksTheKeywordsOfOneKindOnAnEnumWithoutPhpEnums(): void
+    {
+        $output = $this->generate(['type' => 'object', 'patternProperties' => ['^k' => ['minLength' => 2]], 'properties' => [
+            'kind' => ['type' => 'string', 'enum' => ['ab', 'cd']],
+        ]], [], '8.0', [], 'v7.1.0', self::RUNTIME);
+
+        self::assertContains('Assert\\Length(min: 2)', $this->attributesOf($this->code($output, 'Pet.php'), 'kind'));
+    }
+
     /**
      * @param array<string, mixed> $pet
      */
     private function withRuntime(array $pet): Output
     {
-        return $this->generate($pet, [], '8.2', [], 'v7.1.0', self::RUNTIME);
+        return $this->withRuntimeAnd($pet, []);
+    }
+
+    /**
+     * @param array<string, mixed> $pet
+     * @param array<string, mixed> $others
+     */
+    private function withRuntimeAnd(array $pet, array $others): Output
+    {
+        return $this->generate($pet, $others, '8.2', [], 'v7.1.0', self::RUNTIME);
     }
 }

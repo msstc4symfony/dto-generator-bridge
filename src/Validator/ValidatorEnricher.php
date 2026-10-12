@@ -124,12 +124,42 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         $schema = $context->schema();
         $diagnostics = $context->diagnostics();
         if (!$this->keepsUndeclared($context)) {
-            $diagnostics->warning('"patternProperties" is checked on the undeclared properties of a class, which this class does not keep; they are not checked.', $schema->location());
+            $diagnostics->warning('"patternProperties" is checked on the undeclared properties a class keeps in its own $additionalProperties, which this class does not declare; they are not checked.', $schema->location());
         } elseif ($schema->additionalProperties() instanceof Schema) {
             $diagnostics->warning(PatternSchema::ALSO_ADDITIONAL, $schema->location());
         }
 
-        return PatternSchema::allOf($keywords, $diagnostics);
+        $patterns = PatternSchema::allOf($keywords, $diagnostics);
+        $this->warnAboutInheritedMatches($context, $keywords, $patterns);
+
+        return $patterns;
+    }
+
+    /**
+     * The constraints of a pattern go on the properties of the class; an inherited property belongs to the parent,
+     * which checks only the patterns of the schemas that declare it.
+     *
+     * @param list<PatternSchema> $patterns
+     */
+    private function warnAboutInheritedMatches(ClassContext $context, Keywords $keywords, array $patterns): void
+    {
+        $own = [];
+        foreach ($context->class()->properties() as $property) {
+            $own[] = $property->wireName();
+        }
+
+        foreach ($keywords->schemas() as $place) {
+            foreach (array_diff($place->propertyNames(), $own) as $name) {
+                foreach ($patterns as $pattern) {
+                    if ($pattern->matches($name) && !$pattern->declares($name)) {
+                        $context->diagnostics()->warning(sprintf(
+                            '"patternProperties" matches "%s", which this class inherits; it is not checked on it: write the pattern in the schema that declares the property.',
+                            $name,
+                        ), $pattern->place());
+                    }
+                }
+            }
+        }
     }
 
     public function enrichProperty(PropertyContext $context): array
@@ -233,7 +263,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
 
         $this->markChecked($context, $keywords, 'propertyNames');
         if ($keywords->has('propertyNames') && $schema->additionalProperties() !== false) {
-            $context->diagnostics()->warning('"propertyNames" is checked on the undeclared properties of a class, which this class does not keep; it is not checked.', $schema->location());
+            $context->diagnostics()->warning('"propertyNames" is checked on the undeclared properties a class keeps in its own $additionalProperties, which this class does not declare; it is not checked.', $schema->location());
         }
     }
 

@@ -147,6 +147,9 @@ final class ClassConditions
                 }
             } elseif ($name === 'required' && is_array($setting) && Json::isList($setting) && array_filter($setting, 'is_string') === $setting) {
                 $required = $setting;
+            } elseif ($name === 'type' && in_array('object', is_array($setting) ? $setting : [$setting], true)) {
+                // Every instance of the class is an object.
+                continue;
             } elseif (!Subschema::annotates($name)) {
                 $this->diagnostics->warning(sprintf('"%s" is checked on a class only with "properties" and "required"; with "%s" it is not checked.', $branch, $name), $place->location());
 
@@ -227,7 +230,7 @@ final class ClassConditions
         foreach ($properties as [$name, $schema]) {
             $property = $this->own[$name];
             $specs = $this->builder->subschema($branch, $schema, $at, $property->type(), true);
-            $inner = $specs === null ? null : $this->builder->asNew('if', $specs, $at);
+            $inner = $specs === null ? null : $this->builder->asNew($branch, $specs, $at);
             if ($inner === null) {
                 return null;
             }

@@ -152,12 +152,14 @@ They follow JSON Schema with these limits:
   PHP type (`type: integer` in a list of strings), a keyword the bridge cannot turn into a constraint (a `pattern`
   PHP cannot run) or a value that is no string, number, boolean or PHP enum and not of any type (an object, a list)
   give a warning, and the keyword is not checked, rather than checked in part. A schema of annotations only accepts
-  every value. On a PHP enum only `type`, `const` and `enum` apply, compared with its cases. On a value of any type
-  (an untyped property, the values of a map without an `additionalProperties` schema) `type` gives a `Type`
-  constraint, and the string and number keywords need exactly one `type` among `string`, `integer`, `number` and
-  `boolean`, as Symfony would check them on other kinds of values too. Where `null` is a value (an element, a map
-  value), a schema that rejects it (a `type`, `const` or `enum` without it) gets `NotNull` beside its constraints,
-  which let `null` pass.
+  every value; one whose `type` or `enum` allows `null` alone gets `IsNull`. On a PHP enum only `type`, `const` and
+  `enum` apply, compared with its cases (on a target without PHP enums the value is its plain string or int, which
+  the other keywords check too). On a value of any type (an untyped property, the values of a map without an
+  `additionalProperties` schema) `type` gives a `Type` constraint, and the string and number keywords need exactly
+  one `type` among `string`, `integer`, `number` and `boolean`, as Symfony would check them on other kinds of values
+  too; a `const` or `enum` with a whole number needs `type: integer`, as PHP tells `0` from `0.0`. Where `null` is a
+  value (an element, a map value), a schema that rejects it (a `type`, `const` or `enum` without it) gets `NotNull`
+  beside its constraints, which let `null` pass; `if`, `then` and `else` are the exception, below.
 - **`contains`** counts the elements that pass the constraints of its schema, each checked on its own;
   `minContains` (1 by default) and `maxContains` of the same schema bound the count, and `minContains: 0` alone
   checks nothing. Each `contains` (in `allOf` branches, or behind a `$ref`) must hold with its own bounds.
@@ -174,18 +176,22 @@ They follow JSON Schema with these limits:
 - **`patternProperties`** checks the value under each key a pattern matches: with `PatternProperty` on a map and on
   `$additionalProperties`, reported at `labels[key]`; on a declared property whose wire name matches, the bridge
   matches it while generating and writes the constraints of the pattern's schema on the property itself, where a
-  missing value (`null`) passes them. A class without `$additionalProperties` gives a warning: the undeclared
-  properties the patterns would check are not kept. Beside an `additionalProperties` schema it warns too: the
+  missing value (`null`) passes them. A pattern of a child's schema that matches a property the class inherits gives a
+  warning: the property belongs to the parent, which checks only the patterns of the schemas that declare it. A class
+  without `$additionalProperties` of its own gives a warning: the undeclared properties the patterns would check are
+  not kept. Beside an `additionalProperties` schema it warns too: the
   generated type gives that schema's type to every undeclared property, including those the patterns match, which
   JSON Schema exempts from it. A pattern PHP cannot run gives a warning and is left out; `additionalProperties:
   false` still leaves the keys outside the patterns unchecked.
 - **`if`**, **`then`** and **`else`** become one `IfThenElse` per schema that holds `if` with `then` or `else` (an
   `if` alone, or a `then` without `if`, has no effect and is not written). The value matches `if` when its
-  constraints find nothing; `null` is not checked. On a class, the branches may hold `properties` (each checked by
+  constraints find nothing. `null` is not checked, also where it is a value (a nullable element passes whatever the
+  branches say). On a class, the branches may hold `type: object` (always true there), `properties` (each checked by
   `Property` with the constraints of its flat schema; a missing property passes, as in JSON Schema) and `required`
   (`Present`), by wire names the bridge turns into PHP names. Names that are no property of the class, a property
   with a default under `properties` or in the `required` of `if` (the DTO cannot tell it from a missing one), any
-  other keyword in a branch, or a branch that is no schema give a warning, and the condition is not checked. As with
+  other keyword in a branch, or a branch that is no schema (`if: false` included) give a warning, and the condition
+  is not checked. As with
   `dependentRequired`, a condition of a parent's schema is left to the parent, and one in the child's schema that
   names inherited properties gives a warning.
 - `x-validator-skip` and `x-validator-groups` on a class's schema apply to `DependentRequired`, to the conditions of

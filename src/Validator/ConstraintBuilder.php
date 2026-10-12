@@ -9,6 +9,8 @@ use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostics;
 use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\KeywordChecks;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ArgumentValue;
 use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeArgument;
+use MSSTC4PHP\DtoGenerator\Domain\Model\EnumBacking;
+use MSSTC4PHP\DtoGenerator\Domain\Model\EnumType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ListType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\MapType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\MixedType;
@@ -632,7 +634,7 @@ final class ConstraintBuilder
      */
     public function subschema(string $keyword, $value, SchemaLocation $at, TypeModel $type, bool $nullIsAbsent): ?array
     {
-        $parsed = Subschema::read($keyword, $value, $type, $at, $this->diagnostics);
+        $parsed = Subschema::read($keyword, $value, $this->withoutEnums($type), $at, $this->diagnostics);
         if (!$parsed instanceof Subschema) {
             return null;
         }
@@ -643,6 +645,7 @@ final class ConstraintBuilder
         $nullable = !$nullIsAbsent && ($type instanceof NullableType || $type instanceof MixedType);
         $typeConstraint = $parsed->typeConstraint();
         $constraints = array_merge(
+            $parsed->admitsOnlyNull() ? [new ConstraintSpec('IsNull')] : [],
             $nullable && $parsed->excludesNull() ? [new ConstraintSpec('NotNull')] : [],
             $typeConstraint instanceof ConstraintSpec ? [$typeConstraint] : [],
             $builder->build($parsed->schema(), $parsed->type()),
@@ -656,6 +659,20 @@ final class ConstraintBuilder
         }
 
         return $constraints;
+    }
+
+    /**
+     * A target without PHP enums holds an enum's value as its plain string or int, which the keywords of strings and
+     * numbers check too. Subschema reads the value apart from null, which subschema() decides on from the given type.
+     */
+    private function withoutEnums(TypeModel $type): TypeModel
+    {
+        $value = $type instanceof NullableType ? $type->inner() : $type;
+        if (!$value instanceof EnumType || $this->target->supports(Capability::from(Capability::ENUMS))) {
+            return $type;
+        }
+
+        return $value->backing()->value() === EnumBacking::INT ? ScalarType::int() : ScalarType::string();
     }
 
     /**
@@ -690,11 +707,12 @@ final class ConstraintBuilder
         foreach ($patterns as $pattern) {
             $specs = $this->subschema('patternProperties', $pattern->schema(), $pattern->place(), $value, false);
             $inner = $specs === null ? null : $this->asNew('patternProperties', $specs, $pattern->place());
-            if ($inner !== null) {
-                $constraints[] = ConstraintSpec::runtime('PatternProperty', array_merge(
-                    [AttributeArgument::named('pattern', ArgumentValue::literal($pattern->pcre()))],
-                    $inner === [] ? [] : [AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner))],
-                ));
+            // A schema of annotations only accepts every value.
+            if ($inner !== null && $inner !== []) {
+                $constraints[] = ConstraintSpec::runtime('PatternProperty', [
+                    AttributeArgument::named('pattern', ArgumentValue::literal($pattern->pcre())),
+                    AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner)),
+                ]);
             }
         }
 
@@ -839,7 +857,7 @@ final class ConstraintBuilder
 
         $arguments = [];
         foreach ($branches as $branch => $specs) {
-            $inner = $this->asNew('if', $specs, $at);
+            $inner = $this->asNew($branch, $specs, $at);
             if ($inner === null) {
                 return null;
             }
