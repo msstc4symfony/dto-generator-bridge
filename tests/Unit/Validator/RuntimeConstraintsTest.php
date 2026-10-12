@@ -258,10 +258,11 @@ final class RuntimeConstraintsTest extends TestCase
         yield 'through a class, whose keywords are its own' => [
             [
                 'A' => ['oneOf' => [['$ref' => '#/components/schemas/B'], ['type' => 'string']]],
-                'B' => ['type' => 'object', 'properties' => ['x' => ['type' => 'string']], 'oneOf' => [['$ref' => '#/components/schemas/A'], ['type' => 'integer']], 'contains' => ['const' => 1]],
+                'B' => ['type' => 'object', 'properties' => ['x' => ['type' => 'string']], 'oneOf' => [['$ref' => '#/components/schemas/A'], ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['const' => 'a']]], 'contains' => ['const' => 1]],
             ],
             [
                 'warning ' . $at . 'B: "oneOf" and "anyOf" beside "properties" are not represented; the class keeps only its properties.',
+                'warning ' . $at . 'B/oneOf/1/contains: "contains" is not supported and has no effect on the generated type.',
                 'warning ' . $at . 'B/contains: "contains" is not supported and has no effect on the generated type.',
             ],
         ];
