@@ -37,16 +37,10 @@ final class ConstraintBuilder
         'ipv6' => ['Ip', 'version', '6'],
         'hostname' => ['Hostname', 'requireTld', false],
         'uuid' => ['Uuid', null, null],
-        'byte' => ['Regex', 'pattern', self::BASE64],
+        'byte' => ['Regex', 'pattern', FormatPatterns::BASE64],
+        'uri' => ['Regex', 'pattern', FormatPatterns::URI],
+        'time' => ['Regex', 'pattern', FormatPatterns::TIME],
     ];
-
-    /**
-     * The alphabet of RFC 4648 base64, with padding only at the end; the length is not checked: a repeated group of
-     * four exhausts PCRE's stack on large payloads, and a failed match reads as a violation. Possessive, or a large
-     * invalid value exhausts the backtracking limit. D, as on the regexes of `pattern`, so that "$" takes no trailing
-     * newline.
-     */
-    private const BASE64 = '/^[A-Za-z0-9+\/]*+={0,2}$/D';
 
     /**
      * The keywords JSON Schema applies to one kind of value only.
@@ -71,9 +65,9 @@ final class ConstraintBuilder
     /**
      * The formats whose constraint checks one kind of value only, and that kind as a warning names it.
      *
-     * @var array{int32: 'an integer', byte: 'a string'}
+     * @var array{int32: 'an integer', byte: 'a string', uri: 'a string', time: 'a string'}
      */
-    private const FORMAT_KINDS = ['int32' => 'an integer', 'byte' => 'a string'];
+    private const FORMAT_KINDS = ['int32' => 'an integer', 'byte' => 'a string', 'uri' => 'a string', 'time' => 'a string'];
 
     private SchemaReferences $references;
 

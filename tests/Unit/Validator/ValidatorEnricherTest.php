@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Validator;
 
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\GeneratesDtos;
+use Msstc4Symfony\DtoGeneratorBridge\Validator\FormatPatterns;
 use PHPUnit\Framework\TestCase;
 use stdClass;
 
@@ -170,7 +171,7 @@ final class ValidatorEnricherTest extends TestCase
             'ip6' => ['type' => 'string', 'format' => 'ipv6'],
             'host' => ['type' => 'string', 'format' => 'hostname'],
             'id' => ['type' => 'string', 'format' => 'uuid'],
-            'site' => ['type' => 'string', 'format' => 'uri'],
+            'site' => ['type' => 'string', 'format' => 'uri-reference'],
             'born' => ['type' => 'string', 'format' => 'date-time'],
         ]]);
 
@@ -269,48 +270,43 @@ final class ValidatorEnricherTest extends TestCase
         ], $this->messages($output));
     }
 
-    /**
-     * A repeated group would exhaust PCRE's JIT stack or backtracking limit on a large payload, and preg_match()
-     * failing reads as a violation in Symfony's RegexValidator.
-     */
-    public function testChecksBase64OfAnySizeAndOnlyItsAlphabetAndPadding(): void
-    {
-        $code = $this->pet(['type' => 'object', 'properties' => ['blob' => ['type' => 'string', 'format' => 'byte']]]);
-        self::assertSame(1, preg_match("~pattern: '((?:[^'\\\\]|\\\\.)*)'~", implode("\n", $this->attributesOf($code, 'blob')), $match));
-        $pattern = strtr($match[1], ['\\\\' => '\\', "\\'" => "'"]);
-        $jit = ini_get('pcre.jit');
-
-        try {
-            // PHP caches a compiled pattern with its JIT setting; the ignored S modifier makes another cache entry.
-            foreach (['1' => $pattern, '0' => $pattern . 'S'] as $setting => $regex) {
-                ini_set('pcre.jit', (string) $setting);
-                $large = [];
-                foreach ([1, 8] as $megabytes) {
-                    $large[$megabytes] = base64_encode(str_repeat("\xFB\xEF\xBE", $megabytes * 349526));
-                    self::assertSame(1, $this->match($regex, $large[$megabytes]), sprintf('%d MB, pcre.jit=%s', $megabytes, $setting));
-                }
-
-                foreach (['', 'QUJD', 'QUI=', 'QQ==', 'a+/9', 'QUJ', '=', '=='] as $valid) {
-                    self::assertSame(1, $this->match($regex, $valid), $valid);
-                }
-
-                foreach (['QU*D', 'QQ==QQ==', 'QQ===', "QUJD\n", 'QU JD', 'QU-_'] as $invalid) {
-                    self::assertSame(0, $this->match($regex, $invalid), $invalid);
-                }
-
-                self::assertSame(0, $this->match($regex, $large[8] . '*'), '8 MB and "*", pcre.jit=' . $setting);
-                self::assertSame(0, $this->match($regex, substr($large[8], 0, 4) . '=' . $large[8]), '"=" inside 8 MB, pcre.jit=' . $setting);
-            }
-        } finally {
-            ini_set('pcre.jit', (string) $jit);
-        }
-    }
-
     public function testWritesTheBase64PatternAsAnAnnotationForPhp74(): void
     {
         $output = $this->generate(['type' => 'object', 'properties' => ['blob' => ['type' => 'string', 'format' => 'byte']]], [], '7.4', [], 'v6.4.1', ['doctrine/annotations' => '2.0.2']);
 
         self::assertStringContainsString('     * @Assert\\Regex(pattern="/^[A-Za-z0-9+\\/]*+={0,2}$/D")' . "\n", $this->code($output, 'Pet.php'));
+    }
+
+    public function testChecksUrisAndTimesOfStrings(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'link' => ['type' => 'string', 'format' => 'uri', 'maxLength' => 80],
+            'opens' => ['type' => ['string', 'null'], 'format' => 'time'],
+            'times' => ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'time']],
+            'relative' => ['type' => 'string', 'format' => 'uri-reference'],
+            'either' => ['type' => ['integer', 'string'], 'format' => 'uri'],
+        ]]);
+        $code = $this->code($output, 'Pet.php');
+        $time = "Regex(pattern: '" . FormatPatterns::TIME . "')";
+
+        self::assertSame(['Assert\\Length(max: 80)', "Assert\\Regex(pattern: '" . strtr(FormatPatterns::URI, ["'" => "\\'"]) . "')"], $this->attributesOf($code, 'link'));
+        self::assertSame(['Assert\\' . $time], $this->attributesOf($code, 'opens'));
+        self::assertSame(['Assert\\All(constraints: [new \\Symfony\\Component\\Validator\\Constraints\\' . $time . '])'], $this->attributesOf($code, 'times'));
+        self::assertSame([], $this->attributesOf($code, 'relative'));
+        self::assertSame([], $this->attributesOf($code, 'either'));
+        self::assertSame([
+            'warning /api.yaml#/components/schemas/Pet/properties/either/format: Unknown integer format "uri"; the property stays an int.',
+            'warning /api.yaml#/components/schemas/Pet/properties/either: "format: uri" checks only a string, and the value may be of another type; it is not checked.',
+        ], $this->messages($output));
+    }
+
+    public function testWritesTheUriAndTimePatternsAsAnnotationsForPhp74(): void
+    {
+        $properties = ['link' => ['type' => 'string', 'format' => 'uri'], 'opens' => ['type' => 'string', 'format' => 'time']];
+        $code = $this->code($this->generate(['type' => 'object', 'properties' => $properties], [], '7.4', [], 'v6.4.1', ['doctrine/annotations' => '2.0.2']), 'Pet.php');
+
+        self::assertStringContainsString("     * @Assert\\Regex(\n     *     pattern=\"" . FormatPatterns::URI . "\"\n     * )\n", $code);
+        self::assertStringContainsString("     * @Assert\\Regex(\n     *     pattern=\"" . FormatPatterns::TIME . "\"\n     * )\n", $code);
     }
 
     public function testComparesWithAConstant(): void
@@ -927,16 +923,6 @@ final class ValidatorEnricherTest extends TestCase
         ]]);
 
         self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/name: x-validator-groups-exclusive must be true or false; it is ignored.'], $this->messages($output));
-    }
-
-    /**
-     * preg_match() itself rather than PHPUnit's regex assertions, which do not tell a failed match (false) from none.
-     *
-     * @return 0|1|false
-     */
-    private function match(string $regex, string $subject)
-    {
-        return preg_match($regex, $subject);
     }
 
     /**

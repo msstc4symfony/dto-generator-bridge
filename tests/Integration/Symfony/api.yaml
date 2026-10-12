@@ -42,6 +42,9 @@ components:
         nick: {type: string, x-serializer-groups: [public]}
         count: {type: integer, format: int32, minimum: 0}
         blob: {type: string, format: byte}
+        site: {type: string, format: uri}
+        opens: {type: string, format: time}
+        tag: {type: string, format: uri, pattern: '^urn:'}
         level: {enum: [low, 1]}
     Owner:
       type: object

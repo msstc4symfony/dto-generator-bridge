@@ -74,6 +74,9 @@ final class RealSymfonyTest extends TestCase
         'nick' => 'rx',
         'count' => 5,
         'blob' => 'QUJD',
+        'site' => 'urn:isbn:0451450523',
+        'opens' => '08:30:06Z',
+        'tag' => 'urn:a',
         'level' => 'low',
     ];
 
@@ -187,6 +190,13 @@ final class RealSymfonyTest extends TestCase
             'blob of a length base64 has not, which the pattern does not check' => [$all, ['blob' => 'QUJ'], [], []],
             'blob with a trailing newline' => [$all, ['blob' => "QUJD\n"], ['blob'], []],
             'blob with padding' => [$all, ['blob' => 'QUI='], [], []],
+            'site with an authority, a query and a fragment' => [$all, ['site' => 'https://u@[::1]:8080/a%20b?c=d#e'], [], []],
+            'site as a relative reference' => [$all, ['site' => '/pets/1'], ['site'], []],
+            'site with a space' => [$all, ['site' => 'http://a b'], ['site'], []],
+            'opens with a fraction and an offset' => [$all, ['opens' => '23:59:60.5-08:00'], [], []],
+            'opens without an offset' => [$all, ['opens' => '08:30:06'], ['opens'], []],
+            'tag as a URI outside its pattern' => [$all, ['tag' => 'http://a'], ['tag'], []],
+            'tag as neither its pattern nor a URI' => [$all, ['tag' => ' x'], ['tag', 'tag'], []],
             'level outside the mixed enum' => [$all, ['level' => 'high'], ['level'], []],
             'level as the integer of the mixed enum' => [$all, ['level' => 1], [], []],
         ];
@@ -475,8 +485,6 @@ final class RealSymfonyTest extends TestCase
 
     /**
      * @param callable(string, bool): void $check
-     */
-    /**
      * @param ''|'spread'|'views' $variant see generate()
      */
     private function runTarget(string $php, callable $check, string $variant = ''): void
