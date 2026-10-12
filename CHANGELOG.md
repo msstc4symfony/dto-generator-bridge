@@ -11,11 +11,17 @@ All notable changes to this package are documented here. The format follows
 - `format: uri` and `format: time` get a `Regex`: an RFC 3986 URI with a scheme (`https://…`, `urn:…`, `mailto:…`)
   and an RFC 3339 `full-time` with its offset. Symfony's `Url` and `Time` would reject valid values, so these formats
   were not checked before.
+- `dependentRequired`, `propertyNames` and `contains` (with `minContains` and `maxContains`) get the constraints
+  `DependentRequired`, `Keys` and `Contains` of `msstc4symfony/dto-generator-bridge-runtime` 1.1, when the project
+  has that release; otherwise, and for what they cannot check (a `contains` schema with `$ref` or `properties`, a
+  `dependentRequired` name that is not a property of the class), the bridge warns. The generator 1.4 leaves these
+  keywords to the bridge.
 
 ### Changed
 
 - Regenerated DTOs reject what `format: uri` and `format: time` never allowed but went unchecked: a relative reference
   such as `/pets/1` (use `format: uri-reference`, which stays unchecked) and a time without its offset (`08:30:06`).
+- Regenerated DTOs with `dependentRequired`, `propertyNames` or `contains` reject what these keywords forbid.
 
 ## [1.2.0] - 2026-10-12
 

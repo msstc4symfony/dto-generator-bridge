@@ -16,6 +16,7 @@ use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostic;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use MSSTC4PHP\DtoGenerator\DtoGenerator;
 use Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalPropertiesNormalizer;
+use Msstc4Symfony\DtoGeneratorBridge\Runtime\Constraints\Contains;
 use Msstc4Symfony\DtoGeneratorBridge\SymfonyExtension;
 use PHPUnit\Framework\TestCase;
 use RecursiveDirectoryIterator;
@@ -225,6 +226,35 @@ final class RealSymfonyTest extends TestCase
         if ($checked === 0) {
             self::markTestSkipped('No target of this case runs here.');
         }
+    }
+
+    /**
+     * The runtime's constraints, which PHP 8.0 gets without the nested ones, as "new" in attributes needs PHP 8.1.
+     *
+     * @dataProvider targets
+     */
+    public function testChecksTheKeywordsOfTheRuntimeConstraints(string $php): void
+    {
+        if (!class_exists(Contains::class)) {
+            self::markTestSkipped('The installed msstc4symfony/dto-generator-bridge-runtime has no constraints; they came in 1.1.');
+        }
+
+        $this->runTarget($php, function (string $namespace, bool $annotations) use ($php): void {
+            $paths = function (array $data) use ($namespace, $annotations): array {
+                $roster = $this->serializer($annotations)->denormalize($data, $namespace . '\Roster');
+                self::assertIsObject($roster);
+
+                return $this->violationPaths($roster, $annotations);
+            };
+            $nested = $php !== '8.0';
+
+            self::assertSame([], $paths(['card' => '4242', 'holder' => 'Ann', 'roles' => ['admin', 'user'], 'labels' => ['abc' => 1]]));
+            self::assertSame([], $paths([]));
+            self::assertSame(['holder'], $paths(['card' => '4242']));
+            self::assertSame($nested ? ['roles'] : [], $paths(['roles' => ['user']]));
+            self::assertSame($nested ? ['roles'] : [], $paths(['roles' => ['admin', 'admin']]));
+            self::assertSame($nested ? ['labels[abcd]'] : [], $paths(['labels' => ['abcd' => 1]]));
+        });
     }
 
     /**
@@ -551,6 +581,9 @@ final class RealSymfonyTest extends TestCase
 
         copy(__DIR__ . '/api.yaml', $dir . '/api.yaml');
         file_put_contents($dir . '/composer.json', '{}');
+        // The bridge writes the runtime's constraints only for a project that has them.
+        $runtime = class_exists(Contains::class) ? [['name' => 'msstc4symfony/dto-generator-bridge-runtime', 'version' => 'dev-main']] : [];
+        file_put_contents($dir . '/composer.lock', (string) json_encode(['packages' => $runtime]));
         // Only the views name dto.readWriteModels, which a generator before 1.3 refuses.
         $dto = $variant === 'views' ? ['dto' => ['readWriteModels' => 'split']] : [];
         file_put_contents($dir . '/dto-generator.yaml', (string) json_encode($dto + [

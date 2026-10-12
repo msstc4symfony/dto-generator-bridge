@@ -144,10 +144,11 @@ trait GeneratesDtos
      */
     private function messages(Output $output): array
     {
-        return array_map(
-            fn (Diagnostic $diagnostic): string => str_replace($this->root, '', $diagnostic->toString()),
-            $output->diagnostics()->all(),
-        );
+        // The generator before 1.4 warns about the keywords the bridge now checks.
+        return array_values(array_filter(
+            array_map(fn (Diagnostic $diagnostic): string => str_replace($this->root, '', $diagnostic->toString()), $output->diagnostics()->all()),
+            static fn (string $message): bool => preg_match('~: "(dependentRequired|propertyNames|contains|minContains|maxContains)" is not supported and has no effect on the generated type\.$~', $message) !== 1,
+        ));
     }
 
     /**

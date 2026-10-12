@@ -24,7 +24,9 @@ final class SymfonyExtension implements Extension
     {
         $settings = Settings::fromConfig($config);
         $registry->claimExtensionKeys('x-validator-*', 'x-serializer-*');
-        $registry->addPropertyEnricher(new ValidatorEnricher($settings));
+        $validator = new ValidatorEnricher($settings);
+        $registry->addClassEnricher($validator);
+        $registry->addPropertyEnricher($validator);
 
         $serializer = new SerializerEnricher($settings);
         $registry->addClassEnricher($serializer);

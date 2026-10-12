@@ -11,17 +11,27 @@ use MSSTC4PHP\DtoGenerator\Domain\Model\ClassName;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ImportAlias;
 
 /**
- * One Symfony Validator constraint to write: as an attribute of a property, or as `new` inside `All`.
+ * One Validator constraint to write: as an attribute, or as `new` inside a composite constraint. Symfony's, or one of
+ * msstc4symfony/dto-generator-bridge-runtime for the keywords Symfony has none for.
  */
 final class ConstraintSpec
 {
-    private const NAMESPACE = 'Symfony\Component\Validator\Constraints';
+    /**
+     * Import alias => namespace.
+     */
+    private const NAMESPACES = [
+        'Assert' => 'Symfony\Component\Validator\Constraints',
+        'RuntimeAssert' => 'Msstc4Symfony\DtoGeneratorBridge\Runtime\Constraints',
+    ];
 
     /** @var non-empty-string */
     private string $name;
 
     /** @var list<AttributeArgument> */
     private array $arguments;
+
+    /** @var key-of<self::NAMESPACES> */
+    private string $alias = 'Assert';
 
     /**
      * @param non-empty-string $name the class name inside Symfony\Component\Validator\Constraints
@@ -31,6 +41,18 @@ final class ConstraintSpec
     {
         $this->name = $name;
         $this->arguments = $arguments;
+    }
+
+    /**
+     * @param non-empty-string $name the class name inside Msstc4Symfony\DtoGeneratorBridge\Runtime\Constraints
+     * @param list<AttributeArgument> $arguments
+     */
+    public static function runtime(string $name, array $arguments = []): self
+    {
+        $spec = new self($name, $arguments);
+        $spec->alias = 'RuntimeAssert';
+
+        return $spec;
     }
 
     /**
@@ -52,12 +74,15 @@ final class ConstraintSpec
 
         $values = array_map(static fn (string $group): ArgumentValue => ArgumentValue::literal($group), $groups);
 
-        return new self($this->name, array_merge($this->arguments, [AttributeArgument::named('groups', ArgumentValue::listOf(...$values))]));
+        $spec = clone $this;
+        $spec->arguments[] = AttributeArgument::named('groups', ArgumentValue::listOf(...$values));
+
+        return $spec;
     }
 
     public function toAttribute(): AttributeModel
     {
-        return new AttributeModel($this->className(), $this->arguments, new ImportAlias(self::NAMESPACE, 'Assert'));
+        return new AttributeModel($this->className(), $this->arguments, new ImportAlias(self::NAMESPACES[$this->alias], $this->alias));
     }
 
     public function toNewInstance(): ArgumentValue
@@ -67,6 +92,6 @@ final class ConstraintSpec
 
     private function className(): ClassName
     {
-        return ClassName::fromFqcn(self::NAMESPACE . '\\' . $this->name);
+        return ClassName::fromFqcn(self::NAMESPACES[$this->alias] . '\\' . $this->name);
     }
 }

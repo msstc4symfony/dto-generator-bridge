@@ -17,12 +17,15 @@ use MSSTC4PHP\DtoGenerator\Domain\Model\TypeModel;
 use MSSTC4PHP\DtoGenerator\Domain\Model\UnionType;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\Schema;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaLocation;
+use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use MSSTC4PHP\DtoGenerator\Domain\Target\Capability;
 use MSSTC4PHP\DtoGenerator\Domain\Target\TargetProfile;
 use Msstc4Symfony\DtoGeneratorBridge\Keywords;
 
 /**
  * The constraints a value's schema and type call for (bridge spec §5.1), in the order of that table.
+ *
+ * @phpstan-import-type JsonValue from Json
  */
 final class ConstraintBuilder
 {
@@ -77,12 +80,15 @@ final class ConstraintBuilder
 
     private ValueConstraints $values;
 
-    public function __construct(SchemaReferences $references, TargetProfile $target, Diagnostics $diagnostics)
+    private RuntimeConstraints $runtime;
+
+    public function __construct(SchemaReferences $references, TargetProfile $target, Diagnostics $diagnostics, RuntimeConstraints $runtime)
     {
         $this->references = $references;
         $this->target = $target;
         $this->diagnostics = $diagnostics;
         $this->values = new ValueConstraints($target, $diagnostics);
+        $this->runtime = $runtime;
     }
 
     /**
@@ -103,6 +109,8 @@ final class ConstraintBuilder
                 ? $this->numbers($reader, $kind === 'integer', $this->implied($keywords, $kind), $at)
                 : [],
             $this->checks($keywords, $kind, 'collection', $at) ? $this->collections($keywords, $reader, $value, $at) : [],
+            $this->contains($keywords, $reader, $value, $at),
+            $this->keys($keywords, $value, $at),
             $this->values->choices($keywords, $value, $at),
             $this->values->constants($keywords, $value, $at),
             $this->formats($keywords, $value),
@@ -128,8 +136,32 @@ final class ConstraintBuilder
         }
 
         $constraints = $valid === null ? [] : [$valid];
-        if ($inner !== [] && $this->allowsNew($at)) {
+        if ($inner !== [] && $this->allowsNew($at, 'The constraints of the elements go inside All as "new", which PHP %s does not allow in attributes; they are not checked.')) {
             $constraints[] = new ConstraintSpec('All', [AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner))]);
+        }
+
+        return $constraints;
+    }
+
+    /**
+     * The runtime's Keys for the names of the undeclared properties of a class, from the keywords of its schema.
+     *
+     * @return list<ConstraintSpec>
+     */
+    public function names(Keywords $keywords, SchemaLocation $at): array
+    {
+        $constraints = [];
+        $schemas = $keywords->values('propertyNames');
+        if ($schemas === [] || !$this->runtime->available('propertyNames', $at)) {
+            return [];
+        }
+
+        $name = ScalarType::string();
+        foreach ($schemas as $schema) {
+            $inner = $this->subschema('propertyNames', $schema, $name, $at);
+            if ($inner !== null && $inner !== []) {
+                $constraints[] = ConstraintSpec::runtime('Keys', [AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner))]);
+            }
         }
 
         return $constraints;
@@ -403,16 +435,109 @@ final class ConstraintBuilder
         return $itemSchema instanceof Schema ? $this->elements($itemSchema, $item, $at) : [];
     }
 
-    private function allowsNew(SchemaLocation $at): bool
+    /**
+     * The runtime's Contains for each `contains`; `minContains` and `maxContains` apply to all of them.
+     *
+     * @return list<ConstraintSpec>
+     */
+    private function contains(Keywords $keywords, KeywordReader $reader, TypeModel $value, SchemaLocation $at): array
+    {
+        $schemas = $keywords->values('contains');
+        if ($schemas === []) {
+            return [];
+        }
+
+        if (!$value instanceof ListType) {
+            $this->diagnostics->warning('"contains" is checked on arrays only; it is not checked here.', $at);
+
+            return [];
+        }
+
+        $least = $reader->counts('minContains');
+        $most = $reader->counts('maxContains');
+        $min = $least === [] ? 1 : max($least);
+        $max = $most === [] ? null : min($most);
+        if (($min === 0 && $max === null) || ($max !== null && !$this->consistent('minContains', $min, 'maxContains', $max, $at))) {
+            return [];
+        }
+
+        if (!$this->runtime->available('contains', $at)) {
+            return [];
+        }
+
+        $bounds = array_merge(
+            $min === 1 ? [] : [AttributeArgument::named('min', ArgumentValue::literal($min))],
+            $max === null ? [] : [AttributeArgument::named('max', ArgumentValue::literal($max))],
+        );
+        $constraints = [];
+        foreach ($schemas as $schema) {
+            $inner = $this->subschema('contains', $schema, $value->item(), $at);
+            if ($inner !== null) {
+                $nested = $inner === [] ? [] : [AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner))];
+                $constraints[] = ConstraintSpec::runtime('Contains', array_merge($nested, $bounds));
+            }
+        }
+
+        return $constraints;
+    }
+
+    /**
+     * A map gets Keys here; a class gets them on its $additionalProperties, from ValidatorEnricher.
+     *
+     * @return list<ConstraintSpec>
+     */
+    private function keys(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
+    {
+        if ($value instanceof MapType && $keywords->has('dependentRequired')) {
+            $this->diagnostics->warning('"dependentRequired" is checked on classes only; it is not checked here.', $at);
+        }
+
+        if (!$keywords->has('propertyNames') || $keywords->describesObject()) {
+            return [];
+        }
+
+        if (!$value instanceof MapType) {
+            $this->diagnostics->warning('"propertyNames" is checked on maps and on the undeclared properties of a class only; it is not checked here.', $at);
+
+            return [];
+        }
+
+        return $this->names($keywords, $at);
+    }
+
+    /**
+     * The constraints of a subschema as `new` arguments; null when it is not checked.
+     *
+     * @param non-empty-string $keyword
+     * @param JsonValue $schema
+     *
+     * @return list<ArgumentValue>|null
+     */
+    private function subschema(string $keyword, $schema, TypeModel $type, SchemaLocation $at): ?array
+    {
+        $parsed = Subschema::read($keyword, $schema, $type, $at, $this->diagnostics);
+        if (!$parsed instanceof Schema) {
+            return null;
+        }
+
+        $inner = array_map(static fn (ConstraintSpec $constraint): ArgumentValue => $constraint->toNewInstance(), $this->build($parsed, $type));
+        if ($inner !== [] && !$this->allowsNew($at, sprintf('"%s" goes into the attribute as "new", which PHP %%s does not allow; it is not checked.', $keyword))) {
+            return null;
+        }
+
+        return $inner;
+    }
+
+    /**
+     * @param string $warning with "%s" for the PHP version
+     */
+    private function allowsNew(SchemaLocation $at, string $warning): bool
     {
         if ($this->target->metadata()->isAnnotations() || $this->target->supports(Capability::from(Capability::NEW_IN_INITIALIZERS))) {
             return true;
         }
 
-        $this->diagnostics->warning(sprintf(
-            'The constraints of the elements go inside All as "new", which PHP %s does not allow in attributes; they are not checked.',
-            $this->target->php()->toString(),
-        ), $at);
+        $this->diagnostics->warning(sprintf($warning, $this->target->php()->toString()), $at);
 
         return false;
     }
