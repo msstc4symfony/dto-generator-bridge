@@ -47,6 +47,16 @@ final class Keywords
         return $this->resolved;
     }
 
+    /**
+     * Every place the keywords come from: the schema, the links of its `$ref` chain and its `allOf` branches.
+     *
+     * @return list<Schema> nearest first
+     */
+    public function schemas(): array
+    {
+        return $this->schemas;
+    }
+
     public function has(string $name): bool
     {
         return $this->values($name) !== [];

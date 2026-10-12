@@ -12,13 +12,15 @@ All notable changes to this package are documented here. The format follows
   and an RFC 3339 `full-time` with its offset. Symfony's `Url` and `Time` would reject valid values, so these formats
   were not checked before.
 - `dependentRequired`, `propertyNames` and `contains` (with `minContains` and `maxContains`) get the constraints
-  `DependentRequired`, `Keys` and `Contains` of `msstc4symfony/dto-generator-bridge-runtime` 1.1, when the project
-  has that release; otherwise, and for what they cannot check (a `contains` schema with `$ref` or `properties`, a
-  `dependentRequired` name that is not a property of the class), the bridge warns. The generator 1.4 leaves these
-  keywords to the bridge.
+  `DependentRequired`, `Keys` and `Contains` of `msstc4symfony/dto-generator-bridge-runtime` 1.1. The bridge claims
+  these keywords (`ExtensionRegistry::claimKeywords()` of the generator 1.4), so the generator no longer calls them
+  unsupported, and warns itself where it cannot check one: a `contains` schema with `$ref` or `properties`, elements
+  that are objects or PHP enums, a `dependentRequired` name that is not a property of the class, a trigger with a
+  default, `propertyNames` on a class that keeps no undeclared properties, a project without the runtime.
 
 ### Changed
 
+- The bridge requires `msstc4php/dto-generator` ^1.4 and `msstc4symfony/dto-generator-bridge-runtime` ^1.1.
 - Regenerated DTOs reject what `format: uri` and `format: time` never allowed but went unchecked: a relative reference
   such as `/pets/1` (use `format: uri-reference`, which stays unchecked) and a time without its offset (`08:30:06`).
 - Regenerated DTOs with `dependentRequired`, `propertyNames` or `contains` reject what these keywords forbid.

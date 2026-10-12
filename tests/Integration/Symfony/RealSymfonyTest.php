@@ -16,7 +16,6 @@ use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostic;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use MSSTC4PHP\DtoGenerator\DtoGenerator;
 use Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalPropertiesNormalizer;
-use Msstc4Symfony\DtoGeneratorBridge\Runtime\Constraints\Contains;
 use Msstc4Symfony\DtoGeneratorBridge\SymfonyExtension;
 use PHPUnit\Framework\TestCase;
 use RecursiveDirectoryIterator;
@@ -235,10 +234,6 @@ final class RealSymfonyTest extends TestCase
      */
     public function testChecksTheKeywordsOfTheRuntimeConstraints(string $php): void
     {
-        if (!class_exists(Contains::class)) {
-            self::markTestSkipped('The installed msstc4symfony/dto-generator-bridge-runtime has no constraints; they came in 1.1.');
-        }
-
         $this->runTarget($php, function (string $namespace, bool $annotations) use ($php): void {
             $paths = function (array $data) use ($namespace, $annotations): array {
                 $roster = $this->serializer($annotations)->denormalize($data, $namespace . '\Roster');
@@ -582,8 +577,7 @@ final class RealSymfonyTest extends TestCase
         copy(__DIR__ . '/api.yaml', $dir . '/api.yaml');
         file_put_contents($dir . '/composer.json', '{}');
         // The bridge writes the runtime's constraints only for a project that has them.
-        $runtime = class_exists(Contains::class) ? [['name' => 'msstc4symfony/dto-generator-bridge-runtime', 'version' => 'dev-main']] : [];
-        file_put_contents($dir . '/composer.lock', (string) json_encode(['packages' => $runtime]));
+        file_put_contents($dir . '/composer.lock', (string) json_encode(['packages' => [['name' => 'msstc4symfony/dto-generator-bridge-runtime', 'version' => 'v1.1.0']]]));
         // Only the views name dto.readWriteModels, which a generator before 1.3 refuses.
         $dto = $variant === 'views' ? ['dto' => ['readWriteModels' => 'split']] : [];
         file_put_contents($dir . '/dto-generator.yaml', (string) json_encode($dto + [

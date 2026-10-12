@@ -125,7 +125,7 @@ final class RuntimeConstraintsTest extends TestCase
             $at . 'names: "contains" is checked only when its "type" admits every element; it is not checked.',
             $at . 'mixed: "contains" is checked only when its "type" admits every element; it is not checked.',
             $at . 'nulls: "contains" is checked only when its "type" admits every element; it is not checked.',
-            $at . 'pairs: "contains" is checked only when its "type" admits every element; it is not checked.',
+            $at . 'pairs: "contains" is checked only on values of a string, number or boolean type; it is not checked.',
             $at . 'listed: "contains" is checked only with a schema object or true; it is not checked.',
             $at . 'numbered: "contains" is checked only with a schema of "type", "format", "enum", "const" and the keywords of strings and numbers; with "1" it is not checked.',
             $at . 'marked: "contains" is checked only with a schema of "type", "format", "enum", "const" and the keywords of strings and numbers; with "xml" it is not checked.',
@@ -146,6 +146,71 @@ final class RuntimeConstraintsTest extends TestCase
         self::assertSame(['RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . 'IdenticalTo(value: true)])'], $this->attributesOf($code, 'flags'));
         self::assertSame(['RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . 'LessThanOrEqual(value: 2.5)])'], $this->attributesOf($code, 'sizes'));
         self::assertSame(['RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . "Email(mode: 'html5')])"], $this->attributesOf($code, 'words'));
+    }
+
+    public function testLeavesOutAContainsWhoseSchemaIsCheckedInPart(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'mixed' => ['type' => 'array', 'items' => ['type' => ['integer', 'string']], 'contains' => ['minLength' => 3], 'minContains' => 0, 'maxContains' => 1],
+            'odd' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['pattern' => 'a\\u12']],
+            'states' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/State'], 'contains' => ['enum' => ['on']]],
+        ]], ['State' => ['type' => 'string', 'enum' => ['on', 'off']]]);
+        $code = $this->code($output, 'Pet.php');
+
+        foreach (['mixed', 'odd', 'states'] as $property) {
+            self::assertSame([], $this->attributesOf($code, $property), $property);
+        }
+
+        $at = 'warning /api.yaml#/components/schemas/Pet/properties/';
+        self::assertSame([
+            $at . 'mixed: "contains" is checked only on values of a string, number or boolean type; it is not checked.',
+            $at . 'odd/contains: "pattern" is no regular expression PHP can run; it is not checked.',
+            $at . 'odd: "contains" is not checked, as part of its schema cannot be.',
+            $at . 'states: "contains" is checked only on values of a string, number or boolean type; it is not checked.',
+        ], $this->messages($output));
+    }
+
+    public function testCountsObjectsAgainstASchemaOfAnnotationsOnly(): void
+    {
+        $code = $this->code($this->withRuntime(['type' => 'object', 'properties' => [
+            'friends' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Friend'], 'contains' => ['description' => 'Any friend.'], 'minContains' => 2],
+        ]], ['Friend' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]]]), 'Pet.php');
+
+        self::assertSame(['RuntimeAssert\\Contains(min: 2)', 'Assert\\Valid'], $this->attributesOf($code, 'friends'));
+    }
+
+    public function testBoundsEachContainsByItsOwnSchema(): void
+    {
+        $code = $this->code($this->withRuntime(['type' => 'object', 'properties' => [
+            'tags' => ['allOf' => [
+                ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['const' => 'a'], 'minContains' => 2],
+                ['contains' => ['const' => 'b']],
+            ]],
+            'roles' => ['$ref' => '#/components/schemas/Roles', 'maxContains' => 1],
+        ]], ['Roles' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['const' => 'admin']]]), 'Pet.php');
+
+        self::assertSame([
+            'RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . "IdenticalTo(value: 'a')], min: 2)",
+            'RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . "IdenticalTo(value: 'b')])",
+        ], $this->attributesOf($code, 'tags'));
+        self::assertSame(['RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . "IdenticalTo(value: 'admin')])"], $this->attributesOf($code, 'roles'));
+    }
+
+    public function testWarnsAboutMinContainsAboveMaxContains(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['const' => 'a'], 'minContains' => 3, 'maxContains' => 2],
+            'notes' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['const' => 'a'], 'minContains' => -1],
+        ]]);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame([], $this->attributesOf($code, 'tags'));
+        self::assertSame(['RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . "IdenticalTo(value: 'a')])"], $this->attributesOf($code, 'notes'));
+        $at = 'warning /api.yaml#/components/schemas/Pet/properties/';
+        self::assertSame([
+            $at . 'tags: "minContains" is above "maxContains", so no value is valid; they are not checked.',
+            $at . 'notes: "minContains" must be a non-negative integer; it is not checked.',
+        ], $this->messages($output));
     }
 
     public function testWarnsAboutContainsOnAnotherValue(): void
@@ -238,12 +303,26 @@ final class RuntimeConstraintsTest extends TestCase
         self::assertSame([], $this->messages($output));
     }
 
-    public function testLeavesTheNamesOfAClassWithoutUndeclaredPropertiesToTheSchema(): void
+    public function testWarnsAboutTheNamesOfAClassWithoutUndeclaredProperties(): void
     {
-        $output = $this->withRuntime(['type' => 'object', 'propertyNames' => ['pattern' => '^[a-z]+$'], 'properties' => ['name' => ['type' => 'string']]]);
+        $output = $this->withRuntime(['type' => 'object', 'propertyNames' => ['pattern' => '^[a-z]+$'], 'properties' => ['name' => ['type' => 'string']]], [
+            'Closed' => ['type' => 'object', 'additionalProperties' => false, 'propertyNames' => ['pattern' => '^[a-z]+$'], 'properties' => ['name' => ['type' => 'string']]],
+        ]);
 
         self::assertSame([], $this->attributesOf($this->code($output, 'Pet.php'), 'name'));
-        self::assertSame([], $this->messages($output));
+        self::assertSame(
+            ['warning /api.yaml#/components/schemas/Pet: "propertyNames" is checked on the undeclared properties of a class, which this class does not keep; it is not checked.'],
+            $this->messages($output),
+        );
+    }
+
+    public function testGroupsTheNamesOfUndeclaredPropertiesAsTheirClass(): void
+    {
+        $code = $this->code($this->withRuntime(['type' => 'object', 'x-validator-groups' => ['api'], 'propertyNames' => ['maxLength' => 2], 'additionalProperties' => [
+            'type' => 'string', 'maxLength' => 5, 'x-validator-skip' => true,
+        ], 'properties' => ['name' => ['type' => 'string']]]), 'Pet.php');
+
+        self::assertSame(['RuntimeAssert\\Keys(constraints: [new ' . self::ASSERT . "Length(max: 2)], groups: ['api', 'Default'])"], $this->attributesOf($code, 'additionalProperties'));
     }
 
     public function testWarnsAboutPropertyNamesItCannotCheck(): void
@@ -279,6 +358,34 @@ final class RuntimeConstraintsTest extends TestCase
         self::assertSame([], $this->messages($output));
     }
 
+    public function testLeavesOutATriggerWithADefault(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'dependentRequired' => ['notify' => ['email'], 'email' => ['notify'], 'mode' => ['email']], 'properties' => [
+            'notify' => ['type' => 'boolean', 'default' => false],
+            'mode' => ['type' => ['string', 'null'], 'default' => null],
+            'email' => ['type' => 'string'],
+        ]]);
+
+        self::assertSame(["RuntimeAssert\\DependentRequired(requirements: ['email' => ['notify'], 'mode' => ['email']])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
+        self::assertSame(['warning /api.yaml#/components/schemas/Pet: "dependentRequired": "notify" needing "email" is not checked, as "notify" has a default and is always set.'], $this->messages($output));
+    }
+
+    public function testWarnsAboutANameTheClassDoesNotGenerate(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'dependentRequired' => ['a' => ['hidden']], 'properties' => [
+            'a' => ['type' => 'string'],
+            'hidden' => ['type' => 'string', 'x-php-skip' => true],
+        ]], ['Dog' => ['allOf' => [
+            ['$ref' => '#/components/schemas/Pet'],
+            ['type' => 'object', 'dependentRequired' => ['bark' => ['typo']], 'properties' => ['bark' => ['type' => 'string']]],
+        ]]]);
+
+        self::assertSame([
+            'warning /api.yaml#/components/schemas/Pet: "dependentRequired" names "hidden", which is not a property of this class; "a" needing "hidden" is not checked.',
+            'warning /api.yaml#/components/schemas/Dog: "dependentRequired" names "typo", which is not a property of this class; "bark" needing "typo" is not checked.',
+        ], $this->messages($output));
+    }
+
     public function testJoinsDependentRequiredOfEveryBranch(): void
     {
         $code = $this->code($this->withRuntime(['allOf' => [
@@ -306,17 +413,19 @@ final class RuntimeConstraintsTest extends TestCase
             'b' => ['type' => 'string'],
             'c' => ['type' => 'string'],
             'map' => ['type' => 'object', 'additionalProperties' => ['type' => 'string'], 'dependentRequired' => ['a' => ['b']]],
+            'any' => ['dependentRequired' => ['a' => ['b']]],
         ]], ['Other' => ['type' => 'object', 'dependentRequired' => ['a', 'b'], 'properties' => ['a' => ['type' => 'string']]]]);
 
         self::assertSame(["RuntimeAssert\\DependentRequired(requirements: ['a' => ['b']])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
         self::assertSame([], $this->classAttributesOf($this->code($output, 'Other.php')));
         $at = 'warning /api.yaml#/components/schemas/';
         self::assertSame([
-            $at . 'Pet: "dependentRequired" names "zz", which is not a property of this class; "a" needing it is not checked.',
+            $at . 'Pet: "dependentRequired" names "zz", which is not a property of this class; "a" needing "zz" is not checked.',
             $at . 'Pet: "dependentRequired" names "yy", which is not a property of this class; "yy" needing "a" is not checked.',
             $at . 'Pet: "dependentRequired" must map property names to lists of names; "b" is not checked.',
             $at . 'Pet: "dependentRequired" must map property names to lists of names; "c" is not checked.',
             $at . 'Pet/properties/map: "dependentRequired" is checked on classes only; it is not checked here.',
+            $at . 'Pet/properties/any: "dependentRequired" is checked on classes only; it is not checked here.',
             $at . 'Other: "dependentRequired" must map property names to lists of names; it is not checked.',
         ], $this->messages($output));
     }
@@ -331,7 +440,8 @@ final class RuntimeConstraintsTest extends TestCase
         self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
         self::assertSame(["RuntimeAssert\\DependentRequired(requirements: ['name' => ['legs']])"], $this->classAttributesOf($this->code($output, 'Animal.php')));
         self::assertSame([
-            'warning /api.yaml#/components/schemas/Pet: "dependentRequired" names "name", which is not a property of this class; "tail" needing it is not checked.',
+            'warning /api.yaml#/components/schemas/Pet: "dependentRequired": "tail" needing "name" is not checked, as the class inherits "name"; write the pair in the schema that declares both.',
+            'warning /api.yaml#/components/schemas/Pet: "dependentRequired": "legs" needing "name" is not checked, as the class inherits "legs"; write the pair in the schema that declares both.',
         ], $this->messages($output));
     }
 

@@ -53,6 +53,13 @@ final class Subschema
             return null;
         }
 
+        $element = $type instanceof NullableType ? $type->inner() : $type;
+        if (!$element instanceof ScalarType && array_filter(array_keys($value), static fn ($name): bool => !self::annotates((string) $name)) !== []) {
+            $diagnostics->warning(sprintf('"%s" is checked only on values of a string, number or boolean type; it is not checked.', $keyword), $at);
+
+            return null;
+        }
+
         foreach ($value as $name => $element) {
             $name = (string) $name;
             $setting = Json::value($element);
@@ -80,7 +87,7 @@ final class Subschema
                 $builder->format($setting);
             } elseif (in_array($name, self::KEYWORDS, true)) {
                 $builder->keyword($name, $setting);
-            } elseif (!in_array($name, self::ANNOTATIONS, true) && strncmp($name, 'x-', 2) !== 0) {
+            } elseif (!self::annotates($name)) {
                 $diagnostics->warning(sprintf(
                     '"%s" is checked only with a schema of "type", "format", "enum", "const" and the keywords of strings and numbers; with "%s" it is not checked.',
                     $keyword,
@@ -92,6 +99,11 @@ final class Subschema
         }
 
         return $builder->build();
+    }
+
+    private static function annotates(string $name): bool
+    {
+        return in_array($name, self::ANNOTATIONS, true) || strncmp($name, 'x-', 2) === 0;
     }
 
     /**

@@ -40,15 +40,28 @@ final class KeywordReader
     {
         $counts = [];
         foreach ($this->keywords->values($name) as $value) {
-            $count = $this->asCount($value);
-            if ($count === null) {
-                $this->warn($name, 'a non-negative integer');
-            } else {
+            $count = $this->count($name, $value);
+            if ($count !== null) {
                 $counts[] = $count;
             }
         }
 
         return $counts;
+    }
+
+    /**
+     * One value of a counting keyword; null, with a warning, when it is no count.
+     *
+     * @param JsonValue $value
+     */
+    public function count(string $name, $value): ?int
+    {
+        $count = $this->asCount($value);
+        if ($count === null) {
+            $this->warn($name, 'a non-negative integer');
+        }
+
+        return $count;
     }
 
     /**

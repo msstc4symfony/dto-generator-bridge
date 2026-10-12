@@ -37,7 +37,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
      * The keywords of each checked class and where they are, by FQCN: the generator enriches a class before its
      * properties, and the context of $additionalProperties does not carry the class's schema.
      *
-     * @var array<string, array{Keywords, SchemaLocation}>
+     * @var array<string, array{Keywords, SchemaLocation, list<non-empty-string>}> with the groups of the class
      */
     private array $classes = [];
 
@@ -58,7 +58,9 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         }
 
         $keywords = new Keywords($schema, $context->references());
-        $this->classes[$context->class()->name()->fqcn()] = [$keywords, $schema->location()];
+        $groups = $this->groups($extensions);
+        $this->classes[$context->class()->name()->fqcn()] = [$keywords, $schema->location(), $groups];
+        $this->warnAboutNamesNotKept($context, $keywords);
         if (!$keywords->has('dependentRequired') || !(new RuntimeConstraints($context->packages(), $diagnostics))->available('dependentRequired', $schema->location())) {
             return [];
         }
@@ -74,29 +76,33 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         );
 
         return [ConstraintSpec::runtime('DependentRequired', [AttributeArgument::named('requirements', ArgumentValue::mapOf($map))])
-            ->withGroups($this->groups($extensions))
+            ->withGroups($groups)
             ->toAttribute()];
     }
 
     public function enrichProperty(PropertyContext $context): array
     {
         $schema = $context->schema();
-        $version = $this->gate->version($context->packages(), $context->target(), $context->diagnostics(), $schema->location());
-        $extensions = new ExtensionReader($schema, $context->diagnostics());
-        if (!$version instanceof SymfonyVersion || $extensions->flag('x-validator-skip')) {
+        $diagnostics = $context->diagnostics();
+        $version = $this->gate->version($context->packages(), $context->target(), $diagnostics, $schema->location());
+        if (!$version instanceof SymfonyVersion) {
             return [];
         }
 
         $property = $context->property();
-        $diagnostics = $context->diagnostics();
         $builder = new ConstraintBuilder($context->references(), $context->target(), $diagnostics, new RuntimeConstraints($context->packages(), $diagnostics));
+        // `propertyNames` belongs to the class, so the schema of its undeclared properties neither skips nor groups it.
+        $names = $property->isAdditionalProperties() ? $this->classNames($context, $builder) : [];
+        $extensions = new ExtensionReader($schema, $diagnostics);
+        $skipped = $extensions->flag('x-validator-skip');
         $groups = $this->groups($extensions);
-
         $type = $property->type();
-        if ($property->isAdditionalProperties()) {
+        if ($skipped) {
+            $constraints = [];
+        } elseif ($property->isAdditionalProperties()) {
             // Its schema is that of each undeclared property, not of the map.
             assert($type instanceof MapType);
-            $constraints = array_merge($builder->elements($schema, $type->value(), $schema->location()), $this->ownerNames($context, $builder));
+            $constraints = $builder->elements($schema, $type->value(), $schema->location());
         } else {
             // A required property is non-nullable, except a mixed one (null among its values): the generator makes a
             // nullable property optional otherwise.
@@ -106,20 +112,43 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             );
         }
 
-        return array_map(
-            static fn (ConstraintSpec $constraint): AttributeModel => $constraint->withGroups($groups)->toAttribute(),
-            $constraints,
+        return array_merge(
+            array_map(static fn (ConstraintSpec $constraint): AttributeModel => $constraint->withGroups($groups)->toAttribute(), $constraints),
+            $names,
         );
     }
 
     /**
-     * @return list<ConstraintSpec> the Keys of `propertyNames`, a keyword of the class
+     * @return list<AttributeModel> the Keys of `propertyNames`, a keyword of the class, in the groups of the class
      */
-    private function ownerNames(PropertyContext $context, ConstraintBuilder $builder): array
+    private function classNames(PropertyContext $context, ConstraintBuilder $builder): array
     {
         $class = $this->classes[$context->owner()->name()->fqcn()] ?? null;
+        if ($class === null) {
+            return [];
+        }
 
-        return $class === null ? [] : $builder->names(...$class);
+        [$keywords, $at, $groups] = $class;
+
+        return array_map(static fn (ConstraintSpec $constraint): AttributeModel => $constraint->withGroups($groups)->toAttribute(), $builder->names($keywords, $at));
+    }
+
+    /**
+     * Without $additionalProperties the class keeps no undeclared property whose name could be checked; with
+     * `additionalProperties: false` there is none to check.
+     */
+    private function warnAboutNamesNotKept(ClassContext $context, Keywords $keywords): void
+    {
+        $schema = $context->schema();
+        foreach ($context->class()->properties() as $property) {
+            if ($property->isAdditionalProperties()) {
+                return;
+            }
+        }
+
+        if ($keywords->has('propertyNames') && $schema->additionalProperties() !== false) {
+            $context->diagnostics()->warning('"propertyNames" is checked on the undeclared properties of a class, which this class does not keep; it is not checked.', $schema->location());
+        }
     }
 
     /**

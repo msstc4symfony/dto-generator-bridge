@@ -436,14 +436,14 @@ final class ConstraintBuilder
     }
 
     /**
-     * The runtime's Contains for each `contains`; `minContains` and `maxContains` apply to all of them.
+     * The runtime's Contains for each `contains`, bounded by the `minContains` and `maxContains` of its own schema.
      *
      * @return list<ConstraintSpec>
      */
     private function contains(Keywords $keywords, KeywordReader $reader, TypeModel $value, SchemaLocation $at): array
     {
-        $schemas = $keywords->values('contains');
-        if ($schemas === []) {
+        $places = array_filter($keywords->schemas(), static fn (Schema $place): bool => $place->hasKeyword('contains'));
+        if ($places === []) {
             return [];
         }
 
@@ -453,32 +453,37 @@ final class ConstraintBuilder
             return [];
         }
 
-        $least = $reader->counts('minContains');
-        $most = $reader->counts('maxContains');
-        $min = $least === [] ? 1 : max($least);
-        $max = $most === [] ? null : min($most);
-        if (($min === 0 && $max === null) || ($max !== null && !$this->consistent('minContains', $min, 'maxContains', $max, $at))) {
+        $checked = [];
+        foreach ($places as $place) {
+            $min = $this->bound($reader, $place, 'minContains') ?? 1;
+            $max = $this->bound($reader, $place, 'maxContains');
+            if (($min !== 0 || $max !== null) && ($max === null || $this->consistent('minContains', $min, 'maxContains', $max, $at))) {
+                $checked[] = [$place->keyword('contains'), $min, $max];
+            }
+        }
+
+        if ($checked === [] || !$this->runtime->available('contains', $at)) {
             return [];
         }
 
-        if (!$this->runtime->available('contains', $at)) {
-            return [];
-        }
-
-        $bounds = array_merge(
-            $min === 1 ? [] : [AttributeArgument::named('min', ArgumentValue::literal($min))],
-            $max === null ? [] : [AttributeArgument::named('max', ArgumentValue::literal($max))],
-        );
         $constraints = [];
-        foreach ($schemas as $schema) {
+        foreach ($checked as [$schema, $min, $max]) {
             $inner = $this->subschema('contains', $schema, $value->item(), $at);
             if ($inner !== null) {
-                $nested = $inner === [] ? [] : [AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner))];
-                $constraints[] = ConstraintSpec::runtime('Contains', array_merge($nested, $bounds));
+                $constraints[] = ConstraintSpec::runtime('Contains', array_merge(
+                    $inner === [] ? [] : [AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner))],
+                    $min === 1 ? [] : [AttributeArgument::named('min', ArgumentValue::literal($min))],
+                    $max === null ? [] : [AttributeArgument::named('max', ArgumentValue::literal($max))],
+                ));
             }
         }
 
         return $constraints;
+    }
+
+    private function bound(KeywordReader $reader, Schema $place, string $name): ?int
+    {
+        return $place->hasKeyword($name) ? $reader->count($name, $place->keyword($name)) : null;
     }
 
     /**
@@ -488,7 +493,7 @@ final class ConstraintBuilder
      */
     private function keys(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
     {
-        if ($value instanceof MapType && $keywords->has('dependentRequired')) {
+        if ($keywords->has('dependentRequired') && !$keywords->describesObject()) {
             $this->diagnostics->warning('"dependentRequired" is checked on classes only; it is not checked here.', $at);
         }
 
@@ -520,7 +525,15 @@ final class ConstraintBuilder
             return null;
         }
 
+        $warnings = count($this->diagnostics->all());
         $inner = array_map(static fn (ConstraintSpec $constraint): ArgumentValue => $constraint->toNewInstance(), $this->build($parsed, $type));
+        if (count($this->diagnostics->all()) !== $warnings) {
+            // A keyword of the schema went unchecked, so fewer elements would match, or more.
+            $this->diagnostics->warning(sprintf('"%s" is not checked, as part of its schema cannot be.', $keyword), $at);
+
+            return null;
+        }
+
         if ($inner !== [] && !$this->allowsNew($at, sprintf('"%s" goes into the attribute as "new", which PHP %%s does not allow; it is not checked.', $keyword))) {
             return null;
         }
