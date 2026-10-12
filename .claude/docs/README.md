@@ -89,3 +89,9 @@
 - Мост требует ядро `^1.3` (до релиза 1.3 CI моста не соберётся — `composer-local.json` берёт ядро path-репозиторием с версией 1.3.0).
 
 - Ветку `feat/build-mode` нельзя влить до тегов рантайма 1.0.0 и ядра 1.3.0: `composer.json`/`composer-ci.json` требуют `^1.0`/`^1.3` при `minimum-stability: stable`.
+
+## `format: uri` / `time` (2026-10-12 UTC)
+
+- Паттерны — `Validator\FormatPatterns` (`@internal`, `BASE64`/`URI`/`TIME` собраны из приватных констант-частей), тесты — `FormatPatternsTest` (с JIT и без, `pcre.backtrack_limit` фиксируется 1 000 000). В `URI` повторяются только классы символов (`*+`) и группа `(?:%XX[класс]*+)*+` — по итерации на `%XX`. Отвергнутые варианты: `(?:pchar|%XX)*+`, `(?:/segment)*+` — false на 8 МБ с JIT; lookahead `(?![\s\S]*%(?!XX))` — `Backtrack limit exhausted`. Предел: ~500 000 `%XX` с JIT, ~1 млн без (JIT тратит лимит вдвое быстрее). Userinfo — под lookahead `(?=[^@\/?#\[\]]*+@)`, иначе host без `@` сканировался дважды (предел host был 250 000). Високосная секунда: UTC — только `23:59:60`; смещение целыми часами — минута 59; смещение с минутами — любые. Rector переписывает `assertSame(0|1, preg_match())` в `assertMatchesRegularExpression`, который не отличает false от 0 — поэтому хелпер `match()` в `FormatPatternsTest`.
+- Эмиттер ядра экранирует в атрибуте только `'` и `\` перед ними; длинную аннотацию переносит: `@Assert\Regex(\n *     pattern="…"\n * )`. Тесты вывода сравнивают с `FormatPatterns::*` (в атрибуте `'` → `\'`).
+- `tests/Integration/Symfony/run-matrix.sh`: `RUNTIME` (по умолчанию `../dto-generator-bridge-runtime`) — второй path-репозиторий; версии — ближайший тег из HEAD или `CORE_VERSION`/`RUNTIME_VERSION`; все три дерева копируются `copy_tree` (рабочее дерево, включая неотслеживаемые файлы). Пропуски на Symfony 7/8 (7 шт.) — цели PHP 7.4 (аннотации).

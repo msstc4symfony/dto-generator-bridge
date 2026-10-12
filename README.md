@@ -122,8 +122,9 @@ an authority, so `urn:` and `mailto:` URIs fail, and `Time` takes neither fracti
 non-ASCII characters are rejected; IP literals in brackets are checked for their alphabet only. The pattern repeats a
 group only per percent-encoded octet, so a value of any size passes unless it holds more than about 500 000 of them
 (a million without PCRE's JIT; `pcre.backtrack_limit` at its default), which reads as a violation. A `time` takes a
-leap second only as `23:59:60` in UTC (`Z`, `+00:00`, `-00:00`); with another offset it takes `:60` at any hour, since
-whether that falls on 23:59 UTC needs arithmetic, so such values pass where JSON Schema's test suite expects a failure.
+leap second only as `23:59:60` in UTC (`Z`, `+00:00`, `-00:00`) and at minute 59 with an offset of whole hours; the
+hour, and the minute beside an offset such as `+05:30`, are not checked, since that needs arithmetic, so such values
+pass where JSON Schema's test suite expects a failure.
 
 `format: byte` takes the standard alphabet only: base64url (`-`, `_`), MIME base64 with line breaks, a trailing newline
 and padding inside the string are rejected. The pattern checks the characters and that up to two `=` only end the

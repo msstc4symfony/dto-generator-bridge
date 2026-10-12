@@ -37,19 +37,19 @@ final class FormatPatternsTest extends TestCase
             $large = [];
             foreach ([1, 8] as $megabytes) {
                 $large[$megabytes] = base64_encode(str_repeat("\xFB\xEF\xBE", $megabytes * 349526));
-                self::assertMatchesRegularExpression($regex, $large[$megabytes], sprintf('%d MB, pcre.jit=%s', $megabytes, $setting));
+                self::assertSame(1, $this->match($regex, $large[$megabytes]), sprintf('%d MB, pcre.jit=%s', $megabytes, $setting));
             }
 
             foreach (['', 'QUJD', 'QUI=', 'QQ==', 'a+/9', 'QUJ', '=', '=='] as $valid) {
-                self::assertMatchesRegularExpression($regex, $valid, $valid);
+                self::assertSame(1, $this->match($regex, $valid), $valid);
             }
 
             foreach (['QU*D', 'QQ==QQ==', 'QQ===', "QUJD\n", 'QU JD', 'QU-_'] as $invalid) {
-                self::assertDoesNotMatchRegularExpression($regex, $invalid, $invalid);
+                self::assertSame(0, $this->match($regex, $invalid), $invalid);
             }
 
-            self::assertDoesNotMatchRegularExpression($regex, $large[8] . '*', '8 MB and "*", pcre.jit=' . $setting);
-            self::assertDoesNotMatchRegularExpression($regex, substr($large[8], 0, 4) . '=' . $large[8], '"=" inside 8 MB, pcre.jit=' . $setting);
+            self::assertSame(0, $this->match($regex, $large[8] . '*'), '8 MB and "*", pcre.jit=' . $setting);
+            self::assertSame(0, $this->match($regex, substr($large[8], 0, 4) . '=' . $large[8]), '"=" inside 8 MB, pcre.jit=' . $setting);
         }
     }
 
@@ -74,16 +74,16 @@ final class FormatPatternsTest extends TestCase
 
         foreach ($this->withAndWithoutJit(FormatPatterns::URI) as $setting => $regex) {
             foreach ($valid as $uri) {
-                self::assertMatchesRegularExpression($regex, $uri, $uri . ', pcre.jit=' . $setting);
+                self::assertSame(1, $this->match($regex, $uri), $uri . ', pcre.jit=' . $setting);
             }
 
             foreach ($invalid as $uri) {
-                self::assertDoesNotMatchRegularExpression($regex, $uri, $uri . ', pcre.jit=' . $setting);
+                self::assertSame(0, $this->match($regex, $uri), $uri . ', pcre.jit=' . $setting);
             }
 
             $large = 'http://a/' . str_repeat('b/', 2097152) . '?' . str_repeat('c', 4194304);
-            self::assertMatchesRegularExpression($regex, $large, '8 MB, pcre.jit=' . $setting);
-            self::assertDoesNotMatchRegularExpression($regex, $large . ' ', '8 MB and " ", pcre.jit=' . $setting);
+            self::assertSame(1, $this->match($regex, $large), '8 MB, pcre.jit=' . $setting);
+            self::assertSame(0, $this->match($regex, $large . ' '), '8 MB and " ", pcre.jit=' . $setting);
         }
     }
 
@@ -100,8 +100,8 @@ final class FormatPatternsTest extends TestCase
         $regex = $setting === '1' ? FormatPatterns::URI : FormatPatterns::URI . 'S';
 
         foreach (['http://%s', 'http://%s@h', 'http://h/%s', 'a:%s', 'a:?%s'] as $form) {
-            self::assertMatchesRegularExpression($regex, sprintf($form, str_repeat('%20', $passes)), $form);
-            self::assertFalse(preg_match($regex, sprintf($form, str_repeat('%20', $fails))), $form);
+            self::assertSame(1, $this->match($regex, sprintf($form, str_repeat('%20', $passes))), $form);
+            self::assertFalse($this->match($regex, sprintf($form, str_repeat('%20', $fails))), $form);
         }
     }
 
@@ -121,21 +121,21 @@ final class FormatPatternsTest extends TestCase
     {
         $valid = [
             '08:30:06Z', '08:30:06z', '23:59:60Z', '23:59:60.5z', '23:59:60+00:00', '23:59:60-00:00', '08:30:06.283185Z',
-            '08:30:06+01:00', '08:30:06-08:00', '08:30:06-00:00', '00:00:00+23:59', '15:59:60-08:00', '00:59:60+01:00',
+            '08:30:06+01:00', '08:30:06-08:00', '08:30:06-00:00', '00:00:00+23:59', '15:59:60-08:00', '00:59:60+01:00', '12:29:60+05:30', '03:17:60-05:45',
         ];
         $invalid = [
             '', '8:30:06Z', '08:30:06', '24:00:00Z', '08:60:06Z', '08:30:61Z', '08:30:06+24:00', '08:30:06+01:60', '08:30:06.Z',
             '08:30Z', '08:30:06 Z', "08:30:06Z\n", '08:30:06+0100', 'T08:30:06Z', "\u{660}8:30:06Z", '08:30:06+01:00Z',
-            '22:59:60Z', '23:58:60Z', '12:00:60+00:00', '12:00:60-00:00',
+            '22:59:60Z', '23:58:60Z', '12:00:60+00:00', '12:00:60-00:00', '12:17:60+01:00', '23:59:60+01:60',
         ];
 
         foreach ($this->withAndWithoutJit(FormatPatterns::TIME) as $setting => $regex) {
             foreach ($valid as $time) {
-                self::assertMatchesRegularExpression($regex, $time, $time . ', pcre.jit=' . $setting);
+                self::assertSame(1, $this->match($regex, $time), $time . ', pcre.jit=' . $setting);
             }
 
             foreach ($invalid as $time) {
-                self::assertDoesNotMatchRegularExpression($regex, $time, $time . ', pcre.jit=' . $setting);
+                self::assertSame(0, $this->match($regex, $time), $time . ', pcre.jit=' . $setting);
             }
         }
     }
@@ -150,5 +150,15 @@ final class FormatPatternsTest extends TestCase
 
             yield (string) $setting => $regex;
         }
+    }
+
+    /**
+     * preg_match() itself rather than PHPUnit's regex assertions, which do not tell a failed match (false) from none.
+     *
+     * @return 0|1|false
+     */
+    private function match(string $regex, string $subject)
+    {
+        return preg_match($regex, $subject);
     }
 }
