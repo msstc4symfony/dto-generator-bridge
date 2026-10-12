@@ -198,6 +198,7 @@ final class RuntimeConstraintsTest extends TestCase
             'nested' => ['oneOf' => [['oneOf' => [['$ref' => '#/components/schemas/Tags'], ['type' => 'integer']]], ['type' => 'string']]],
             'both' => ['oneOf' => [['anyOf' => [['$ref' => '#/components/schemas/Owner'], ['$ref' => '#/components/schemas/Tags']]], ['type' => 'string']]],
             'linked' => ['oneOf' => [['$ref' => '#/components/schemas/Linked'], ['type' => 'string']]],
+            'repeated' => ['oneOf' => [['$ref' => '#/components/schemas/Bounded'], ['$ref' => '#/components/schemas/Bounded'], ['type' => 'object', 'additionalProperties' => ['type' => 'string'], 'propertyNames' => ['maxLength' => 1]]]],
             'joined' => ['oneOf' => [['allOf' => [['$ref' => '#/components/schemas/Owner'], ['$ref' => '#/components/schemas/Picks']]], ['type' => 'string']]],
         ]], [
             'Picks' => ['propertyNames' => ['maxLength' => 2]],
@@ -219,8 +220,60 @@ final class RuntimeConstraintsTest extends TestCase
             $at . 'nested: ' . sprintf($member, 'contains'),
             $at . 'both: ' . sprintf($member, 'contains'),
             $at . 'linked: ' . sprintf($member, 'minContains'),
+            $at . 'repeated: ' . sprintf($member, 'propertyNames'),
             $at . 'joined/oneOf/0: "propertyNames" is checked on the undeclared properties of a class, which this class does not keep; it is not checked.',
         ], $this->messages($output));
+    }
+
+    /**
+     * @dataProvider loops
+     *
+     * @param array<string, mixed> $others
+     * @param list<string> $messages
+     */
+    public function testEndsTheWalkOfALoopingUnion(array $others, array $messages): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => ['p' => ['$ref' => '#/components/schemas/A']]], $others);
+
+        self::assertSame($messages, $this->messages($output));
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, list<string>}>
+     */
+    public static function loops(): iterable
+    {
+        $at = '/api.yaml#/components/schemas/';
+        yield 'through itself' => [
+            ['A' => ['oneOf' => [['$ref' => '#/components/schemas/A'], ['type' => 'string']]]],
+            ['error ' . $at . 'A: The $ref chain loops back to itself without reaching an object schema.'],
+        ];
+        yield 'through another union' => [
+            [
+                'A' => ['oneOf' => [['$ref' => '#/components/schemas/B'], ['type' => 'string']]],
+                'B' => ['oneOf' => [['$ref' => '#/components/schemas/A'], ['type' => 'integer']]],
+            ],
+            ['error ' . $at . 'A: The $ref chain loops back to itself without reaching an object schema.'],
+        ];
+        yield 'through a class, whose keywords are its own' => [
+            [
+                'A' => ['oneOf' => [['$ref' => '#/components/schemas/B'], ['type' => 'string']]],
+                'B' => ['type' => 'object', 'properties' => ['x' => ['type' => 'string']], 'oneOf' => [['$ref' => '#/components/schemas/A'], ['type' => 'integer']], 'contains' => ['const' => 1]],
+            ],
+            [
+                'warning ' . $at . 'B: "oneOf" and "anyOf" beside "properties" are not represented; the class keeps only its properties.',
+                'warning ' . $at . 'B/contains: "contains" is not supported and has no effect on the generated type.',
+            ],
+        ];
+    }
+
+    public function testWarnsAtTheItemsOfAList(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'rows' => ['type' => 'array', 'items' => ['oneOf' => [['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['const' => 'a']], ['type' => 'string']]]],
+        ]]);
+
+        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/rows/items: "contains" in a member of "oneOf" or "anyOf" is not checked.'], $this->messages($output));
     }
 
     public function testWarnsOnceAboutAStrayBoundOfASharedComponent(): void

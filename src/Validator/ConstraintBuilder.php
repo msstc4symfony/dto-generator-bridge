@@ -31,6 +31,12 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
 final class ConstraintBuilder
 {
     /**
+     * The keywords the generator calls unsupported and the runtime's constraints check; the bridge claims them and warns
+     * where it cannot check one.
+     */
+    public const CLAIMED_KEYWORDS = ['dependentRequired', 'propertyNames', 'contains', 'minContains', 'maxContains'];
+
+    /**
      * Format → the constraint that checks it, and the option it needs.
      *
      * @var array<string, array{non-empty-string, ?non-empty-string, string|bool|null}>
@@ -80,12 +86,6 @@ final class ConstraintBuilder
     private Diagnostics $diagnostics;
 
     private ValueConstraints $values;
-
-    /**
-     * The keywords the generator calls unsupported and the runtime's constraints check; the bridge claims them and warns
-     * where it cannot check one.
-     */
-    public const CLAIMED_KEYWORDS = ['dependentRequired', 'propertyNames', 'contains', 'minContains', 'maxContains'];
 
     private RuntimeConstraints $runtime;
 
@@ -529,13 +529,14 @@ final class ConstraintBuilder
      */
     private function warnAboutUnreachedMembers(Keywords $keywords, SchemaLocation $at): void
     {
-        // The generator refuses a $ref chain that loops without an object, so the members end.
         $members = $keywords->unreachedMembers();
+        $seen = [];
         while ($members !== []) {
-            $places = new Keywords(array_shift($members), $this->references);
+            $member = array_shift($members);
+            $places = new Keywords($member, $this->references);
             $union = $places->unreachedMembers();
-            if ($union === [] && $places->describesObject()) {
-                // A class of its own, whose enrichment checks its keywords.
+            if ($places->resolved()->propertyNames() !== [] || ($union === [] && $places->describesObject())) {
+                // A class of its own, whose enrichment checks its keywords (and ignores a union beside its properties).
                 continue;
             }
 
@@ -545,7 +546,14 @@ final class ConstraintBuilder
                 }
             }
 
-            array_push($members, ...$union);
+            // Members may loop back through `$ref`; each nested one is queued once.
+            foreach ($union as $nested) {
+                $location = $nested->location()->toString();
+                if (!in_array($location, $seen, true)) {
+                    $seen[] = $location;
+                    $members[] = $nested;
+                }
+            }
         }
     }
 
