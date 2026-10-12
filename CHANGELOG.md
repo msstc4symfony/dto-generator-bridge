@@ -6,6 +6,12 @@ All notable changes to this package are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `format: uri` and `format: time` get a `Regex`: an RFC 3986 URI with a scheme (`https://…`, `urn:…`, `mailto:…`)
+  and an RFC 3339 `full-time` with its offset. Symfony's `Url` and `Time` would reject valid values, so these formats
+  were not checked before.
+
 ## [1.2.0] - 2026-10-12
 
 ### Added

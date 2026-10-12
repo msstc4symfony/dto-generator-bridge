@@ -93,6 +93,8 @@ nullable `oneOf`/`anyOf` (all apply, as in JSON Schema 2020-12):
 | `format`: `email`, `ipv4`, `ipv6`, `hostname`, `uuid` | `Email(mode: 'html5')`, `Ip`, `Hostname(requireTld: false)`, `Uuid` |
 | `format: int32` | `Range(min: -2147483648, max: 2147483647)`, merged with `minimum` / `maximum` / `exclusive*` |
 | `format: byte` | `Regex` for base64: the standard alphabet of RFC 4648, padding only at the end |
+| `format: uri` | `Regex` for an RFC 3986 URI: a scheme and any of its forms (`https://…`, `urn:…`, `mailto:…`) |
+| `format: time` | `Regex` for an RFC 3339 `full-time`: `08:30:06Z`, `23:59:60.5-08:00` |
 | an object or a collection of objects | `Valid` |
 | constraints of `items` / `additionalProperties` | `All` (not on PHP 8.0, whose attributes allow no `new`) |
 
@@ -104,7 +106,7 @@ bridge warns when it is missing. With `target.metadata: none` the bridge writes 
 
 Keywords of one kind of value (`minLength`, `minimum`, `minItems`…) are written only for a property of that type; for a
 value of several types, a pattern PHP cannot compile or a malformed keyword the bridge warns and writes nothing. The
-same holds for `format: int32` (integers) and `format: byte` (strings): a value of several types warns about them too,
+same holds for `format: int32` (integers) and `format: byte`, `uri`, `time` (strings): a value of several types warns about them too,
 next to the generator's own warning about the format. The other formats (`email`, `uuid`…) are skipped on such a value
 without a warning. A mixed `enum` such as `[low, 1]` gives a
 `Choice` with both values; its property may hold a string or an int, so `minLength` or `minimum` beside it get that
@@ -112,9 +114,16 @@ warning.
 
 The `int32` bounds compete with the schema's: the strictest bound on each side wins, so `minimum: 0` gives
 `Range(min: 0, max: 2147483647)`, and an exclusive bound gives a pair such as `GreaterThanOrEqual(value: -2147483648)`
-and `LessThan(value: 10)`. `int64` needs no constraint (it is PHP's int on 64-bit platforms). `uri` and `time` get none
-on purpose: Symfony's `Url` rejects valid URIs such as `urn:` and `mailto:` ones or relative references, and its `Time`
-does not take RFC 3339's `full-time` with a time zone.
+and `LessThan(value: 10)`. `int64` needs no constraint (it is PHP's int on 64-bit platforms).
+
+`uri` and `time` get a `Regex` rather than Symfony's `Url` and `Time`: `Url` takes only the schemes it lists, each with
+an authority, so `urn:` and `mailto:` URIs fail, and `Time` takes neither fractions of a second nor the offset that
+`full-time` requires. A `uri` must be absolute: a relative reference such as `/pets/1` is a violation
+(`uri-reference`, `iri` and `iri-reference` get no constraint). Percent-encoding must be complete (`%2` fails), and
+non-ASCII characters are rejected; IP literals in brackets are checked for their alphabet only. The pattern repeats
+groups only for percent-encoded octets, so a value of any size passes unless it holds about a million of them
+(`pcre.backtrack_limit`), which reads as a violation. A `time` takes a leap second (`:60`) at any hour, since whether it
+falls on 23:59 UTC depends on the offset.
 
 `format: byte` takes the standard alphabet only: base64url (`-`, `_`), MIME base64 with line breaks, a trailing newline
 and padding inside the string are rejected. The pattern checks the characters and that up to two `=` only end the
