@@ -17,12 +17,15 @@
 
 ## 3. Ядро (1.4)
 
-- `ExtensionRegistry::claimKeywords(string ...)`: расширение, которое проверяет ключевое слово из списка
-  `UnsupportedKeywords`, заявляет его, и `SchemaParser` (`claiming()`) о нём не предупреждает. Иное слово — ошибка
-  «Extension "X" cannot claim keyword "Y": the generator does not warn about it.». Заявки идут через
-  `Schemas\Load\Input` из `Generate\Action`. Метод добавлен в интерфейс: его реализуют только тестовые двойники.
+- `ExtensionRegistry::claimKeywords(string ...)`: расширение заявляет слова из списка `UnsupportedKeywords`. Парсер
+  (`SchemaParser::claiming(KeywordChecks)`) вместо предупреждения записывает каждое вхождение в
+  `Domain\Diagnostic\KeywordChecks`; энричеры отмечают проверенные или оговорённые своим предупреждением места через
+  `PropertyContext/ClassContext::keywordChecks()->checked(место, слово)`; после обогащения `Generate\Action` выдаёт
+  прежнее «not supported» для неотмеченных. Так недостижимое для расширения (ветки `oneOf`, слова рядом с `$ref`,
+  отключённый валидатор) не теряется молча.
+- Заявка слова вне списка — предупреждение, заявка игнорируется (новое ядро может поддержать слово, которое старый
+  мост ещё заявляет). Метод интерфейса — намеренный BC-разрыв для реализующих (только двойники), в roave-baseline.
 - Контракт `ClassEnricher`: класс обогащается до своих свойств.
-- Без расширения, заявившего слова, ядро предупреждает, как прежде — ничего не теряется молча.
 
 ## 4. Рантайм (1.1)
 
@@ -43,15 +46,19 @@ Namespace `Msstc4Symfony\DtoGeneratorBridge\Runtime\Constraints\`; атрибу�
 
 ## 5. Мост
 
-- `SymfonyExtension` заявляет пять слов, если `validator` не `false`. Без `symfony/validator` или с
-  `metadata: none` мост не пишет ничего — слова не проверяются, как и прочие (README).
+- `SymfonyExtension` заявляет пять слов, если `validator` не `false`. `ConstraintBuilder::claimed()` и
+  `ValidatorEnricher::markChecked()` отмечают каждое место (`Keywords::schemas()`), которое мост проверил или о котором
+  предупредил; остальное (ветки `oneOf`/`anyOf`, слова рядом с `$ref` на класс, `x-validator-skip`, нет валидатора)
+  остаётся ядру. В схеме с `x-php-type` мост молчит, как ядро.
 - Требует ядро ^1.4 и рантайм ^1.1; `RuntimeConstraints` всё же проверяет рантайм ≥ 1.1 в `composer.lock`
   (ветка `dev-*` — новая) и иначе предупреждает: lock может отставать.
 - `Subschema` (`contains`, `propertyNames`): только плоская схема; элементы — скаляры (иначе — только аннотации);
-  `type` не уже PHP-типа элемента. Если `build()` подсхемы выдал хоть одно предупреждение, constraint не пишется
-  («"X" is not checked, as part of its schema cannot be.») — частичная проверка могла бы и пропускать, и отвергать.
-- `contains` — по каждому месту схемы (`Keywords::schemas()`) со своими `minContains`/`maxContains`; на не-списке —
-  предупреждение.
+  `type` не уже PHP-типа элемента (без учёта null). Если схема отвергает `null` (`type`/`const`/`enum` без него), а
+  элементы nullable, добавляется `NotNull`. Подсхема строится отдельным `ConstraintBuilder` со своими `Diagnostics`
+  (общие склеивают повторы): любое предупреждение — constraint не пишется.
+- `contains` — по каждому месту схемы со своими `minContains`/`maxContains`; на не-списке — предупреждение.
+- Вложенные в `All` композиты (`All`, `Contains`, `Keys`) получают группы свойства: Symfony фиксирует группы
+  вложенного композита при создании.
 - `propertyNames` — `Keys` для map и для `$additionalProperties` (ключевые слова класса — в `ValidatorEnricher` по FQCN,
   с группами класса; `x-validator-skip` схемы значений их не снимает). Класс без `$additionalProperties` —
   предупреждение (кроме `additionalProperties: false`).
@@ -65,6 +72,7 @@ Namespace `Msstc4Symfony\DtoGeneratorBridge\Runtime\Constraints\`; атрибу�
 - Элемент в `Contains` проверяется как корневое значение: `Expression`/`Callback` внутри не видят объекта; мост таких
   не пишет — README рантайма (CR-023).
 - Ветка `dev-*` старой линии рантайма: Composer не поставит её рядом с мостом (`^1.1`) (CR-027).
+- `Contains` без вложенных constraint'ов не сокращается до `count()`: ветка была бы эквивалентным мутантом (s1).
 
 ## 7. Вне рамок
 

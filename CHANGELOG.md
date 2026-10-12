@@ -16,7 +16,9 @@ All notable changes to this package are documented here. The format follows
   these keywords (`ExtensionRegistry::claimKeywords()` of the generator 1.4), so the generator no longer calls them
   unsupported, and warns itself where it cannot check one: a `contains` schema with `$ref` or `properties`, elements
   that are objects or PHP enums, a `dependentRequired` name that is not a property of the class, a trigger with a
-  default, `propertyNames` on a class that keeps no undeclared properties, a project without the runtime.
+  default, `propertyNames` on a class that keeps no undeclared properties, a project without the runtime. The
+  generator still warns about the occurrences the bridge does not reach (a member of a `oneOf`, beside a `$ref`
+  to a class, a property with `x-validator-skip`).
 
 ### Changed
 
@@ -24,6 +26,12 @@ All notable changes to this package are documented here. The format follows
 - Regenerated DTOs reject what `format: uri` and `format: time` never allowed but went unchecked: a relative reference
   such as `/pets/1` (use `format: uri-reference`, which stays unchecked) and a time without its offset (`08:30:06`).
 - Regenerated DTOs with `dependentRequired`, `propertyNames` or `contains` reject what these keywords forbid.
+
+### Fixed
+
+- A composite constraint inside `All` (the `All` of a list of lists) takes the groups of its property; Symfony fixes
+  the groups of a nested composite when it is built, so it stayed in `Default` and validating another group skipped
+  it.
 
 ## [1.2.0] - 2026-10-12
 

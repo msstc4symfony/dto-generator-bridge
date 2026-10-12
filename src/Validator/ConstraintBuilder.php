@@ -6,6 +6,7 @@ namespace Msstc4Symfony\DtoGeneratorBridge\Validator;
 
 use MSSTC4PHP\DtoGenerator\Contract\SchemaReferences;
 use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostics;
+use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\KeywordChecks;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ArgumentValue;
 use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeArgument;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ListType;
@@ -82,13 +83,30 @@ final class ConstraintBuilder
 
     private RuntimeConstraints $runtime;
 
-    public function __construct(SchemaReferences $references, TargetProfile $target, Diagnostics $diagnostics, RuntimeConstraints $runtime)
-    {
+    private KeywordChecks $checks;
+
+    /** @var list<non-empty-string> */
+    private array $groups;
+
+    /**
+     * @param KeywordChecks $checks where the keywords the bridge claims are marked as checked or warned about
+     * @param list<non-empty-string> $groups the groups of the value, which nested composite constraints need too
+     */
+    public function __construct(
+        SchemaReferences $references,
+        TargetProfile $target,
+        Diagnostics $diagnostics,
+        RuntimeConstraints $runtime,
+        KeywordChecks $checks,
+        array $groups
+    ) {
         $this->references = $references;
         $this->target = $target;
         $this->diagnostics = $diagnostics;
         $this->values = new ValueConstraints($target, $diagnostics);
         $this->runtime = $runtime;
+        $this->checks = $checks;
+        $this->groups = $groups;
     }
 
     /**
@@ -101,6 +119,8 @@ final class ConstraintBuilder
         $kind = $this->kindOf($value);
         $at = $schema->location();
         $reader = new KeywordReader($keywords, $this->diagnostics, $at);
+        // As in the generator, which stays quiet about what a schema whose type x-php-type replaces says.
+        $replaced = $keywords->resolved()->extensions()->has('x-php-type');
         $this->warnAboutFormatsOfOneKind($keywords, $kind, $at);
 
         return array_merge(
@@ -109,8 +129,8 @@ final class ConstraintBuilder
                 ? $this->numbers($reader, $kind === 'integer', $this->implied($keywords, $kind), $at)
                 : [],
             $this->checks($keywords, $kind, 'collection', $at) ? $this->collections($keywords, $reader, $value, $at) : [],
-            $this->contains($keywords, $reader, $value, $at),
-            $this->keys($keywords, $value, $at),
+            $replaced ? [] : $this->contains($keywords, $reader, $value, $at),
+            $replaced ? [] : $this->keys($keywords, $value, $at),
             $this->values->choices($keywords, $value, $at),
             $this->values->constants($keywords, $value, $at),
             $this->formats($keywords, $value),
@@ -131,7 +151,8 @@ final class ConstraintBuilder
             if ($constraint->is('Valid')) {
                 $valid = $constraint;
             } else {
-                $inner[] = $constraint->toNewInstance();
+                // Symfony fixes the groups of a nested composite when it is built; the outer All does not pass its own on.
+                $inner[] = ($constraint->isComposite() ? $constraint->withGroups($this->groups) : $constraint)->toNewInstance();
             }
         }
 
@@ -151,7 +172,7 @@ final class ConstraintBuilder
     public function names(Keywords $keywords, SchemaLocation $at): array
     {
         $constraints = [];
-        $schemas = $keywords->values('propertyNames');
+        $schemas = $this->claimed($keywords, 'propertyNames');
         if ($schemas === [] || !$this->runtime->available('propertyNames', $at)) {
             return [];
         }
@@ -443,6 +464,9 @@ final class ConstraintBuilder
     private function contains(Keywords $keywords, KeywordReader $reader, TypeModel $value, SchemaLocation $at): array
     {
         $places = array_filter($keywords->schemas(), static fn (Schema $place): bool => $place->hasKeyword('contains'));
+        $this->claimed($keywords, 'minContains');
+        $this->claimed($keywords, 'maxContains');
+        $this->claimed($keywords, 'contains');
         if ($places === []) {
             return [];
         }
@@ -481,28 +505,47 @@ final class ConstraintBuilder
         return $constraints;
     }
 
+    /**
+     * The values of a keyword the bridge claims, each place marked as handled: checked, or warned about by the caller.
+     *
+     * @return list<JsonValue>
+     */
+    private function claimed(Keywords $keywords, string $name): array
+    {
+        foreach ($keywords->schemas() as $place) {
+            if ($place->hasKeyword($name)) {
+                $this->checks->checked($place->location(), $name);
+            }
+        }
+
+        return $keywords->values($name);
+    }
+
     private function bound(KeywordReader $reader, Schema $place, string $name): ?int
     {
         return $place->hasKeyword($name) ? $reader->count($name, $place->keyword($name)) : null;
     }
 
     /**
-     * A map gets Keys here; a class gets them on its $additionalProperties, from ValidatorEnricher.
+     * A map gets Keys here; a class gets them on its $additionalProperties, from ValidatorEnricher, which reads the
+     * keywords of the class's own schema: those beside a `$ref` to the class stay unmarked, and the generator warns.
      *
      * @return list<ConstraintSpec>
      */
     private function keys(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
     {
-        if ($keywords->has('dependentRequired') && !$keywords->describesObject()) {
-            $this->diagnostics->warning('"dependentRequired" is checked on classes only; it is not checked here.', $at);
-        }
-
-        if (!$keywords->has('propertyNames') || $keywords->describesObject()) {
+        if ($keywords->describesObject()) {
             return [];
         }
 
+        if ($this->claimed($keywords, 'dependentRequired') !== []) {
+            $this->diagnostics->warning('"dependentRequired" is checked on classes only; it is not checked here.', $at);
+        }
+
         if (!$value instanceof MapType) {
-            $this->diagnostics->warning('"propertyNames" is checked on maps and on the undeclared properties of a class only; it is not checked here.', $at);
+            if ($this->claimed($keywords, 'propertyNames') !== []) {
+                $this->diagnostics->warning('"propertyNames" is checked on maps and on the undeclared properties of a class only; it is not checked here.', $at);
+            }
 
             return [];
         }
@@ -521,19 +564,25 @@ final class ConstraintBuilder
     private function subschema(string $keyword, $schema, TypeModel $type, SchemaLocation $at): ?array
     {
         $parsed = Subschema::read($keyword, $schema, $type, $at, $this->diagnostics);
-        if (!$parsed instanceof Schema) {
+        if (!$parsed instanceof Subschema) {
             return null;
         }
 
-        $warnings = count($this->diagnostics->all());
-        $inner = array_map(static fn (ConstraintSpec $constraint): ArgumentValue => $constraint->toNewInstance(), $this->build($parsed, $type));
-        if (count($this->diagnostics->all()) !== $warnings) {
+        // Diagnostics drops a repeated message, so the subschema gets its own to tell whether any keyword went unchecked.
+        $own = new Diagnostics();
+        $builder = new self($this->references, $this->target, $own, $this->runtime, new KeywordChecks(), []);
+        $element = $type instanceof NullableType ? $type->inner() : $type;
+        $nullable = $type instanceof NullableType;
+        $constraints = array_merge($nullable && $parsed->excludesNull() ? [new ConstraintSpec('NotNull')] : [], $builder->build($parsed->schema(), $element));
+        $this->diagnostics->merge($own);
+        if ($own->all() !== []) {
             // A keyword of the schema went unchecked, so fewer elements would match, or more.
             $this->diagnostics->warning(sprintf('"%s" is not checked, as part of its schema cannot be.', $keyword), $at);
 
             return null;
         }
 
+        $inner = array_map(static fn (ConstraintSpec $constraint): ArgumentValue => $constraint->toNewInstance(), $constraints);
         if ($inner !== [] && !$this->allowsNew($at, sprintf('"%s" goes into the attribute as "new", which PHP %%s does not allow; it is not checked.', $keyword))) {
             return null;
         }

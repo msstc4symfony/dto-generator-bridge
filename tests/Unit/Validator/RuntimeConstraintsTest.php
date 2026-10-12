@@ -102,7 +102,6 @@ final class RuntimeConstraintsTest extends TestCase
             'kinds' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['type' => 'integer']],
             'names' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['type' => 'object']],
             'mixed' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['type' => 7]],
-            'nulls' => ['type' => 'array', 'items' => ['type' => ['string', 'null']], 'contains' => ['type' => 'string']],
             'pairs' => ['type' => 'array', 'items' => ['type' => 'array', 'items' => ['type' => 'string']], 'contains' => ['type' => 'array']],
             'listed' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['a']],
             'numbered' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => [1 => 'a']],
@@ -111,7 +110,7 @@ final class RuntimeConstraintsTest extends TestCase
         ]], ['Role' => ['type' => 'string']]);
         $code = $this->code($output, 'Pet.php');
 
-        foreach (['roles', 'pets', 'never', 'enums', 'kinds', 'names', 'mixed', 'nulls', 'pairs', 'listed', 'numbered', 'marked', 'counted'] as $property) {
+        foreach (['roles', 'pets', 'never', 'enums', 'kinds', 'names', 'mixed', 'pairs', 'listed', 'numbered', 'marked', 'counted'] as $property) {
             self::assertSame([], $this->attributesOf($code, $property), $property);
         }
 
@@ -124,7 +123,6 @@ final class RuntimeConstraintsTest extends TestCase
             $at . 'kinds: "contains" is checked only when its "type" admits every element; it is not checked.',
             $at . 'names: "contains" is checked only when its "type" admits every element; it is not checked.',
             $at . 'mixed: "contains" is checked only when its "type" admits every element; it is not checked.',
-            $at . 'nulls: "contains" is checked only when its "type" admits every element; it is not checked.',
             $at . 'pairs: "contains" is checked only on values of a string, number or boolean type; it is not checked.',
             $at . 'listed: "contains" is checked only with a schema object or true; it is not checked.',
             $at . 'numbered: "contains" is checked only with a schema of "type", "format", "enum", "const" and the keywords of strings and numbers; with "1" it is not checked.',
@@ -138,12 +136,20 @@ final class RuntimeConstraintsTest extends TestCase
         $code = $this->code($this->withRuntime(['type' => 'object', 'properties' => [
             'counts' => ['type' => 'array', 'items' => ['type' => 'integer'], 'contains' => ['type' => 'number', 'minimum' => 1]],
             'flags' => ['type' => 'array', 'items' => ['type' => ['boolean', 'null']], 'contains' => ['type' => ['null', 'boolean'], 'const' => true]],
+            'nulls' => ['type' => 'array', 'items' => ['type' => ['string', 'null']], 'contains' => ['type' => 'string']],
+            'anything' => ['type' => 'array', 'items' => ['type' => ['string', 'null']], 'contains' => true],
+            'picks' => ['type' => 'array', 'items' => ['type' => ['string', 'null']], 'contains' => ['enum' => ['a']]],
+            'loose' => ['type' => 'array', 'items' => ['type' => ['string', 'null']], 'contains' => ['type' => ['string', 'null'], 'enum' => ['ab', null], 'minLength' => 2]],
             'sizes' => ['type' => 'array', 'items' => ['type' => 'number'], 'contains' => ['type' => 'number', 'maximum' => 2.5]],
             'words' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['type' => 'string', 'format' => 'email']],
         ]]), 'Pet.php');
 
         self::assertSame(['RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . 'GreaterThanOrEqual(value: 1)])'], $this->attributesOf($code, 'counts'));
-        self::assertSame(['RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . 'IdenticalTo(value: true)])'], $this->attributesOf($code, 'flags'));
+        self::assertSame(['RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . 'NotNull(), new ' . self::ASSERT . 'IdenticalTo(value: true)])'], $this->attributesOf($code, 'flags'));
+        self::assertSame(['RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . 'NotNull()])'], $this->attributesOf($code, 'nulls'));
+        self::assertSame(['RuntimeAssert\\Contains'], $this->attributesOf($code, 'anything'));
+        self::assertSame(['RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . 'NotNull(), new ' . self::ASSERT . "Choice(choices: ['a'])])"], $this->attributesOf($code, 'picks'));
+        self::assertSame(['RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . 'Length(min: 2), new ' . self::ASSERT . "Choice(choices: ['ab'])])"], $this->attributesOf($code, 'loose'));
         self::assertSame(['RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . 'LessThanOrEqual(value: 2.5)])'], $this->attributesOf($code, 'sizes'));
         self::assertSame(['RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . "Email(mode: 'html5')])"], $this->attributesOf($code, 'words'));
     }
@@ -533,7 +539,62 @@ final class RuntimeConstraintsTest extends TestCase
 
         self::assertSame([], $this->classAttributesOf($code));
         self::assertSame([], $this->attributesOf($code, 'roles'));
-        self::assertSame([], $this->messages($output));
+        $unsupported = 'is not supported and has no effect on the generated type.';
+        self::assertSame([
+            'warning /api.yaml#/components/schemas/Pet/dependentRequired: "dependentRequired" ' . $unsupported,
+            'warning /api.yaml#/components/schemas/Pet/properties/roles/contains: "contains" ' . $unsupported,
+        ], $this->messages($output));
+    }
+
+    public function testLeavesToTheGeneratorWhatItDoesNotReach(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'either' => ['oneOf' => [['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['const' => 'a']], ['type' => 'string']]],
+            'owner' => ['$ref' => '#/components/schemas/Owner', 'dependentRequired' => ['a' => ['b']], 'propertyNames' => ['maxLength' => 1]],
+            'skipped' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['const' => 'a'], 'x-validator-skip' => true],
+            'typed' => ['type' => 'array', 'x-php-type' => '\\ArrayObject', 'contains' => ['const' => 'a']],
+        ]], ['Owner' => ['type' => 'object', 'properties' => ['a' => ['type' => 'string'], 'b' => ['type' => 'string']]]]);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame(['Assert\\Valid'], $this->attributesOf($code, 'owner'));
+        $at = 'warning /api.yaml#/components/schemas/Pet/properties/';
+        $unsupported = 'is not supported and has no effect on the generated type.';
+        self::assertSame([
+            $at . 'either/oneOf/0/contains: "contains" ' . $unsupported,
+            $at . 'owner/dependentRequired: "dependentRequired" ' . $unsupported,
+            $at . 'owner/propertyNames: "propertyNames" ' . $unsupported,
+            $at . 'skipped/contains: "contains" ' . $unsupported,
+        ], $this->messages($output));
+    }
+
+    public function testDropsASubschemaWhoseWarningRepeatsAnother(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'tags' => ['allOf' => [
+                ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['pattern' => 'a\\u12']],
+                ['contains' => ['pattern' => 'a\\u12', 'minLength' => 2]],
+            ]],
+        ]]);
+
+        self::assertSame([], $this->attributesOf($this->code($output, 'Pet.php'), 'tags'));
+        $at = 'warning /api.yaml#/components/schemas/Pet/properties/tags';
+        self::assertSame([
+            $at . '/contains: "pattern" is no regular expression PHP can run; it is not checked.',
+            $at . ': "contains" is not checked, as part of its schema cannot be.',
+        ], $this->messages($output));
+    }
+
+    public function testGroupsTheCompositesInsideAll(): void
+    {
+        $code = $this->code($this->withRuntime(['type' => 'object', 'properties' => [
+            'rows' => ['type' => 'array', 'x-validator-groups' => ['create'], 'items' => ['type' => 'array', 'items' => ['type' => 'string', 'maxLength' => 3], 'contains' => ['const' => 'x']]],
+        ]]), 'Pet.php');
+
+        $groups = "groups: ['create', 'Default']";
+        self::assertSame(
+            ['Assert\\All(constraints: [new \\Msstc4Symfony\\DtoGeneratorBridge\\Runtime\\Constraints\\Contains(constraints: [new ' . self::ASSERT . "IdenticalTo(value: 'x')], $groups), new " . self::ASSERT . 'All(constraints: [new ' . self::ASSERT . "Length(max: 3)], $groups)], $groups)"],
+            $this->attributesOf($code, 'rows'),
+        );
     }
 
     /**

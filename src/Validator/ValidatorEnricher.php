@@ -61,6 +61,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         $groups = $this->groups($extensions);
         $this->classes[$context->class()->name()->fqcn()] = [$keywords, $schema->location(), $groups];
         $this->warnAboutNamesNotKept($context, $keywords);
+        $this->markChecked($context, $keywords, 'dependentRequired');
         if (!$keywords->has('dependentRequired') || !(new RuntimeConstraints($context->packages(), $diagnostics))->available('dependentRequired', $schema->location())) {
             return [];
         }
@@ -90,12 +91,12 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         }
 
         $property = $context->property();
-        $builder = new ConstraintBuilder($context->references(), $context->target(), $diagnostics, new RuntimeConstraints($context->packages(), $diagnostics));
-        // `propertyNames` belongs to the class, so the schema of its undeclared properties neither skips nor groups it.
-        $names = $property->isAdditionalProperties() ? $this->classNames($context, $builder) : [];
         $extensions = new ExtensionReader($schema, $diagnostics);
         $skipped = $extensions->flag('x-validator-skip');
         $groups = $this->groups($extensions);
+        $builder = new ConstraintBuilder($context->references(), $context->target(), $diagnostics, new RuntimeConstraints($context->packages(), $diagnostics), $context->keywordChecks(), $groups);
+        // `propertyNames` belongs to the class, so the schema of its undeclared properties neither skips nor groups it.
+        $names = $property->isAdditionalProperties() ? $this->classNames($context, $builder) : [];
         $type = $property->type();
         if ($skipped) {
             $constraints = [];
@@ -134,6 +135,19 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
     }
 
     /**
+     * Every pair of `dependentRequired` is checked or warned about below, and `propertyNames` without
+     * $additionalProperties is warned about, or has nothing left to check.
+     */
+    private function markChecked(ClassContext $context, Keywords $keywords, string $keyword): void
+    {
+        foreach ($keywords->schemas() as $place) {
+            if ($place->hasKeyword($keyword)) {
+                $context->keywordChecks()->checked($place->location(), $keyword);
+            }
+        }
+    }
+
+    /**
      * Without $additionalProperties the class keeps no undeclared property whose name could be checked; with
      * `additionalProperties: false` there is none to check.
      */
@@ -146,6 +160,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             }
         }
 
+        $this->markChecked($context, $keywords, 'propertyNames');
         if ($keywords->has('propertyNames') && $schema->additionalProperties() !== false) {
             $context->diagnostics()->warning('"propertyNames" is checked on the undeclared properties of a class, which this class does not keep; it is not checked.', $schema->location());
         }

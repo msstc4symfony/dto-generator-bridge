@@ -133,17 +133,21 @@ pass where JSON Schema's test suite expects a failure.
 `RuntimeAssert` is `Msstc4Symfony\DtoGeneratorBridge\Runtime\Constraints` of
 [`msstc4symfony/dto-generator-bridge-runtime`](https://github.com/msstc4symfony/dto-generator-bridge-runtime#constraints),
 which the application needs in production then; without it in `composer.lock` the bridge warns and writes none of
-them. The bridge claims these keywords, so the generator does not call them unsupported (unless
-`validator: false`); where the bridge cannot check one, it warns. Where it writes no Validator constraints at all
-(no `symfony/validator`, `target.metadata: none`) they go unchecked like every other keyword. They follow JSON
-Schema with these limits:
+them. The bridge claims these keywords (unless `validator: false`) and marks each occurrence it checks or warns
+about; the generator still calls the others unsupported: those in a member of a `oneOf`/`anyOf` with several
+members, those written beside a `$ref` to a class (write them in the class's schema), those of a property with
+`x-validator-skip`, and all of them when the bridge writes no Validator constraints (no `symfony/validator`,
+`target.metadata: none`). In a schema with `x-php-type` they are not checked, without a warning, as in the generator.
+They follow JSON Schema with these limits:
 
 - **`contains`** counts the elements that pass the constraints of its schema, each checked on its own;
   `minContains` (1 by default) and `maxContains` of the same schema bound the count, and `minContains: 0` alone
-  checks nothing. Each `contains` (in `allOf` branches, or behind a `$ref`) must hold with its own bounds. Its schema,
+  checks nothing. Each `contains` (in `allOf` branches, or behind a `$ref`) must hold with its own bounds. In a list
+  of nullable values, a schema that rejects `null` (a `type`, `const` or `enum` without it) gets `NotNull` beside
+  its constraints, which let `null` pass. Its schema,
   and that of `propertyNames`, must be flat: `type`, `format`, `enum`, `const`, the string and number keywords,
   annotations and `x-` keys. A `$ref`, `properties`, `items`, `allOf` and the like, a `type` narrower than the
-  elements' PHP type (`type: integer` in a list of nullable integers), a keyword the bridge cannot turn into a
+  elements' PHP type (`type: integer` in a list of strings), a keyword the bridge cannot turn into a
   constraint (a `pattern` PHP cannot run) or elements that are not strings, numbers or booleans (objects, PHP
   enums) give a warning, and the keyword is not checked, rather than checked in part. Elements may be of any type
   when the schema holds annotations only (`contains: {}` asks for a non-empty list).

@@ -64,6 +64,14 @@ final class ConstraintSpec
     }
 
     /**
+     * Whether it holds constraints of its own, which take its groups only when it is built.
+     */
+    public function isComposite(): bool
+    {
+        return in_array($this->name, ['All', 'Contains', 'Keys'], true);
+    }
+
+    /**
      * @param list<non-empty-string> $groups
      */
     public function withGroups(array $groups): self
