@@ -26,20 +26,15 @@ final class PatternSchema
 
     private SchemaLocation $place;
 
-    /** @var list<string> */
-    private array $declared;
-
     /**
      * @param non-empty-string $pcre
      * @param JsonValue $schema
-     * @param list<string> $declared the wire names of the properties the schema that holds the pattern declares
      */
-    private function __construct(string $pcre, $schema, SchemaLocation $place, array $declared)
+    private function __construct(string $pcre, $schema, SchemaLocation $place)
     {
         $this->pcre = $pcre;
         $this->schema = $schema;
         $this->place = $place;
-        $this->declared = $declared;
     }
 
     /**
@@ -71,7 +66,7 @@ final class PatternSchema
                     continue;
                 }
 
-                $patterns[] = new self($pcre, Json::value($schema), $at, $place->propertyNames());
+                $patterns[] = new self($pcre, Json::value($schema), $at);
             }
         }
 
@@ -100,14 +95,6 @@ final class PatternSchema
     public function place(): SchemaLocation
     {
         return $this->place;
-    }
-
-    /**
-     * Whether the schema that holds the pattern declares the property, so the class generated from it checks it.
-     */
-    public function declares(string $name): bool
-    {
-        return in_array($name, $this->declared, true);
     }
 
     public function matches(string $name): bool

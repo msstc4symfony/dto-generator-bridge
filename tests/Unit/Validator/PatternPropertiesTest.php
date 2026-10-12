@@ -161,6 +161,27 @@ final class PatternPropertiesTest extends TestCase
         ], $this->messages($output));
     }
 
+    public function testLeavesToTheParentAPropertyAPatternOfAnotherBranchOfItMatches(): void
+    {
+        $output = $this->withRuntimeAnd(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['type' => 'object', 'properties' => ['b' => ['type' => 'string']]],
+        ]], ['Base' => ['allOf' => [
+            ['type' => 'object', 'properties' => ['x-a' => ['type' => 'string']]],
+            ['patternProperties' => ['^x-' => ['maxLength' => 3]]],
+        ]]]);
+
+        self::assertSame(['Assert\\Length(max: 3)'], $this->attributesOf($this->code($output, 'Base.php'), 'xA'));
+        self::assertSame(
+            ['warning /api.yaml#/components/schemas/Base: "patternProperties" is checked on the undeclared properties a class keeps in its own $additionalProperties, which this class does not declare; they are not checked.'],
+            array_values(array_filter($this->messages($output), static fn (string $message): bool => strpos($message, 'Pet') === false)),
+        );
+        self::assertSame(
+            [self::AT . ': "patternProperties" is checked on the undeclared properties a class keeps in its own $additionalProperties, which this class does not declare; they are not checked.'],
+            array_values(array_filter($this->messages($output), static fn (string $message): bool => strpos($message, 'Pet') !== false)),
+        );
+    }
+
     public function testChecksThatAPatternAdmitsOnlyNull(): void
     {
         $output = $this->withRuntime(['type' => 'object', 'properties' => [

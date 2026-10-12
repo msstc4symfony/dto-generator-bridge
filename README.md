@@ -157,7 +157,8 @@ They follow JSON Schema with these limits:
   the other keywords check too). On a value of any type (an untyped property, the values of a map without an
   `additionalProperties` schema) `type` gives a `Type` constraint, and the string and number keywords need exactly
   one `type` among `string`, `integer`, `number` and `boolean`, as Symfony would check them on other kinds of values
-  too; a `const` or `enum` with a whole number needs `type: integer`, as PHP tells `0` from `0.0`. Where `null` is a
+  too; a `const` or `enum` with a whole number needs a `type` that admits no float (`integer`, not `number`), as PHP
+  tells `0` from `0.0`. Where `null` is a
   value (an element, a map value), a schema that rejects it (a `type`, `const` or `enum` without it) gets `NotNull`
   beside its constraints, which let `null` pass; `if`, `then` and `else` are the exception, below.
 - **`contains`** counts the elements that pass the constraints of its schema, each checked on its own;

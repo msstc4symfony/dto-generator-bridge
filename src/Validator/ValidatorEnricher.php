@@ -148,10 +148,19 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             $own[] = $property->wireName();
         }
 
+        // The schemas each `$ref` of the class's `allOf` reaches: a class generated from them checks its own properties
+        // against every pattern among them.
+        $ancestors = [];
+        foreach ($context->schema()->allOf() as $branch) {
+            if ($branch->ref() !== null) {
+                $ancestors[] = array_map(static fn (Schema $reached): string => $reached->location()->toString(), (new Keywords($branch, $context->references()))->schemas());
+            }
+        }
+
         foreach ($keywords->schemas() as $place) {
             foreach (array_diff($place->propertyNames(), $own) as $name) {
                 foreach ($patterns as $pattern) {
-                    if ($pattern->matches($name) && !$pattern->declares($name)) {
+                    if ($pattern->matches($name) && !$this->reachTogether($ancestors, $pattern->place()->toString(), $place->location()->toString())) {
                         $context->diagnostics()->warning(sprintf(
                             '"patternProperties" matches "%s", which this class inherits; it is not checked on it: write the pattern in the schema that declares the property.',
                             $name,
@@ -160,6 +169,20 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
                 }
             }
         }
+    }
+
+    /**
+     * @param list<list<string>> $ancestors the locations each `$ref` of the class reaches
+     */
+    private function reachTogether(array $ancestors, string $pattern, string $declaration): bool
+    {
+        foreach ($ancestors as $reached) {
+            if (in_array($pattern, $reached, true) && in_array($declaration, $reached, true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function enrichProperty(PropertyContext $context): array

@@ -250,7 +250,7 @@ final class Subschema
         }
 
         if ($this->listsAmbiguousNumbers($values, $named)) {
-            $diagnostics->warning(sprintf('"%s" lists numbers for a value of any type only with "type: integer", as 0 and 0.0 differ in PHP; it is not checked.', $keyword), $at);
+            $diagnostics->warning(sprintf('"%s" lists whole numbers for a value of any type only with a "type" that admits no float, as 0 and 0.0 differ in PHP; it is not checked.', $keyword), $at);
 
             return null;
         }
@@ -259,15 +259,15 @@ final class Subschema
     }
 
     /**
-     * A JSON number without a fraction decodes to an int or a float, which IdenticalTo and Choice tell apart; only
-     * `type: integer` pins it to one (Type rejects the float).
+     * A JSON number without a fraction decodes to an int or a float, which IdenticalTo and Choice tell apart; a `type`
+     * that admits no float (none of them `number`) pins it to the int, as Type rejects the float.
      *
      * @param list<JsonValue> $values the values of `const` and `enum`
      * @param list<SchemaType> $types
      */
     private function listsAmbiguousNumbers(array $values, array $types): bool
     {
-        if (self::names($types) === [SchemaType::INTEGER]) {
+        if ($types !== [] && !in_array(SchemaType::NUMBER, self::names($types), true)) {
             return false;
         }
 

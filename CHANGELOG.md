@@ -38,6 +38,8 @@ All notable changes to this package are documented here. The format follows
   such as `/pets/1` (use `format: uri-reference`, which stays unchecked) and a time without its offset (`08:30:06`).
 - Regenerated DTOs with `dependentRequired`, `propertyNames`, `contains`, `patternProperties` or `if`/`then`/`else`
   reject what these keywords forbid.
+- A subschema of `contains` or `propertyNames` that allows `null` alone (`type: 'null'`, `enum: [null]`) gets
+  `IsNull`; before, it checked nothing, so regenerated DTOs reject what it never allowed.
 - The warning about `propertyNames` on a class without `$additionalProperties` names the cause: the class does not
   declare its own.
 - An `enum` that allows fewer cases than the PHP enum of its property (one beside a `$ref` to the enum) gets a

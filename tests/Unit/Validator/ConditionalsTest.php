@@ -387,6 +387,7 @@ final class ConditionalsTest extends TestCase
             'whole' => ['if' => ['type' => 'number', 'enum' => [2.0]], 'then' => ['const' => 'a']],
             'part' => ['if' => ['type' => 'number', 'const' => 1.5], 'then' => ['type' => 'string']],
             'size' => ['if' => ['type' => 'number', 'minimum' => 1], 'then' => ['type' => 'string']],
+            'code' => ['if' => ['type' => ['string', 'integer'], 'enum' => ['x', 1]], 'then' => ['const' => 'x']],
         ]]);
         $code = $this->code($output, 'Pet.php');
 
@@ -402,11 +403,15 @@ final class ConditionalsTest extends TestCase
             ['RuntimeAssert\\IfThenElse(if: [new ' . self::ASSERT . "Type(type: ['int', 'float']), new " . self::ASSERT . 'GreaterThanOrEqual(value: 1)], then: [new ' . self::ASSERT . "Type(type: 'string')])"],
             $this->attributesOf($code, 'size'),
         );
+        self::assertSame(
+            ['RuntimeAssert\\IfThenElse(if: [new ' . self::ASSERT . "Type(type: ['string', 'int']), new " . self::ASSERT . "Choice(choices: ['x', 1])], then: [new " . self::ASSERT . "IdenticalTo(value: 'x')])"],
+            $this->attributesOf($code, 'code'),
+        );
         $at = self::AT . '/properties/';
         self::assertSame([
-            $at . 'value: "if" lists numbers for a value of any type only with "type: integer", as 0 and 0.0 differ in PHP; it is not checked.',
-            $at . 'listed: "if" lists numbers for a value of any type only with "type: integer", as 0 and 0.0 differ in PHP; it is not checked.',
-            $at . 'whole: "if" lists numbers for a value of any type only with "type: integer", as 0 and 0.0 differ in PHP; it is not checked.',
+            $at . 'value: "if" lists whole numbers for a value of any type only with a "type" that admits no float, as 0 and 0.0 differ in PHP; it is not checked.',
+            $at . 'listed: "if" lists whole numbers for a value of any type only with a "type" that admits no float, as 0 and 0.0 differ in PHP; it is not checked.',
+            $at . 'whole: "if" lists whole numbers for a value of any type only with a "type" that admits no float, as 0 and 0.0 differ in PHP; it is not checked.',
         ], $this->messages($output));
     }
 
