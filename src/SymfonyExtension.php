@@ -7,6 +7,7 @@ namespace Msstc4Symfony\DtoGeneratorBridge;
 use MSSTC4PHP\DtoGenerator\Contract\Extension;
 use MSSTC4PHP\DtoGenerator\Contract\ExtensionRegistry;
 use Msstc4Symfony\DtoGeneratorBridge\Serializer\SerializerEnricher;
+use Msstc4Symfony\DtoGeneratorBridge\Validator\ConstraintBuilder;
 use Msstc4Symfony\DtoGeneratorBridge\Validator\ValidatorEnricher;
 
 /**
@@ -15,12 +16,6 @@ use Msstc4Symfony\DtoGeneratorBridge\Validator\ValidatorEnricher;
  */
 final class SymfonyExtension implements Extension
 {
-    /**
-     * The keywords the generator calls unsupported and the runtime's constraints check; the bridge warns where it
-     * cannot.
-     */
-    public const CHECKED_KEYWORDS = ['dependentRequired', 'propertyNames', 'contains', 'minContains', 'maxContains'];
-
     public function name(): string
     {
         return 'symfony';
@@ -31,7 +26,7 @@ final class SymfonyExtension implements Extension
         $settings = Settings::fromConfig($config);
         $registry->claimExtensionKeys('x-validator-*', 'x-serializer-*');
         if ($settings->validator() !== false) {
-            $registry->claimKeywords(...self::CHECKED_KEYWORDS);
+            $registry->claimKeywords(...ConstraintBuilder::CLAIMED_KEYWORDS);
         }
 
         $validator = new ValidatorEnricher($settings);

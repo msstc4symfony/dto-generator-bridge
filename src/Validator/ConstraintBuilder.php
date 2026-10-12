@@ -22,7 +22,6 @@ use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use MSSTC4PHP\DtoGenerator\Domain\Target\Capability;
 use MSSTC4PHP\DtoGenerator\Domain\Target\TargetProfile;
 use Msstc4Symfony\DtoGeneratorBridge\Keywords;
-use Msstc4Symfony\DtoGeneratorBridge\SymfonyExtension;
 
 /**
  * The constraints a value's schema and type call for (bridge spec §5.1), in the order of that table.
@@ -82,6 +81,12 @@ final class ConstraintBuilder
 
     private ValueConstraints $values;
 
+    /**
+     * The keywords the generator calls unsupported and the runtime's constraints check; the bridge claims them and warns
+     * where it cannot check one.
+     */
+    public const CLAIMED_KEYWORDS = ['dependentRequired', 'propertyNames', 'contains', 'minContains', 'maxContains'];
+
     private RuntimeConstraints $runtime;
 
     private KeywordChecks $checks;
@@ -124,6 +129,10 @@ final class ConstraintBuilder
         $replaced = $keywords->resolved()->extensions()->has('x-php-type');
         $this->warnAboutFormatsOfOneKind($keywords, $kind, $at);
 
+        if (!$replaced) {
+            $this->warnAboutUnreachedMembers($keywords, $at);
+        }
+
         return array_merge(
             $this->checks($keywords, $kind, 'string', $at) ? $this->strings($keywords, $reader, $at) : [],
             $this->checks($keywords, $kind, 'number', $at)
@@ -132,7 +141,6 @@ final class ConstraintBuilder
             $this->checks($keywords, $kind, 'collection', $at) ? $this->collections($keywords, $reader, $value, $at) : [],
             $replaced ? [] : $this->contains($keywords, $reader, $value, $at),
             $replaced ? [] : $this->keys($keywords, $value, $at),
-            $replaced ? [] : $this->unreached($keywords, $at),
             $this->values->choices($keywords, $value, $at),
             $this->values->constants($keywords, $value, $at),
             $this->formats($keywords, $value),
@@ -516,29 +524,39 @@ final class ConstraintBuilder
 
     /**
      * A member of a union of several values is no value of its own here, so its keywords go unchecked, with a warning
-     * at the property: a shared component may be checked through another property, which marks it. A member that is
-     * a class checks its keywords itself.
-     *
-     * @return list<ConstraintSpec> none
+     * at the value's schema (the property, or its items): a shared component may be checked through another value,
+     * which marks it. A place that is a class checks its keywords itself.
      */
-    private function unreached(Keywords $keywords, SchemaLocation $at): array
+    private function warnAboutUnreachedMembers(Keywords $keywords, SchemaLocation $at): void
     {
-        foreach ($keywords->unreachedMembers() as $member) {
-            if ((new Keywords($member, $this->references))->describesObject()) {
+        // The generator refuses a $ref chain that loops without an object, so the members end.
+        $members = $keywords->unreachedMembers();
+        while ($members !== []) {
+            $places = new Keywords(array_shift($members), $this->references);
+            $union = $places->unreachedMembers();
+            if ($union === [] && $places->describesObject()) {
+                // A class of its own, whose enrichment checks its keywords.
                 continue;
             }
 
-            foreach ($this->references->chain($member) as $link) {
-                foreach (SymfonyExtension::CHECKED_KEYWORDS as $keyword) {
-                    if ($link->hasKeyword($keyword)) {
-                        $this->checks->checked($link->location(), $keyword);
-                        $this->diagnostics->warning(sprintf('"%s" in a member of "oneOf" or "anyOf" is not checked.', $keyword), $at);
-                    }
+            foreach ($places->schemas() as $place) {
+                if ($place->propertyNames() === []) {
+                    $this->warnAboutMemberPlace($place, $at);
                 }
             }
-        }
 
-        return [];
+            array_push($members, ...$union);
+        }
+    }
+
+    private function warnAboutMemberPlace(Schema $place, SchemaLocation $at): void
+    {
+        foreach (self::CLAIMED_KEYWORDS as $keyword) {
+            if ($place->hasKeyword($keyword)) {
+                $this->checks->checked($place->location(), $keyword);
+                $this->diagnostics->warning(sprintf('"%s" in a member of "oneOf" or "anyOf" is not checked.', $keyword), $at);
+            }
+        }
     }
 
     /**

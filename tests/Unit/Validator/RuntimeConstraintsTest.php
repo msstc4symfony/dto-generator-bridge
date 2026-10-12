@@ -194,17 +194,43 @@ final class RuntimeConstraintsTest extends TestCase
             'either' => ['oneOf' => [['$ref' => '#/components/schemas/Tags'], ['type' => 'string']]],
             'owners' => ['anyOf' => [['$ref' => '#/components/schemas/Owner'], ['type' => 'string']]],
             'mixed' => ['anyOf' => [['$ref' => '#/components/schemas/Owner'], ['type' => 'object', 'additionalProperties' => ['type' => 'string'], 'propertyNames' => ['maxLength' => 2]]]],
+            'wrapped' => ['oneOf' => [['allOf' => [['$ref' => '#/components/schemas/Tags']]], ['type' => 'string']]],
+            'nested' => ['oneOf' => [['oneOf' => [['$ref' => '#/components/schemas/Tags'], ['type' => 'integer']]], ['type' => 'string']]],
+            'both' => ['oneOf' => [['anyOf' => [['$ref' => '#/components/schemas/Owner'], ['$ref' => '#/components/schemas/Tags']]], ['type' => 'string']]],
+            'linked' => ['oneOf' => [['$ref' => '#/components/schemas/Linked'], ['type' => 'string']]],
+            'joined' => ['oneOf' => [['allOf' => [['$ref' => '#/components/schemas/Owner'], ['$ref' => '#/components/schemas/Picks']]], ['type' => 'string']]],
         ]], [
+            'Picks' => ['propertyNames' => ['maxLength' => 2]],
+
+            'Linked' => ['$ref' => '#/components/schemas/Bounded', 'minContains' => 2],
+            'Bounded' => ['type' => 'array', 'items' => ['type' => 'string']],
             'Tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['const' => 'a']],
             'Owner' => ['type' => 'object', 'dependentRequired' => ['a' => ['b']], 'properties' => ['a' => ['type' => 'string'], 'b' => ['type' => 'string']]],
         ]);
 
         self::assertSame(['RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . "IdenticalTo(value: 'a')])"], $this->attributesOf($this->code($output, 'Pet.php'), 'tags'));
         self::assertSame(["RuntimeAssert\\DependentRequired(requirements: ['a' => ['b']])"], $this->classAttributesOf($this->code($output, 'Owner.php')));
+        $member = '"%s" in a member of "oneOf" or "anyOf" is not checked.';
+        $at = 'warning /api.yaml#/components/schemas/Pet/properties/';
         self::assertSame([
-            'warning /api.yaml#/components/schemas/Pet/properties/either: "contains" in a member of "oneOf" or "anyOf" is not checked.',
-            'warning /api.yaml#/components/schemas/Pet/properties/mixed: "propertyNames" in a member of "oneOf" or "anyOf" is not checked.',
+            $at . 'either: ' . sprintf($member, 'contains'),
+            $at . 'mixed: ' . sprintf($member, 'propertyNames'),
+            $at . 'wrapped: ' . sprintf($member, 'contains'),
+            $at . 'nested: ' . sprintf($member, 'contains'),
+            $at . 'both: ' . sprintf($member, 'contains'),
+            $at . 'linked: ' . sprintf($member, 'minContains'),
+            $at . 'joined/oneOf/0: "propertyNames" is checked on the undeclared properties of a class, which this class does not keep; it is not checked.',
         ], $this->messages($output));
+    }
+
+    public function testWarnsOnceAboutAStrayBoundOfASharedComponent(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'tags' => ['$ref' => '#/components/schemas/Tags'],
+            'labels' => ['$ref' => '#/components/schemas/Tags'],
+        ]], ['Tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'maxContains' => 1]]);
+
+        self::assertSame(['warning /api.yaml#/components/schemas/Tags: "maxContains" has no effect without "contains" in the same schema.'], $this->messages($output));
     }
 
     public function testBoundsEachContainsByItsOwnSchema(): void
