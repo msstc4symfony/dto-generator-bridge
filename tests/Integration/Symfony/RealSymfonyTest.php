@@ -253,6 +253,34 @@ final class RealSymfonyTest extends TestCase
     }
 
     /**
+     * if/then/else on a class and on a property, and patternProperties on a map and on declared properties, which need
+     * no "new" and so are checked on PHP 8.0 too.
+     *
+     * @dataProvider targets
+     */
+    public function testChecksConditionsAndPatternProperties(string $php): void
+    {
+        $this->runTarget($php, function (string $namespace, bool $annotations) use ($php): void {
+            $paths = function (array $data) use ($namespace, $annotations): array {
+                $parcel = $this->serializer($annotations)->denormalize($data, $namespace . '\Parcel');
+                self::assertIsObject($parcel);
+
+                return $this->violationPaths($parcel, $annotations);
+            };
+            $nested = $php !== '8.0';
+
+            self::assertSame([], $paths(['country' => 'US', 'zip' => '12345', 'phone' => '+12345678', 'kind' => 'letter', 'weight' => 50]));
+            self::assertSame([], $paths(['country' => 'DE', 'kind' => 'box', 'weight' => 60, 'meta' => ['n-a' => 1, 'b' => 'x']]));
+            self::assertSame($nested ? ['zip'] : [], $paths(['country' => 'US']));
+            self::assertSame($nested ? ['zip'] : [], $paths(['country' => 'US', 'zip' => 'abc']));
+            self::assertSame($nested ? ['phone'] : [], $paths(['phone' => '+123']));
+            self::assertSame($nested ? ['weight'] : [], $paths(['kind' => 'letter', 'weight' => 60]));
+            self::assertSame($nested ? ['meta[n-a]'] : [], $paths(['meta' => ['n-a' => 'x']]));
+            self::assertSame(['xRef'], $paths(['x-ref' => 'abcd']));
+        });
+    }
+
+    /**
      * Symfony's RegexValidator reports a failed preg_match() as a violation, so the pattern must hold any size.
      */
     public function testAcceptsLargeBase64(): void

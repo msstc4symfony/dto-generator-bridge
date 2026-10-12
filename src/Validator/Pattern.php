@@ -15,6 +15,8 @@ final class Pattern
 
     /**
      * The delimited expression, or null when PCRE cannot compile it.
+     *
+     * @return non-empty-string|null
      */
     public static function toPcre(string $pattern): ?string
     {

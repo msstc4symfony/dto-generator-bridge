@@ -131,21 +131,6 @@ final class Keywords
     }
 
     /**
-     * Whether one `enum` allows fewer values than another.
-     */
-    public function narrowsEnum(): bool
-    {
-        $allowed = $this->enum() ?? [];
-        foreach ($this->enums() as $enum) {
-            if (count($allowed) < count($enum)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
      * Whether the value becomes a generated class: an object with properties, or a composition with such a branch. The
      * generator turns a property-less object into an array; a date-time is a class too, but a string in the schema.
      */

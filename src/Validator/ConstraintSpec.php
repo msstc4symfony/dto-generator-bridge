@@ -68,7 +68,7 @@ final class ConstraintSpec
      */
     public function isComposite(): bool
     {
-        return in_array($this->name, ['All', 'Contains', 'Keys'], true);
+        return in_array($this->name, ['All', 'Contains', 'Keys', 'PatternProperty', 'IfThenElse', 'Property'], true);
     }
 
     /**

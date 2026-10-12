@@ -58,6 +58,22 @@ components:
         holder: {type: string}
         roles: {type: array, items: {type: string}, contains: {const: admin}, maxContains: 1}
         labels: {type: object, additionalProperties: {type: integer}, propertyNames: {maxLength: 3}}
+    Parcel:
+      type: object
+      properties:
+        country: {type: string}
+        zip: {type: string}
+        phone: {type: string, if: {pattern: '^\+'}, then: {minLength: 8}}
+        kind: {type: string, enum: [box, letter]}
+        weight: {type: integer}
+        x-ref: {type: string}
+        meta: {type: object, patternProperties: {'^n-': {type: integer}}}
+      if: {properties: {country: {const: US}}, required: [country]}
+      then: {required: [zip], properties: {zip: {pattern: '^\d{5}$'}}}
+      allOf:
+        - if: {properties: {kind: {const: letter}}, required: [kind]}
+          then: {properties: {weight: {maximum: 50}}}
+      patternProperties: {'^x-': {maxLength: 3}}
     Animal:
       oneOf:
         - {$ref: '#/components/schemas/Cat'}

@@ -21,13 +21,25 @@ All notable changes to this package are documented here. The format follows
   without the runtime. The
   generator still warns about the occurrences the bridge does not reach (beside a `$ref` to a class, a property or
   class with `x-validator-skip`).
+- `patternProperties` and `if`/`then`/`else` get the constraints `PatternProperty` and `IfThenElse` (with `Property`
+  and `Present` on a class) of the runtime 1.1, and the bridge claims them too. On a map and on `$additionalProperties`
+  each pattern is checked on the matching keys; a declared property whose wire name matches gets the constraints of
+  the pattern's schema directly. Conditions are checked on a property, on the items of a collection and on a class,
+  whose branches may hold `properties` and `required`. The bridge warns where it cannot check one: a class without
+  `$additionalProperties`, a pattern PHP cannot run, an `additionalProperties` schema that also types the matching
+  keys, a branch with other keywords, a name that is not a property of the class, a property with a default.
+- The subschemas of `contains`, `propertyNames` and the new keywords may describe PHP enums (`type`, `const`, `enum`)
+  and values of any type (a `Type` constraint for their `type`).
 
 ### Changed
 
 - The bridge requires `msstc4php/dto-generator` ^1.4 and `msstc4symfony/dto-generator-bridge-runtime` ^1.1.
 - Regenerated DTOs reject what `format: uri` and `format: time` never allowed but went unchecked: a relative reference
   such as `/pets/1` (use `format: uri-reference`, which stays unchecked) and a time without its offset (`08:30:06`).
-- Regenerated DTOs with `dependentRequired`, `propertyNames` or `contains` reject what these keywords forbid.
+- Regenerated DTOs with `dependentRequired`, `propertyNames`, `contains`, `patternProperties` or `if`/`then`/`else`
+  reject what these keywords forbid.
+- An `enum` that allows fewer cases than the PHP enum of its property (one beside a `$ref` to the enum) gets a
+  `Choice` of those cases instead of the warning that the narrowing is not checked.
 
 ### Fixed
 

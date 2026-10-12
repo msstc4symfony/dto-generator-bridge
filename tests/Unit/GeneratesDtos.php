@@ -119,7 +119,7 @@ trait GeneratesDtos
 
         foreach ($parameters as $parameter) {
             if (preg_match('~\$' . $property . '\b~', $parameter) === 1) {
-                preg_match_all('~#\[((?:[^\[\]]|\[(?:[^\[\]]|\[[^\[\]]*\])*\])*)\]~', $parameter, $matches);
+                preg_match_all('~#\[((?:[^\[\]]++|(\[(?:[^\[\]]++|(?2))*\]))*)\]~', $parameter, $matches);
 
                 return array_map(static fn (string $attribute): string => (string) preg_replace(['~([(\[])\s+~', '~,?\s+([)\]])~', '~\s+~'], ['$1', '$1', ' '], trim($attribute)), $matches[1]);
             }
@@ -162,7 +162,7 @@ trait GeneratesDtos
         }
 
         $start = strrpos(substr($code, 0, $match[0][1]), "\n\n");
-        preg_match_all('~#\[((?:[^\[\]]|\[(?:[^\[\]]|\[[^\[\]]*\])*\])*)\]~', substr($code, (int) $start, $match[0][1] - (int) $start), $matches);
+        preg_match_all('~#\[((?:[^\[\]]++|(\[(?:[^\[\]]++|(?2))*\]))*)\]~', substr($code, (int) $start, $match[0][1] - (int) $start), $matches);
 
         return array_map(static fn (string $attribute): string => (string) preg_replace(['~([(\[])\s+~', '~,?\s+([)\]])~', '~\s+~'], ['$1', '$1', ' '], trim($attribute)), $matches[1]);
     }

@@ -42,7 +42,6 @@ final class KeywordsTest extends TestCase
 
         self::assertSame(['a', 'b'], $keywords->enum());
         self::assertSame(['email'], $keywords->formats());
-        self::assertFalse($keywords->narrowsEnum());
     }
 
     public function testCountsACompositionAsAnObjectOnlyWithABranchThatHasProperties(): void
@@ -70,8 +69,8 @@ final class KeywordsTest extends TestCase
         $keywords = new Keywords($this->schema([], ['b', 'a'], null, [], ['allOf' => [$repeated]]), SchemaReferences::none());
 
         self::assertSame(['b', 'a'], $keywords->enum());
-        self::assertFalse($keywords->narrowsEnum());
-        self::assertTrue((new Keywords($this->schema([], ['a'], null, [], ['allOf' => [$repeated]]), SchemaReferences::none()))->narrowsEnum());
+        self::assertSame(['a', 'b'], (new Keywords($repeated, SchemaReferences::none()))->enum());
+        self::assertSame(['a'], (new Keywords($this->schema([], ['a'], null, [], ['allOf' => [$repeated]]), SchemaReferences::none()))->enum());
     }
 
     public function testComparesValuesAsJsonDoes(): void

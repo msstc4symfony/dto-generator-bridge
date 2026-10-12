@@ -49,18 +49,14 @@ final class ValueConstraints
             return [];
         }
 
-        if ($value instanceof EnumType && $this->hasEnums()) {
-            if ($keywords->narrowsEnum()) {
-                $this->diagnostics->warning('One "enum" narrows another, which the generated enum type does not; the narrowing is not checked.', $at);
-            }
-
-            return [];
-        }
-
         if ($enum === []) {
             $this->diagnostics->warning('The "enum" lists have no value in common, so no value is valid; they are not checked.', $at);
 
             return [];
+        }
+
+        if ($value instanceof EnumType && $this->hasEnums()) {
+            return $this->enumCases($value, $enum, $at);
         }
 
         $choices = [];
@@ -77,6 +73,39 @@ final class ValueConstraints
         }
 
         return [new ConstraintSpec('Choice', [AttributeArgument::named('choices', ArgumentValue::listOf(...$choices))])];
+    }
+
+    /**
+     * The property holds a case of the generated enum, which allows every value of it: a narrower `enum` (one beside a
+     * `$ref`, or a branch's) needs Choice of the cases it allows.
+     *
+     * @param non-empty-list<JsonValue> $enum
+     *
+     * @return list<ConstraintSpec>
+     */
+    private function enumCases(EnumType $type, array $enum, SchemaLocation $at): array
+    {
+        $cases = [];
+        foreach ($enum as $choice) {
+            $case = $type->caseFor($choice);
+            if ($case !== null && !in_array($case, $cases, true)) {
+                $cases[] = $case;
+            }
+        }
+
+        if ($cases === []) {
+            $this->diagnostics->warning('"enum" lists none of the values of the enum type, so no value is valid; it is not checked.', $at);
+
+            return [];
+        }
+
+        if (count($cases) === count($type->cases())) {
+            return [];
+        }
+
+        $constants = array_map(static fn (string $case): ArgumentValue => ArgumentValue::constant($case, $type->className()), $cases);
+
+        return [new ConstraintSpec('Choice', [AttributeArgument::named('choices', ArgumentValue::listOf(...$constants))])];
     }
 
     /**

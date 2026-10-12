@@ -592,14 +592,17 @@ final class ValidatorEnricherTest extends TestCase
         ], $this->attributesOf($code, 'step'));
     }
 
-    public function testWarnsThatAnEnumBesideAReferenceDoesNotNarrowAPhpEnum(): void
+    public function testChecksANarrowerEnumOfAPhpEnum(): void
     {
         $output = $this->generate(['type' => 'object', 'properties' => [
             'status' => ['$ref' => '#/components/schemas/Status', 'enum' => ['active']],
+            'wide' => ['$ref' => '#/components/schemas/Status', 'enum' => ['active', 'gone', 'other']],
         ]], ['Status' => ['type' => 'string', 'enum' => ['active', 'gone']]]);
+        $code = $this->code($output, 'Pet.php');
 
-        self::assertSame([], $this->attributesOf($this->code($output, 'Pet.php'), 'status'));
-        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/status: One "enum" narrows another, which the generated enum type does not; the narrowing is not checked.'], $this->messages($output));
+        self::assertSame(['Assert\\Choice(choices: [Status::ACTIVE])'], $this->attributesOf($code, 'status'));
+        self::assertSame([], $this->attributesOf($code, 'wide'));
+        self::assertSame([], $this->messages($output));
     }
 
     public function testWarnsAboutGroupsThatAreNoListAndDropsRepeatedOnes(): void

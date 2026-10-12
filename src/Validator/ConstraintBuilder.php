@@ -34,7 +34,10 @@ final class ConstraintBuilder
      * The keywords the generator calls unsupported and the runtime's constraints check; the bridge claims them and warns
      * where it cannot check one.
      */
-    public const CLAIMED_KEYWORDS = ['dependentRequired', 'propertyNames', 'contains', 'minContains', 'maxContains'];
+    public const CLAIMED_KEYWORDS = ['dependentRequired', 'propertyNames', 'contains', 'minContains', 'maxContains', 'patternProperties', 'if', 'then', 'else'];
+
+    /** The branches of a condition, in the order IfThenElse takes them. */
+    public const BRANCHES = ['if', 'then', 'else'];
 
     /**
      * Format → the constraint that checks it, and the option it needs.
@@ -141,10 +144,12 @@ final class ConstraintBuilder
             $this->checks($keywords, $kind, 'collection', $at) ? $this->collections($keywords, $reader, $value, $at) : [],
             $replaced ? [] : $this->contains($keywords, $reader, $value, $at),
             $replaced ? [] : $this->keys($keywords, $value, $at),
+            $replaced ? [] : $this->patterns($keywords, $value, $at),
             $this->values->choices($keywords, $value, $at),
             $this->values->constants($keywords, $value, $at),
             $this->formats($keywords, $value),
             $this->nested($keywords, $value, $at),
+            $replaced ? [] : $this->conditions($keywords, $value, $at),
         );
     }
 
@@ -188,7 +193,7 @@ final class ConstraintBuilder
 
         $name = ScalarType::string();
         foreach (array_filter($keywords->schemas(), static fn (Schema $place): bool => $place->hasKeyword('propertyNames')) as $place) {
-            $inner = $this->subschema('propertyNames', $place, $name);
+            $inner = $this->newSubschema('propertyNames', $place, $name);
             if ($inner !== null && $inner !== []) {
                 $constraints[] = ConstraintSpec::runtime('Keys', [AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner))]);
             }
@@ -509,7 +514,7 @@ final class ConstraintBuilder
 
         $constraints = [];
         foreach ($checked as [$place, $min, $max]) {
-            $inner = $this->subschema('contains', $place, $value->item());
+            $inner = $this->newSubschema('contains', $place, $value->item());
             if ($inner !== null) {
                 $constraints[] = ConstraintSpec::runtime('Contains', array_merge(
                     $inner === [] ? [] : [AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner))],
@@ -616,17 +621,18 @@ final class ConstraintBuilder
     }
 
     /**
-     * The constraints of a subschema as `new` arguments; null when it is not checked.
+     * The constraints of a subschema for one value; null when it is not checked, with a warning.
      *
-     * @param non-empty-string $keyword
-     * @param Schema $place the schema that holds the keyword, where the warnings go
+     * @param non-empty-string $keyword the keyword that holds the subschema, as warnings name it
+     * @param JsonValue $value
+     * @param SchemaLocation $at the schema that holds the keyword, where the warnings go
+     * @param bool $nullIsAbsent whether null stands for a missing value, which the subschema does not describe
      *
-     * @return list<ArgumentValue>|null
+     * @return list<ConstraintSpec>|null
      */
-    private function subschema(string $keyword, Schema $place, TypeModel $type): ?array
+    public function subschema(string $keyword, $value, SchemaLocation $at, TypeModel $type, bool $nullIsAbsent): ?array
     {
-        $at = $place->location();
-        $parsed = Subschema::read($keyword, $place->keyword($keyword), $type, $at, $this->diagnostics);
+        $parsed = Subschema::read($keyword, $value, $type, $at, $this->diagnostics);
         if (!$parsed instanceof Subschema) {
             return null;
         }
@@ -634,23 +640,216 @@ final class ConstraintBuilder
         // Diagnostics drops a repeated message, so the subschema gets its own to tell whether any keyword went unchecked.
         $own = new Diagnostics();
         $builder = new self($this->references, $this->target, $own, $this->runtime, new KeywordChecks(), []);
-        $element = $type instanceof NullableType ? $type->inner() : $type;
-        $nullable = $type instanceof NullableType;
-        $constraints = array_merge($nullable && $parsed->excludesNull() ? [new ConstraintSpec('NotNull')] : [], $builder->build($parsed->schema(), $element));
+        $nullable = !$nullIsAbsent && ($type instanceof NullableType || $type instanceof MixedType);
+        $typeConstraint = $parsed->typeConstraint();
+        $constraints = array_merge(
+            $nullable && $parsed->excludesNull() ? [new ConstraintSpec('NotNull')] : [],
+            $typeConstraint instanceof ConstraintSpec ? [$typeConstraint] : [],
+            $builder->build($parsed->schema(), $parsed->type()),
+        );
         $this->diagnostics->merge($own);
         if ($own->all() !== []) {
-            // A keyword of the schema went unchecked, so fewer elements would match, or more.
+            // A keyword of the schema went unchecked, so fewer values would match, or more.
             $this->diagnostics->warning(sprintf('"%s" is not checked, as part of its schema cannot be.', $keyword), $at);
 
             return null;
         }
 
+        return $constraints;
+    }
+
+    /**
+     * Constraints as `new` arguments of a composite constraint; null when the target's attributes cannot hold them.
+     *
+     * @param non-empty-string $keyword the keyword they check, as the warning names it
+     * @param list<ConstraintSpec> $constraints
+     *
+     * @return list<ArgumentValue>|null
+     */
+    public function asNew(string $keyword, array $constraints, SchemaLocation $at): ?array
+    {
         $inner = array_map(static fn (ConstraintSpec $constraint): ArgumentValue => $constraint->toNewInstance(), $constraints);
         if ($inner !== [] && !$this->allowsNew($at, sprintf('"%s" goes into the attribute as "new", which PHP %%s does not allow; it is not checked.', $keyword))) {
             return null;
         }
 
         return $inner;
+    }
+
+    /**
+     * The runtime's PatternProperty for each pattern, on a map or the undeclared properties of a class.
+     *
+     * @param list<PatternSchema> $patterns
+     * @param TypeModel $value the type of the values
+     *
+     * @return list<ConstraintSpec>
+     */
+    public function patternProperties(array $patterns, TypeModel $value): array
+    {
+        $constraints = [];
+        foreach ($patterns as $pattern) {
+            $specs = $this->subschema('patternProperties', $pattern->schema(), $pattern->place(), $value, false);
+            $inner = $specs === null ? null : $this->asNew('patternProperties', $specs, $pattern->place());
+            if ($inner !== null) {
+                $constraints[] = ConstraintSpec::runtime('PatternProperty', array_merge(
+                    [AttributeArgument::named('pattern', ArgumentValue::literal($pattern->pcre()))],
+                    $inner === [] ? [] : [AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner))],
+                ));
+            }
+        }
+
+        return $constraints;
+    }
+
+    /**
+     * The places with a condition that has an effect: `if` with `then` or `else` beside it.
+     *
+     * @return list<Schema>
+     */
+    public static function conditionPlaces(Keywords $keywords): array
+    {
+        $places = [];
+        foreach ($keywords->schemas() as $place) {
+            if ($place->hasKeyword('if') && ($place->hasKeyword('then') || $place->hasKeyword('else'))) {
+                $places[] = $place;
+            }
+        }
+
+        return $places;
+    }
+
+    /**
+     * The constraints of a subschema as `new` arguments; null when it is not checked.
+     *
+     * @param non-empty-string $keyword
+     * @param Schema $place the schema that holds the keyword, where the warnings go
+     *
+     * @return list<ArgumentValue>|null
+     */
+    private function newSubschema(string $keyword, Schema $place, TypeModel $type): ?array
+    {
+        $constraints = $this->subschema($keyword, $place->keyword($keyword), $place->location(), $type, false);
+
+        return $constraints === null ? null : $this->asNew($keyword, $constraints, $place->location());
+    }
+
+    /**
+     * A map gets PatternProperty here; a class checks its declared properties and its $additionalProperties from
+     * ValidatorEnricher, which reads the keywords of the class's own schema.
+     *
+     * @return list<ConstraintSpec>
+     */
+    private function patterns(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
+    {
+        if ($keywords->describesObject() || $this->claimed($keywords, 'patternProperties') === []) {
+            return [];
+        }
+
+        if (!$value instanceof MapType) {
+            $this->diagnostics->warning('"patternProperties" is checked on maps and on classes only; it is not checked here.', $at);
+
+            return [];
+        }
+
+        if ($keywords->resolved()->additionalProperties() instanceof Schema) {
+            $this->diagnostics->warning(PatternSchema::ALSO_ADDITIONAL, $at);
+        }
+
+        $patterns = PatternSchema::allOf($keywords, $this->diagnostics);
+        if ($patterns === [] || !$this->runtime->available('patternProperties', $at)) {
+            return [];
+        }
+
+        return $this->patternProperties($patterns, $value->value());
+    }
+
+    /**
+     * The runtime's IfThenElse for each condition of a value; a class checks its own from ValidatorEnricher. It does
+     * not check null, which therefore needs no NotNull.
+     *
+     * @return list<ConstraintSpec>
+     */
+    private function conditions(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
+    {
+        if ($keywords->describesObject()) {
+            return [];
+        }
+
+        foreach (self::BRANCHES as $branch) {
+            $this->claimed($keywords, $branch);
+        }
+
+        $places = self::conditionPlaces($keywords);
+        if ($places === [] || !$this->runtime->available('if', $at)) {
+            return [];
+        }
+
+        $constraints = [];
+        foreach ($places as $place) {
+            $condition = $this->valueCondition($place, $value);
+            if ($condition instanceof ConstraintSpec) {
+                $constraints[] = $condition;
+            }
+        }
+
+        return $constraints;
+    }
+
+    /**
+     * The first branch that is not checked leaves the others unread, so it gets the only warning.
+     */
+    private function valueCondition(Schema $place, TypeModel $value): ?ConstraintSpec
+    {
+        $if = $this->branch('if', $place, $value);
+        if ($if === null) {
+            return null;
+        }
+
+        $then = $this->branch('then', $place, $value);
+        if ($then === null) {
+            return null;
+        }
+
+        $else = $this->branch('else', $place, $value);
+
+        return $else === null ? null : $this->condition(['if' => $if, 'then' => $then, 'else' => $else], $place->location());
+    }
+
+    /**
+     * @param 'if'|'then'|'else' $branch
+     *
+     * @return list<ConstraintSpec>|null none for a missing branch, null for one that is not checked
+     */
+    private function branch(string $branch, Schema $place, TypeModel $value): ?array
+    {
+        return $place->hasKeyword($branch) ? $this->subschema($branch, $place->keyword($branch), $place->location(), $value, true) : [];
+    }
+
+    /**
+     * IfThenElse of the branches' constraints; null when neither `then` nor `else` checks anything, or the target's
+     * attributes cannot hold them.
+     *
+     * @param array{if: list<ConstraintSpec>, then: list<ConstraintSpec>, else: list<ConstraintSpec>} $branches
+     */
+    public function condition(array $branches, SchemaLocation $at): ?ConstraintSpec
+    {
+        if ($branches['then'] === [] && $branches['else'] === []) {
+            return null;
+        }
+
+        $arguments = [];
+        foreach ($branches as $branch => $specs) {
+            $inner = $this->asNew('if', $specs, $at);
+            if ($inner === null) {
+                return null;
+            }
+
+            if ($inner !== []) {
+                $arguments[] = AttributeArgument::named($branch, ArgumentValue::listOf(...$inner));
+            }
+        }
+
+        return ConstraintSpec::runtime('IfThenElse', $arguments);
     }
 
     /**

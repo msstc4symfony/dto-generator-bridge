@@ -125,7 +125,7 @@ final class RuntimeConstraintsTest extends TestCase
             $at . 'kinds: "contains" is checked only when its "type" admits every element; it is not checked.',
             $at . 'names: "contains" is checked only when its "type" admits every element; it is not checked.',
             $at . 'mixed: "contains" is checked only when its "type" admits every element; it is not checked.',
-            $at . 'pairs: "contains" is checked only on values of a string, number or boolean type; it is not checked.',
+            $at . 'pairs: "contains" is checked only on values of a string, number, boolean or enum type, or of any type; it is not checked.',
             $at . 'listed: "contains" is checked only with a schema object or true; it is not checked.',
             $at . 'numbered: "contains" is checked only with a schema of "type", "format", "enum", "const" and the keywords of strings and numbers; with "1" it is not checked.',
             $at . 'marked: "contains" is checked only with a schema of "type", "format", "enum", "const" and the keywords of strings and numbers; with "xml" it is not checked.',
@@ -165,16 +165,16 @@ final class RuntimeConstraintsTest extends TestCase
         ]], ['State' => ['type' => 'string', 'enum' => ['on', 'off']]]);
         $code = $this->code($output, 'Pet.php');
 
-        foreach (['mixed', 'odd', 'states'] as $property) {
+        foreach (['mixed', 'odd'] as $property) {
             self::assertSame([], $this->attributesOf($code, $property), $property);
         }
 
+        self::assertSame(['RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . 'Choice(choices: [State::ON])])'], $this->attributesOf($code, 'states'));
         $at = 'warning /api.yaml#/components/schemas/Pet/properties/';
         self::assertSame([
-            $at . 'mixed: "contains" is checked only on values of a string, number or boolean type; it is not checked.',
+            $at . 'mixed: "contains" is checked only on values of a string, number, boolean or enum type, or of any type; it is not checked.',
             $at . 'odd/contains: "pattern" is no regular expression PHP can run; it is not checked.',
             $at . 'odd: "contains" is not checked, as part of its schema cannot be.',
-            $at . 'states: "contains" is checked only on values of a string, number or boolean type; it is not checked.',
         ], $this->messages($output));
     }
 
