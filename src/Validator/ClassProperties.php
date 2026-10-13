@@ -22,7 +22,7 @@ final class ClassProperties
     /** @var array<array-key, PropertyModel> by wire name, a numeric one as an int: its own, then the nearest ancestor's */
     private array $properties;
 
-    /** @var array<string, true> the locations of the places the nearest ancestor's keywords reach */
+    /** @var list<string> the locations of the places the nearest ancestor's keywords reach */
     private array $inherited = [];
 
     /**
@@ -40,7 +40,7 @@ final class ClassProperties
         foreach ($keywords->schemas() as $place) {
             if ($place->location()->toString() === $parent) {
                 foreach ((new Keywords($place, $references))->schemas() as $reached) {
-                    $this->inherited[$reached->location()->toString()] = true;
+                    $this->inherited[] = $reached->location()->toString();
                 }
             }
         }
@@ -56,7 +56,7 @@ final class ClassProperties
      */
     public function ofAncestor(Schema $place): bool
     {
-        return isset($this->inherited[$place->location()->toString()]);
+        return in_array($place->location()->toString(), $this->inherited, true);
     }
 
     /**
