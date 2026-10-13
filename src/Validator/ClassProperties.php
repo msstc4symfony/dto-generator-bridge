@@ -22,6 +22,9 @@ final class ClassProperties
     /** @var array<array-key, PropertyModel> by wire name, a numeric one as an int: its own, then the nearest ancestor's */
     private array $properties;
 
+    /** @var int<0, max> how many of the properties are the class's own */
+    private int $own;
+
     /** @var list<string> the locations of the places the nearest ancestor's keywords reach */
     private array $inherited = [];
 
@@ -32,6 +35,7 @@ final class ClassProperties
     public function __construct(ClassModel $class, array $ancestors, Keywords $keywords, SchemaReferences $references)
     {
         $this->properties = $this->declared($class);
+        $this->own = count($this->properties);
         foreach ($ancestors as $ancestor) {
             $this->properties += $this->declared($ancestor);
         }
@@ -44,6 +48,20 @@ final class ClassProperties
                 }
             }
         }
+    }
+
+    /**
+     * The wire names of the properties, its own first.
+     *
+     * @param bool $inherited whether those of the ancestors count too
+     *
+     * @return list<string>
+     */
+    public function names(bool $inherited): array
+    {
+        $names = array_map('strval', array_keys($this->properties));
+
+        return $inherited ? $names : array_slice($names, 0, $this->own);
     }
 
     public function find(string $wireName): ?PropertyModel

@@ -63,6 +63,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         $this->classes[$context->class()->name()->fqcn()] = new ClassKeywords($keywords, $schema->location(), $groups, $this->patterns($context, $keywords));
         $this->warnAboutNamesNotKept($context, $keywords);
         $properties = new ClassProperties($context->class(), $context->ancestors(), $keywords, $context->references());
+        $this->warnAboutRejectedNames($context, $keywords, $properties);
         // The ancestor marks its own places: one whose class skips the validator stays unmarked, and the generator warns.
         foreach (['dependentRequired', 'if', 'then', 'else', 'not', 'dependentSchemas'] as $keyword) {
             foreach ($keywords->schemas() as $place) {
@@ -76,6 +77,29 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         $constraints = array_merge($this->requirements($context, $keywords, $runtime, $properties), $this->conditions($context, $keywords, $builder, $runtime, $groups, $properties));
 
         return array_map(static fn (ConstraintSpec $constraint): AttributeModel => $constraint->withGroups($groups)->toAttribute(), $constraints);
+    }
+
+    /**
+     * A property whose name `propertyNames` rejects can never be set. An ancestor's schema applies to the class too, but
+     * the ancestor's class checks its own names against it.
+     */
+    private function warnAboutRejectedNames(ClassContext $context, Keywords $keywords, ClassProperties $properties): void
+    {
+        foreach ($keywords->schemas() as $place) {
+            if (!$place->hasKeyword('propertyNames')) {
+                continue;
+            }
+
+            foreach ($properties->names(!$properties->ofAncestor($place)) as $name) {
+                if (NameCheck::rejects($place->keyword('propertyNames'), $name)) {
+                    $context->diagnostics()->warning(sprintf(
+                        '"propertyNames" rejects "%s", the name of a property of %s, which can never be set.',
+                        $name,
+                        $context->class()->name()->shortName(),
+                    ), $place->location());
+                }
+            }
+        }
     }
 
     /**

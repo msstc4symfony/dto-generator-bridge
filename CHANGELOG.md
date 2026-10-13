@@ -13,6 +13,8 @@ All notable changes to this package are documented here. The format follows
 - `prefixItems` gets Symfony's `Collection` of the prefix's elements, `unevaluatedItems: false` a `Count` of the longest
   prefix, and an `unevaluatedItems` schema without `prefixItems` an `All`. The bridge claims `not`, `dependentSchemas`,
   `prefixItems` and `unevaluatedItems` from the generator and warns where it cannot check one.
+- A declared property whose name `propertyNames` rejects (by `pattern`, `minLength`, `maxLength`, `const` or `enum`)
+  gives a warning while generating: it can never be set.
 
 ### Changed
 
