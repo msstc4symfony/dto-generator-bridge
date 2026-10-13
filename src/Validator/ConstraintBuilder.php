@@ -89,11 +89,13 @@ final class ConstraintBuilder
 
         if (!$replaced) {
             $this->claimed->warnAboutUnreachedMembers($keywords, $at);
+            $this->claimed->warnAboutDependencies($keywords, $at);
         }
 
         return array_merge(
             $this->kinds->of($keywords, $reader, $value, $at),
             $replaced ? [] : $this->claimed->contains($keywords, $reader, $value, $at),
+            $replaced ? [] : $this->claimed->tuples($keywords, $value, $at),
             $replaced ? [] : $this->claimed->keys($keywords, $value, $at),
             $replaced ? [] : $this->claimed->patterns($keywords, $value, $at),
             $this->values->choices($keywords, $value, $at),
@@ -101,6 +103,7 @@ final class ConstraintBuilder
             $this->kinds->formats($keywords, $value),
             $this->nested($keywords, $value, $at),
             $replaced ? [] : $this->claimed->conditions($keywords, $value, $at),
+            $replaced ? [] : $this->claimed->negations($keywords, $value, $at),
         );
     }
 
@@ -134,23 +137,35 @@ final class ConstraintBuilder
      */
     public function elements(Schema $itemSchema, TypeModel $item, SchemaLocation $at): array
     {
-        $valid = null;
+        $valid = [];
         $inner = [];
         foreach ($this->build($itemSchema, $item) as $constraint) {
             if ($constraint->is('Valid')) {
-                $valid = $constraint;
+                $valid = [$constraint];
             } else {
-                // Symfony fixes the groups of a nested composite when it is built; the outer All does not pass its own on.
-                $inner[] = ($constraint->isComposite() ? $constraint->withGroups($this->groups) : $constraint)->toNewInstance();
+                $inner[] = $constraint;
             }
         }
 
-        $constraints = $valid === null ? [] : [$valid];
-        if ($inner !== [] && $this->allowsNew($at, 'The constraints of the elements go inside All as "new", which PHP %s does not allow in attributes; they are not checked.')) {
-            $constraints[] = new ConstraintSpec('All', [AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner))]);
+        return array_merge($valid, $this->each($inner, $at));
+    }
+
+    /**
+     * All of constraints that each element of a list or map passes; none when the target's attributes cannot hold them.
+     *
+     * @param list<ConstraintSpec> $constraints
+     *
+     * @return list<ConstraintSpec>
+     */
+    public function each(array $constraints, SchemaLocation $at): array
+    {
+        // Symfony fixes the groups of a nested composite when it is built; the outer All does not pass its own on.
+        $inner = array_map(fn (ConstraintSpec $constraint): ArgumentValue => ($constraint->isComposite() ? $constraint->withGroups($this->groups) : $constraint)->toNewInstance(), $constraints);
+        if ($inner === [] || !$this->allowsNew($at, 'The constraints of the elements go inside All as "new", which PHP %s does not allow in attributes; they are not checked.')) {
+            return [];
         }
 
-        return $constraints;
+        return [new ConstraintSpec('All', [AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner))])];
     }
 
     /**

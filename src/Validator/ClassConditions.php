@@ -16,9 +16,10 @@ use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use Msstc4Symfony\DtoGeneratorBridge\Keywords;
 
 /**
- * The conditions (`if`, `then`, `else`) a class can check: branches of `properties` and `required`, by the PHP names of
- * its own properties. As with `dependentRequired`, a condition the schema declaring its properties holds is left to the
- * class of that schema, and any other one with an inherited property is not checked.
+ * The conditions (`if`, `then`, `else`), negations (`not`) and dependencies (`dependentSchemas`) a class can check:
+ * schemas of `properties` and `required`, by the PHP names of its own properties. As with `dependentRequired`, one the
+ * schema declaring its properties holds is left to the class of that schema, and any other one with an inherited
+ * property is not checked.
  *
  * @phpstan-import-type JsonValue from Json
  *
@@ -75,26 +76,131 @@ final class ClassConditions
         return $conditions;
     }
 
+    /**
+     * Not for each `not` of the class; `not: false` forbids nothing.
+     *
+     * @return list<ConstraintSpec>
+     */
+    public function negations(Keywords $keywords): array
+    {
+        $negations = [];
+        foreach ($keywords->schemas() as $place) {
+            if (!$place->hasKeyword('not') || $place->keyword('not') === false) {
+                continue;
+            }
+
+            $read = $this->read('not', $place->keyword('not'), $place);
+            $negation = $read === null ? null : $this->negation('not', $read, $place, $keywords);
+            if ($negation instanceof ConstraintSpec) {
+                $negations[] = $negation;
+            }
+        }
+
+        return $negations;
+    }
+
+    /**
+     * For each property `dependentSchemas` names: IfThenElse that checks its schema when the property is set, Not when
+     * the schema is false; a schema that checks nothing gets nothing.
+     *
+     * @return list<ConstraintSpec>
+     */
+    public function dependencies(Keywords $keywords): array
+    {
+        $dependencies = [];
+        foreach ($keywords->schemas() as $place) {
+            if (!$place->hasKeyword('dependentSchemas')) {
+                continue;
+            }
+
+            $schemas = $place->keyword('dependentSchemas');
+            if (!is_array($schemas) || ($schemas !== [] && Json::isList($schemas))) {
+                $this->diagnostics->warning('"dependentSchemas" is checked only with an object of schemas; it is not checked.', $place->location());
+
+                continue;
+            }
+
+            foreach ($schemas as $name => $schema) {
+                $dependency = $this->dependency((string) $name, Json::value($schema), $place, $keywords);
+                if ($dependency instanceof ConstraintSpec) {
+                    $dependencies[] = $dependency;
+                }
+            }
+        }
+
+        return $dependencies;
+    }
+
+    /**
+     * @param JsonValue $schema
+     */
+    private function dependency(string $name, $schema, Schema $place, Keywords $keywords): ?ConstraintSpec
+    {
+        $set = [[], [$name]];
+        if ($schema === false) {
+            return $this->negation('dependentSchemas', $set, $place, $keywords);
+        }
+
+        $read = $this->read('dependentSchemas', $schema, $place);
+        if ($read === null) {
+            return null;
+        }
+
+        $branches = [['dependentSchemas', $set], ['dependentSchemas', $read]];
+        if (!$this->namesOwnProperties($branches, $place, $keywords, 'it') || $this->namesAlwaysSet($branches, $place, 'it')) {
+            return null;
+        }
+
+        $checks = $this->checks('dependentSchemas', $read, $place);
+        if ($checks === null) {
+            return null;
+        }
+
+        return $this->builder->condition(['if' => $this->checks('dependentSchemas', $set, $place) ?? [], 'then' => $checks, 'else' => []], $place->location());
+    }
+
+    /**
+     * Not of a schema of the class.
+     *
+     * @param 'not'|'dependentSchemas' $keyword
+     * @param BranchShape $read
+     */
+    private function negation(string $keyword, array $read, Schema $place, Keywords $keywords): ?ConstraintSpec
+    {
+        $branches = [[$keyword, $read]];
+        if (!$this->namesOwnProperties($branches, $place, $keywords, 'it') || $this->namesAlwaysSet($branches, $place, 'it')) {
+            return null;
+        }
+
+        $checks = $this->checks($keyword, $read, $place);
+        $inner = $checks === null ? null : $this->builder->asNew($keyword, $checks, $place->location());
+        if ($inner === null) {
+            return null;
+        }
+
+        return ConstraintSpec::runtime('Not', $inner === [] ? [] : [AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner))]);
+    }
+
     private function condition(Schema $place, Keywords $keywords): ?ConstraintSpec
     {
         // The first branch that is not checked leaves the others unread, so it gets the only warning.
-        $if = $this->read('if', $place);
+        $if = $this->branch('if', $place);
         if ($if === null) {
             return null;
         }
 
-        $then = $this->read('then', $place);
+        $then = $this->branch('then', $place);
         if ($then === null) {
             return null;
         }
 
-        $else = $this->read('else', $place);
+        $else = $this->branch('else', $place);
         if ($else === null) {
             return null;
         }
 
-        $branches = ['if' => $if, 'then' => $then, 'else' => $else];
-        if (!$this->namesOwnProperties($branches, $place, $keywords) || $this->namesAlwaysSet($branches, $place)) {
+        $branches = [['if', $if], ['then', $then], ['else', $else]];
+        if (!$this->namesOwnProperties($branches, $place, $keywords, 'the condition') || $this->namesAlwaysSet($branches, $place, 'the condition')) {
             return null;
         }
 
@@ -121,13 +227,19 @@ final class ClassConditions
      *
      * @return BranchShape|null none for a missing branch, null for one that is not checked
      */
-    private function read(string $branch, Schema $place): ?array
+    private function branch(string $branch, Schema $place): ?array
     {
-        if (!$place->hasKeyword($branch)) {
-            return [[], []];
-        }
+        return $place->hasKeyword($branch) ? $this->read($branch, $place->keyword($branch), $place) : [[], []];
+    }
 
-        $value = $place->keyword($branch);
+    /**
+     * @param non-empty-string $branch the keyword that holds the schema, as warnings name it
+     * @param JsonValue $value
+     *
+     * @return BranchShape|null null for a schema that is not checked
+     */
+    private function read(string $branch, $value, Schema $place): ?array
+    {
         if ($value === true) {
             return [[], []];
         }
@@ -163,12 +275,13 @@ final class ClassConditions
     }
 
     /**
-     * @param array{if: BranchShape, then: BranchShape, else: BranchShape} $branches
+     * @param list<array{non-empty-string, BranchShape}> $branches each schema with the keyword warnings name it by
+     * @param 'the condition'|'it' $subject what a warning says is not checked
      */
-    private function namesOwnProperties(array $branches, Schema $place, Keywords $keywords): bool
+    private function namesOwnProperties(array $branches, Schema $place, Keywords $keywords, string $subject): bool
     {
         $named = [];
-        foreach ($branches as $branch => [$properties, $required]) {
+        foreach ($branches as [$branch, [$properties, $required]]) {
             foreach (array_merge(array_column($properties, 0), $required) as $name) {
                 $named[] = [$name, $branch];
             }
@@ -186,8 +299,8 @@ final class ClassConditions
 
         [$name, $branch] = $foreign[0];
         $this->diagnostics->warning($this->inherits && $this->declares($keywords, $name)
-            ? sprintf('"%s" names "%s", which this class inherits; the condition is not checked: write it in the schema that declares its properties.', $branch, $name)
-            : sprintf('"%s" names "%s", which is not a property of this class; the condition is not checked.', $branch, $name), $place->location());
+            ? sprintf('"%s" names "%s", which this class inherits; %s is not checked: write it in the schema that declares its properties.', $branch, $name, $subject)
+            : sprintf('"%s" names "%s", which is not a property of this class; %s is not checked.', $branch, $name, $subject), $place->location());
 
         return false;
     }
@@ -195,18 +308,19 @@ final class ClassConditions
     /**
      * A property with a default is always set, as the DTO cannot tell a missing key from it: whether it is missing,
      * and what a missing one holds, decide a condition differently than the schema does. In `then` and `else`,
-     * `required` is met anyway.
+     * `required` is met anyway; in `if`, `not` and `dependentSchemas` it decides.
      *
-     * @param array{if: BranchShape, then: BranchShape, else: BranchShape} $branches
+     * @param list<array{non-empty-string, BranchShape}> $branches
+     * @param 'the condition'|'it' $subject
      */
-    private function namesAlwaysSet(array $branches, Schema $place): bool
+    private function namesAlwaysSet(array $branches, Schema $place, string $subject): bool
     {
-        foreach ($branches as $branch => [$properties, $required]) {
-            $names = array_merge(array_column($properties, 0), $branch === 'if' ? $required : []);
+        foreach ($branches as [$branch, [$properties, $required]]) {
+            $names = array_merge(array_column($properties, 0), in_array($branch, ['then', 'else'], true) ? [] : $required);
             foreach ($names as $name) {
                 $default = $this->own[$name]->default();
                 if ($default instanceof DefaultValue && $default->value() !== null) {
-                    $this->diagnostics->warning(sprintf('"%s" names "%s", which has a default and is always set; the condition is not checked.', $branch, $name), $place->location());
+                    $this->diagnostics->warning(sprintf('"%s" names "%s", which has a default and is always set; %s is not checked.', $branch, $name, $subject), $place->location());
 
                     return true;
                 }
@@ -219,7 +333,7 @@ final class ClassConditions
     /**
      * Property for each property schema that checks something, then Present for `required`.
      *
-     * @param 'if'|'then'|'else' $branch
+     * @param non-empty-string $branch
      * @param BranchShape $read
      *
      * @return list<ConstraintSpec>|null

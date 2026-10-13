@@ -281,6 +281,34 @@ final class RealSymfonyTest extends TestCase
     }
 
     /**
+     * not on a class and on a property, dependentSchemas, and prefixItems with unevaluatedItems; Count needs no "new"
+     * and so is checked on PHP 8.0 too.
+     *
+     * @dataProvider targets
+     */
+    public function testChecksNegationsDependenciesAndTuples(string $php): void
+    {
+        $this->runTarget($php, function (string $namespace, bool $annotations) use ($php): void {
+            $paths = function (array $data) use ($namespace, $annotations): array {
+                $ticket = $this->serializer($annotations)->denormalize($data, $namespace . '\Ticket');
+                self::assertIsObject($ticket);
+
+                return $this->violationPaths($ticket, $annotations);
+            };
+            $nested = $php !== '8.0';
+
+            self::assertSame([], $paths(['code' => 'A1', 'card' => '4242', 'holder' => 'Ann', 'seat' => ['B', 12]]));
+            self::assertSame([], $paths(['voucher' => 'SPRING', 'seat' => ['B']]));
+            self::assertSame($nested ? ['code'] : [], $paths(['code' => 'TEST']));
+            self::assertSame($nested ? [''] : [], $paths(['card' => '4242', 'holder' => 'Ann', 'voucher' => 'SPRING']));
+            self::assertSame($nested ? ['holder'] : [], $paths(['card' => '4242']));
+            self::assertSame($nested ? ['seat[0]', 'seat[1]'] : [], $paths(['seat' => ['ABC', 0]]));
+            self::assertSame($nested ? ['seat[0]'] : [], $paths(['seat' => [1]]));
+            self::assertSame(['seat'], $paths(['seat' => ['B', 1, 'x']]));
+        });
+    }
+
+    /**
      * Symfony's RegexValidator reports a failed preg_match() as a violation, so the pattern must hold any size.
      */
     public function testAcceptsLargeBase64(): void
@@ -605,7 +633,7 @@ final class RealSymfonyTest extends TestCase
         copy(__DIR__ . '/api.yaml', $dir . '/api.yaml');
         file_put_contents($dir . '/composer.json', '{}');
         // The bridge writes the runtime's constraints only for a project that has them.
-        file_put_contents($dir . '/composer.lock', (string) json_encode(['packages' => [['name' => 'msstc4symfony/dto-generator-bridge-runtime', 'version' => 'v1.1.0']]]));
+        file_put_contents($dir . '/composer.lock', (string) json_encode(['packages' => [['name' => 'msstc4symfony/dto-generator-bridge-runtime', 'version' => 'v1.2.0']]]));
         // Only the views name dto.readWriteModels, which a generator before 1.3 refuses.
         $dto = $variant === 'views' ? ['dto' => ['readWriteModels' => 'split']] : [];
         file_put_contents($dir . '/dto-generator.yaml', (string) json_encode($dto + [

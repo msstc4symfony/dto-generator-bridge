@@ -32,10 +32,16 @@ final class ClaimedConstraints
      * The keywords the generator calls unsupported and the runtime's constraints check; the bridge claims them and warns
      * where it cannot check one.
      */
-    public const KEYWORDS = ['dependentRequired', 'propertyNames', 'contains', 'minContains', 'maxContains', 'patternProperties', 'if', 'then', 'else'];
+    public const KEYWORDS = [
+        'dependentRequired', 'propertyNames', 'contains', 'minContains', 'maxContains', 'patternProperties', 'if', 'then', 'else', 'not',
+        'dependentSchemas', 'prefixItems', 'unevaluatedItems',
+    ];
 
     /** The branches of a condition, in the order IfThenElse takes them. */
     private const BRANCHES = ['if', 'then', 'else'];
+
+    /** The keywords besides `prefixItems` and `items` that evaluate elements, which unevaluatedItems would have to follow. */
+    private const EVALUATING = ['contains', 'if', 'then', 'else', 'oneOf', 'anyOf'];
 
     private ConstraintBuilder $builder;
 
@@ -277,6 +283,106 @@ final class ClaimedConstraints
     }
 
     /**
+     * The runtime's Not for each `not` of a value; a class checks its own from ValidatorEnricher. A schema that checks
+     * nothing leaves no value allowed but null, which stands for a missing one.
+     *
+     * @return list<ConstraintSpec>
+     */
+    public function negations(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
+    {
+        if ($keywords->describesObject() || $this->markClaimed($keywords, 'not') === [] || !$this->runtime->available('not', $at)) {
+            return [];
+        }
+
+        $constraints = [];
+        foreach ($keywords->schemas() as $place) {
+            if (!$place->hasKeyword('not') || $place->keyword('not') === false) {
+                continue;
+            }
+
+            $specs = $this->builder->subschema('not', $place->keyword('not'), $place->location(), $value, true);
+            if ($specs !== null && $specs !== [] && $specs[0]->is('IsNull')) {
+                $this->diagnostics->warning('"not" of null is not checked: null stands for a missing value.', $place->location());
+
+                continue;
+            }
+
+            $inner = $specs === null ? null : $this->builder->asNew('not', $specs, $place->location());
+            if ($inner !== null) {
+                $constraints[] = ConstraintSpec::runtime('Not', $inner === [] ? [] : [AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner))]);
+            }
+        }
+
+        return $constraints;
+    }
+
+    /**
+     * `dependentSchemas` names properties, which only a class checks, from ValidatorEnricher.
+     */
+    public function warnAboutDependencies(Keywords $keywords, SchemaLocation $at): void
+    {
+        if (!$keywords->describesObject() && $this->markClaimed($keywords, 'dependentSchemas') !== []) {
+            $this->diagnostics->warning('"dependentSchemas" is checked on classes only; it is not checked here.', $at);
+        }
+    }
+
+    /**
+     * Collection for each `prefixItems`, and for `unevaluatedItems` the length `false` allows or All for a schema that
+     * applies to every element. The generated type gives `items` to every element, and it evaluates every element the
+     * prefix leaves.
+     *
+     * @return list<ConstraintSpec>
+     */
+    public function tuples(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
+    {
+        $prefixed = $this->markClaimed($keywords, 'prefixItems') !== [];
+        $unevaluated = $this->markClaimed($keywords, 'unevaluatedItems');
+        if (!$value instanceof ListType) {
+            foreach (['prefixItems' => $prefixed, 'unevaluatedItems' => $unevaluated !== []] as $keyword => $present) {
+                if ($present) {
+                    $this->diagnostics->warning(sprintf('"%s" is checked on arrays only; it is not checked here.', $keyword), $at);
+                }
+            }
+
+            return [];
+        }
+
+        $itemized = $this->itemized($keywords);
+        $longest = 0;
+        $constraints = [];
+        foreach ($keywords->schemas() as $place) {
+            $longest = max($longest, $this->prefixLength($place));
+            $collection = $place->hasKeyword('prefixItems') ? $this->prefix($place, $value->item(), $itemized) : null;
+            if ($collection instanceof ConstraintSpec) {
+                $constraints[] = $collection;
+            }
+        }
+
+        if ($unevaluated === [] || $itemized) {
+            return $constraints;
+        }
+
+        if ($this->evaluatesElsewhere($keywords)) {
+            $this->diagnostics->warning('"unevaluatedItems" is checked only without "contains", "if", "then", "else", "oneOf" and "anyOf" beside it; it is not checked.', $at);
+
+            return $constraints;
+        }
+
+        foreach ($unevaluated as $setting) {
+            if ($setting === false) {
+                array_unshift($constraints, new ConstraintSpec('Count', [AttributeArgument::named('max', ArgumentValue::literal($longest))]));
+            } elseif ($setting !== true && $prefixed) {
+                $this->diagnostics->warning('"unevaluatedItems" is checked beside "prefixItems" only when false; it is not checked.', $at);
+            } elseif ($setting !== true) {
+                $specs = $this->builder->subschema('unevaluatedItems', $setting, $at, $value->item(), false);
+                array_push($constraints, ...($specs === null ? [] : $this->builder->each($specs, $at)));
+            }
+        }
+
+        return $constraints;
+    }
+
+    /**
      * A member of a union of several values is no value of its own here, so its keywords go unchecked, with a warning
      * at the value's schema (the property, or its items): a shared component may be checked through another value,
      * which marks it. A place that is a class checks its keywords itself.
@@ -385,5 +491,78 @@ final class ClaimedConstraints
         $constraints = $this->builder->subschema($keyword, $place->keyword($keyword), $place->location(), $type, false);
 
         return $constraints === null ? null : $this->builder->asNew($keyword, $constraints, $place->location());
+    }
+
+    /**
+     * The length of a place's `prefixItems`; none for a place without a list of them.
+     */
+    private function prefixLength(Schema $place): int
+    {
+        $entries = $place->hasKeyword('prefixItems') ? $place->keyword('prefixItems') : null;
+
+        return is_array($entries) && Json::isList($entries) ? count($entries) : 0;
+    }
+
+    /**
+     * Collection of the prefix's elements by index; null when none is checked, or the prefix is not, with a warning.
+     *
+     * @param bool $itemized whether `items` types every element, those of the prefix too
+     */
+    private function prefix(Schema $place, TypeModel $item, bool $itemized): ?ConstraintSpec
+    {
+        $at = $place->location();
+        $entries = $place->keyword('prefixItems');
+        if (!is_array($entries) || ($entries !== [] && !Json::isList($entries))) {
+            $this->diagnostics->warning('"prefixItems" is checked only with a list of schemas; it is not checked.', $at);
+
+            return null;
+        }
+
+        if ($itemized) {
+            $this->diagnostics->warning('"prefixItems" is checked only without "items", which the generated type gives to every element; it is not checked.', $at);
+
+            return null;
+        }
+
+        $fields = [];
+        foreach ($entries as $index => $entry) {
+            $specs = $this->builder->subschema('prefixItems', Json::value($entry), $at, $item, false);
+            $inner = $specs === null ? null : $this->builder->asNew('prefixItems', $specs, $at);
+            if ($inner === null) {
+                return null;
+            }
+
+            if ($inner !== []) {
+                $fields[$index] = ArgumentValue::listOf(...$inner);
+            }
+        }
+
+        return $fields === [] ? null : new ConstraintSpec('Collection', [
+            AttributeArgument::named('fields', ArgumentValue::mapOf($fields)),
+            AttributeArgument::named('allowExtraFields', ArgumentValue::literal(true)),
+            AttributeArgument::named('allowMissingFields', ArgumentValue::literal(true)),
+        ]);
+    }
+
+    private function itemized(Keywords $keywords): bool
+    {
+        foreach ($keywords->schemas() as $place) {
+            if ($place->items() instanceof Schema) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function evaluatesElsewhere(Keywords $keywords): bool
+    {
+        foreach (self::EVALUATING as $keyword) {
+            if ($keywords->has($keyword)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

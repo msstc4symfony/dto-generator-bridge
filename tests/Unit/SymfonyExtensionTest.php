@@ -36,7 +36,7 @@ final class SymfonyExtensionTest extends TestCase
         (new SymfonyExtension())->register($auto, []);
         (new SymfonyExtension())->register($off, ['validator' => false]);
 
-        self::assertSame(['dependentRequired', 'propertyNames', 'contains', 'minContains', 'maxContains', 'patternProperties', 'if', 'then', 'else'], $auto->keywords);
+        self::assertSame(['dependentRequired', 'propertyNames', 'contains', 'minContains', 'maxContains', 'patternProperties', 'if', 'then', 'else', 'not', 'dependentSchemas', 'prefixItems', 'unevaluatedItems'], $auto->keywords);
         self::assertSame([], $off->keywords);
     }
 

@@ -18,8 +18,9 @@ Symfony versions in your `composer.lock`.
 ## Features
 
 - **Validator constraints** from `required`, string, number and array keywords, `enum`, `const`, formats, nested
-  objects and collection items, and `dependentRequired`, `propertyNames`, `contains`, `patternProperties` and
-  `if`/`then`/`else` through the runtime's own constraints — [the full table](#validator-constraints).
+  objects and collection items, `prefixItems` and `unevaluatedItems`, and `dependentRequired`, `propertyNames`,
+  `contains`, `patternProperties`, `if`/`then`/`else`, `not` and `dependentSchemas` through the runtime's own
+  constraints — [the full table](#validator-constraints).
 - **Serializer attributes** for wire names, discriminator maps, date formats, groups and ignored properties —
   [the full table](#serializer-attributes).
 - **Version-aware output** for Symfony 5.4, 6.4, 7.x and 8.x: the right namespaces, arguments and fallbacks for each,
@@ -35,7 +36,7 @@ Symfony versions in your `composer.lock`.
 ## Requirements
 
 - PHP >= 7.4 (the bridge runs inside the generator, which supports PHP 7.4).
-- `msstc4php/dto-generator` ^1.4 and `msstc4symfony/dto-generator-bridge-runtime` ^1.1 (both installed with the
+- `msstc4php/dto-generator` ^1.4 and `msstc4symfony/dto-generator-bridge-runtime` ^1.2 (both installed with the
   bridge).
 - In the application that uses the DTOs: `symfony/validator` and/or `symfony/serializer` 5.4, 6.4, 7.x or 8.x. By
   default the bridge writes constraints and attributes only for the components it finds in `composer.lock`.
@@ -105,6 +106,12 @@ nullable `oneOf`/`anyOf` (all apply, as in JSON Schema 2020-12):
 | `patternProperties` on a class, for the declared properties whose names match | the constraints of the pattern's schema, on each of them |
 | `if` / `then` / `else` on a property or the items of a collection | `RuntimeAssert\IfThenElse` (not on PHP 8.0) |
 | `if` / `then` / `else` on a class | `RuntimeAssert\IfThenElse` of `Property` and `Present`, on the class (not on PHP 8.0) |
+| `not` on a property or the items of a collection | `RuntimeAssert\Not` (its nested constraints not on PHP 8.0) |
+| `not` on a class | `RuntimeAssert\Not` of `Property` and `Present`, on the class (its nested constraints not on PHP 8.0) |
+| `dependentSchemas` on a class | `RuntimeAssert\IfThenElse` with `Present` of the property in `if`, or `Not` of it for `false`, on the class (not on PHP 8.0) |
+| `prefixItems` on a list | `Collection` of the elements by index, extra and missing ones allowed (not on PHP 8.0) |
+| `unevaluatedItems: false` on a list | `Count(max: …)`, the length of the longest `prefixItems` |
+| an `unevaluatedItems` schema on a list without `prefixItems` | `All`, as `items` |
 
 `x-validator-groups: [api]` sets the groups of a property instead of `groups`; `Default` is added to either, unless
 `x-validator-groups-exclusive: true`. `x-validator-skip: true` leaves a property alone. On PHP 7.4 the constraints are
@@ -146,8 +153,8 @@ warning, as in the generator. A `minContains` or `maxContains` without `contains
 JSON Schema ignores it there.
 They follow JSON Schema with these limits:
 
-- **Subschemas** (of `contains`, `propertyNames`, `patternProperties`, `if`, `then`, `else`, and of the properties
-  in a class's branches) must be flat: `type`, `format`, `enum`, `const`, the string and number keywords,
+- **Subschemas** (of `contains`, `propertyNames`, `patternProperties`, `if`, `then`, `else`, `not`, `prefixItems`,
+  `unevaluatedItems`, and of the properties in a class's branches, its `not` and its `dependentSchemas`) must be flat: `type`, `format`, `enum`, `const`, the string and number keywords,
   annotations and `x-` keys. A `$ref`, `properties`, `items`, `allOf` and the like, a `type` narrower than the value's
   PHP type (`type: integer` in a list of strings), a keyword the bridge cannot turn into a constraint (a `pattern`
   PHP cannot run) or a value that is no string, number, boolean or PHP enum and not of any type (an object, a list)
@@ -195,8 +202,26 @@ They follow JSON Schema with these limits:
   is not checked. As with
   `dependentRequired`, a condition of a parent's schema is left to the parent, and one in the child's schema that
   names inherited properties gives a warning.
+- **`not`** becomes `Not` of the constraints of its schema: a value they find nothing wrong with is a violation. A
+  schema that checks nothing (`{}`, `true`, annotations only) leaves no value but a missing one, and `not: false`
+  forbids nothing. As with `if`, `null` is not checked: it stands for a missing value, so `not` of a schema that
+  allows `null` alone gives a warning. On a class, `not` holds `properties` and `required` as the branches of a
+  condition do, with the same warnings about names, defaults and inherited properties.
+- **`dependentSchemas`** is checked on classes only: for each property it names, the schema (`properties` and
+  `required`, as in a condition) applies when the property is set; a `false` schema forbids the property. A name or
+  a property of its schema that is no property of the class, a named property with a default (always set), and a
+  value that is not a class give a warning; a dependency of a parent's schema is left to the parent.
+- **`prefixItems`** checks each element of the prefix by its index with Symfony's `Collection`, which lets shorter and
+  longer lists through. The generated type gives `items` to every element, the prefix's too, so `prefixItems` beside
+  any `items` gives a warning and is not checked. An element's schema is that of a value of any type: its string and
+  number keywords need one `type`, and a `type` without `null` gets `NotNull`.
+- **`unevaluatedItems`** has no effect beside `items`. Beside `contains`, `if`, `then`, `else`, `oneOf` or `anyOf`,
+  which evaluate elements too, it gives a warning; `false` allows no element beyond the longest `prefixItems`
+  (`Count`), and a schema checks every element (`All`) when there is no `prefixItems`, and gives a warning beside
+  one. `unevaluatedProperties` is not checked: a DTO drops the undeclared properties it would judge, so the
+  generator's warning stays.
 - `x-validator-skip` and `x-validator-groups` on a class's schema apply to `DependentRequired`, to the conditions of
-  the class, to the `Keys` and `PatternProperty` of `$additionalProperties` and to the constraints the patterns give
+  the class, its `not` and `dependentSchemas`, to the `Keys` and `PatternProperty` of `$additionalProperties` and to the constraints the patterns give
   declared properties; those on the schema of a property or of `additionalProperties` apply to its own constraints
   only.
 

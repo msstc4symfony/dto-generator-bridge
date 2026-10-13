@@ -6,6 +6,18 @@ All notable changes to this package are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `not` gets `Not` of `msstc4symfony/dto-generator-bridge-runtime` 1.2, on values and on classes (`properties` and
+  `required`), and `dependentSchemas` on classes gets `IfThenElse` with `Present` (or `Not` for a `false` schema).
+- `prefixItems` gets Symfony's `Collection` of the prefix's elements, `unevaluatedItems: false` a `Count` of the longest
+  prefix, and an `unevaluatedItems` schema without `prefixItems` an `All`. The bridge claims `not`, `dependentSchemas`,
+  `prefixItems` and `unevaluatedItems` from the generator and warns where it cannot check one.
+
+### Changed
+
+- The bridge requires `msstc4symfony/dto-generator-bridge-runtime` ^1.2.
+
 ## [1.3.0] - 2026-10-13
 
 ### Added

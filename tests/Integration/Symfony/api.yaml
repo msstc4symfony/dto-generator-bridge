@@ -74,6 +74,17 @@ components:
         - if: {properties: {kind: {const: letter}}, required: [kind]}
           then: {properties: {weight: {maximum: 50}}}
       patternProperties: {'^x-': {maxLength: 3}}
+    Ticket:
+      type: object
+      properties:
+        code: {type: string, not: {enum: [TEST, DEMO]}}
+        card: {type: string}
+        holder: {type: string}
+        voucher: {type: string}
+        seat: {type: array, prefixItems: [{type: string, maxLength: 2}, {type: integer, minimum: 1}], unevaluatedItems: false}
+      not: {required: [card, voucher]}
+      dependentSchemas:
+        card: {required: [holder]}
     Animal:
       oneOf:
         - {$ref: '#/components/schemas/Cat'}

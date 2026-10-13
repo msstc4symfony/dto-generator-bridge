@@ -62,7 +62,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         $runtime = new RuntimeConstraints($context->packages(), $diagnostics);
         $this->classes[$context->class()->name()->fqcn()] = new ClassKeywords($keywords, $schema->location(), $groups, $this->patterns($context, $keywords));
         $this->warnAboutNamesNotKept($context, $keywords);
-        foreach (['dependentRequired', 'if', 'then', 'else'] as $keyword) {
+        foreach (['dependentRequired', 'if', 'then', 'else', 'not', 'dependentSchemas'] as $keyword) {
             $this->markChecked($context, $keywords, $keyword);
         }
 
@@ -98,15 +98,18 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
     /**
      * @param list<non-empty-string> $groups
      *
-     * @return list<ConstraintSpec> IfThenElse for each condition the class checks
+     * @return list<ConstraintSpec> IfThenElse for each condition and dependency the class checks, Not for each negation
      */
     private function conditions(ClassContext $context, Keywords $keywords, ConstraintBuilder $builder, RuntimeConstraints $runtime, array $groups): array
     {
-        if (ClaimedConstraints::conditionPlaces($keywords) === [] || !$runtime->available('if', $context->schema()->location())) {
-            return [];
-        }
+        $at = $context->schema()->location();
+        $class = new ClassConditions($context->class(), $builder, $context->diagnostics(), $groups);
 
-        return (new ClassConditions($context->class(), $builder, $context->diagnostics(), $groups))->of($keywords);
+        return array_merge(
+            ClaimedConstraints::conditionPlaces($keywords) !== [] && $runtime->available('if', $at) ? $class->of($keywords) : [],
+            $keywords->has('not') && $runtime->available('not', $at) ? $class->negations($keywords) : [],
+            $keywords->has('dependentSchemas') && $runtime->available('dependentSchemas', $at) ? $class->dependencies($keywords) : [],
+        );
     }
 
     /**
