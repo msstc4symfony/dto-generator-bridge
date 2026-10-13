@@ -102,7 +102,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
      */
     private function conditions(ClassContext $context, Keywords $keywords, ConstraintBuilder $builder, RuntimeConstraints $runtime, array $groups): array
     {
-        if (ConstraintBuilder::conditionPlaces($keywords) === [] || !$runtime->available('if', $context->schema()->location())) {
+        if (ClaimedConstraints::conditionPlaces($keywords) === [] || !$runtime->available('if', $context->schema()->location())) {
             return [];
         }
 
