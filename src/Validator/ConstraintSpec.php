@@ -13,6 +13,8 @@ use MSSTC4PHP\DtoGenerator\Domain\Model\ImportAlias;
 /**
  * One Validator constraint to write: as an attribute, or as `new` inside a composite constraint. Symfony's, or one of
  * msstc4symfony/dto-generator-bridge-runtime for the keywords Symfony has none for.
+ *
+ * @internal
  */
 final class ConstraintSpec
 {

@@ -6,6 +6,8 @@ namespace Msstc4Symfony\DtoGeneratorBridge\Validator;
 
 /**
  * An ECMA-262 `\u` escape: four hex digits or `{…}`, a UTF-16 surrogate pair joined into one code point.
+ *
+ * @internal
  */
 final class UnicodeEscape
 {

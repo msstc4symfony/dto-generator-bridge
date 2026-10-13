@@ -10,6 +10,8 @@ use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaLocation;
 
 /**
  * Whether the project has the runtime constraints: generated code naming a missing class fails only when validated.
+ *
+ * @internal
  */
 final class RuntimeConstraints
 {

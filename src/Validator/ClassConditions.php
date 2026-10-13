@@ -25,6 +25,8 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
  * A branch of a condition: the wire names of `properties`, each with its schema, and the wire names `required` lists.
  *
  * @phpstan-type BranchShape array{list<array{string, JsonValue}>, list<string>}
+ *
+ * @internal
  */
 final class ClassConditions
 {

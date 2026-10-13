@@ -6,6 +6,8 @@ namespace Msstc4Symfony\DtoGeneratorBridge\Validator;
 
 /**
  * A JSON Schema `pattern` (ECMA-262) as a PCRE regular expression for Symfony's Regex constraint.
+ *
+ * @internal
  */
 final class Pattern
 {

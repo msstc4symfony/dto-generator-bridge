@@ -14,6 +14,8 @@ use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
  * other than null has to satisfy it). Values compare as JSON does: 1 and 1.0 are the same number.
  *
  * @phpstan-import-type JsonValue from Json
+ *
+ * @internal
  */
 final class Keywords
 {

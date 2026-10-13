@@ -13,6 +13,8 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
  * One entry of `patternProperties`: the pattern as PCRE and the schema of the properties whose names match it.
  *
  * @phpstan-import-type JsonValue from Json
+ *
+ * @internal
  */
 final class PatternSchema
 {

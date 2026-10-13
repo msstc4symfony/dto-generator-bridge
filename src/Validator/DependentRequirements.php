@@ -19,6 +19,8 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
  * is left to the class of that schema; any other pair with an inherited property is not checked.
  *
  * @phpstan-import-type JsonValue from Json
+ *
+ * @internal
  */
 final class DependentRequirements
 {

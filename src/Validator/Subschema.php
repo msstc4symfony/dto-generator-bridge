@@ -27,6 +27,8 @@ use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
  * value of any type it gives a Type constraint.
  *
  * @phpstan-import-type JsonValue from Json
+ *
+ * @internal
  */
 final class Subschema
 {

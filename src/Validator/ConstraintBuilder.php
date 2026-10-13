@@ -29,6 +29,8 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
  * The constraints a value's schema and type call for (bridge spec §5.1), in the order of that table.
  *
  * @phpstan-import-type JsonValue from Json
+ *
+ * @internal
  */
 final class ConstraintBuilder
 {

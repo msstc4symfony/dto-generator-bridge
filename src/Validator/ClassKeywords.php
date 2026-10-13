@@ -10,6 +10,8 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
 /**
  * What the properties of a checked class need from its schema: `propertyNames` and `patternProperties` are keywords of
  * the class, checked on its properties, whose contexts do not carry the class's schema.
+ *
+ * @internal
  */
 final class ClassKeywords
 {
