@@ -47,6 +47,34 @@ final class Keywords
         return $this->resolved;
     }
 
+    /**
+     * Every place the keywords come from: the schema, the links of its `$ref` chain and its `allOf` branches.
+     *
+     * @return list<Schema> nearest first
+     */
+    public function schemas(): array
+    {
+        return $this->schemas;
+    }
+
+    /**
+     * The `oneOf`/`anyOf` members the keywords leave out: those of a union with more than one member besides null, which
+     * the generator types as several values.
+     *
+     * @return list<Schema>
+     */
+    public function unreachedMembers(): array
+    {
+        $members = [];
+        foreach ($this->schemas as $schema) {
+            if (!$this->soleValueMember($schema) instanceof Schema) {
+                array_push($members, ...$schema->oneOf(), ...$schema->anyOf());
+            }
+        }
+
+        return $members;
+    }
+
     public function has(string $name): bool
     {
         return $this->values($name) !== [];
@@ -100,21 +128,6 @@ final class Keywords
         }
 
         return $allowed;
-    }
-
-    /**
-     * Whether one `enum` allows fewer values than another.
-     */
-    public function narrowsEnum(): bool
-    {
-        $allowed = $this->enum() ?? [];
-        foreach ($this->enums() as $enum) {
-            if (count($allowed) < count($enum)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**

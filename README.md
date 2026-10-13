@@ -18,7 +18,8 @@ Symfony versions in your `composer.lock`.
 ## Features
 
 - **Validator constraints** from `required`, string, number and array keywords, `enum`, `const`, formats, nested
-  objects and collection items — [the full table](#validator-constraints).
+  objects and collection items, and `dependentRequired`, `propertyNames`, `contains`, `patternProperties` and
+  `if`/`then`/`else` through the runtime's own constraints — [the full table](#validator-constraints).
 - **Serializer attributes** for wire names, discriminator maps, date formats, groups and ignored properties —
   [the full table](#serializer-attributes).
 - **Version-aware output** for Symfony 5.4, 6.4, 7.x and 8.x: the right namespaces, arguments and fallbacks for each,
@@ -34,7 +35,7 @@ Symfony versions in your `composer.lock`.
 ## Requirements
 
 - PHP >= 7.4 (the bridge runs inside the generator, which supports PHP 7.4).
-- `msstc4php/dto-generator` ^1.3 and `msstc4symfony/dto-generator-bridge-runtime` ^1.0 (both installed with the
+- `msstc4php/dto-generator` ^1.4 and `msstc4symfony/dto-generator-bridge-runtime` ^1.1 (both installed with the
   bridge).
 - In the application that uses the DTOs: `symfony/validator` and/or `symfony/serializer` 5.4, 6.4, 7.x or 8.x. By
   default the bridge writes constraints and attributes only for the components it finds in `composer.lock`.
@@ -88,7 +89,7 @@ nullable `oneOf`/`anyOf` (all apply, as in JSON Schema 2020-12):
 | `multipleOf` | `DivisibleBy` |
 | `minItems` / `maxItems`, `minProperties` / `maxProperties` | `Count` |
 | `uniqueItems` | `Unique` |
-| `enum`, unless the property is a PHP enum | `Choice` |
+| `enum` | `Choice`; on a PHP enum only when it allows fewer cases (one beside a `$ref`), with the cases |
 | `const` | `IdenticalTo`, `IsNull` |
 | `format`: `email`, `ipv4`, `ipv6`, `hostname`, `uuid` | `Email(mode: 'html5')`, `Ip`, `Hostname(requireTld: false)`, `Uuid` |
 | `format: int32` | `Range(min: -2147483648, max: 2147483647)`, merged with `minimum` / `maximum` / `exclusive*` |
@@ -97,6 +98,13 @@ nullable `oneOf`/`anyOf` (all apply, as in JSON Schema 2020-12):
 | `format: time` | `Regex` for an RFC 3339 `full-time`: `08:30:06Z`, `23:59:60.5-08:00` |
 | an object or a collection of objects | `Valid` |
 | constraints of `items` / `additionalProperties` | `All` (not on PHP 8.0, whose attributes allow no `new`) |
+| `contains`, `minContains` / `maxContains` on a list | `RuntimeAssert\Contains` (its nested constraints not on PHP 8.0) |
+| `propertyNames` on a map, or on a class with `$additionalProperties` | `RuntimeAssert\Keys` (not on PHP 8.0, as it needs nested ones) |
+| `dependentRequired` on a class | `RuntimeAssert\DependentRequired`, on the class |
+| `patternProperties` on a map, or on a class with `$additionalProperties` | `RuntimeAssert\PatternProperty` for each pattern (its nested constraints not on PHP 8.0) |
+| `patternProperties` on a class, for the declared properties whose names match | the constraints of the pattern's schema, on each of them |
+| `if` / `then` / `else` on a property or the items of a collection | `RuntimeAssert\IfThenElse` (not on PHP 8.0) |
+| `if` / `then` / `else` on a class | `RuntimeAssert\IfThenElse` of `Property` and `Present`, on the class (not on PHP 8.0) |
 
 `x-validator-groups: [api]` sets the groups of a property instead of `groups`; `Default` is added to either, unless
 `x-validator-groups-exclusive: true`. `x-validator-skip: true` leaves a property alone. On PHP 7.4 the constraints are
@@ -125,6 +133,72 @@ group only per percent-encoded octet, so a value of any size passes unless it ho
 leap second only as `23:59:60` in UTC (`Z`, `+00:00`, `-00:00`) and at minute 59 with an offset of whole hours; the
 hour, and the minute beside an offset such as `+05:30`, are not checked, since that needs arithmetic, so such values
 pass where JSON Schema's test suite expects a failure.
+
+`RuntimeAssert` is `Msstc4Symfony\DtoGeneratorBridge\Runtime\Constraints` of
+[`msstc4symfony/dto-generator-bridge-runtime`](https://github.com/msstc4symfony/dto-generator-bridge-runtime#constraints),
+which the application needs in production then; without it in `composer.lock` the bridge warns and writes none of
+them. The bridge claims these keywords (unless `validator: false`) and marks each occurrence it checks or warns
+about, such as one in a member of a `oneOf`/`anyOf` with several members, which is not checked. The generator still
+calls the others unsupported: those written beside a `$ref` to a class (write them in the class's schema), those of
+a property or a class with `x-validator-skip`, and all of them when the bridge writes no Validator constraints (no
+`symfony/validator`, `target.metadata: none`). In a schema with `x-php-type` they are not checked, without a
+warning, as in the generator. A `minContains` or `maxContains` without `contains` in the same schema gives a warning:
+JSON Schema ignores it there.
+They follow JSON Schema with these limits:
+
+- **Subschemas** (of `contains`, `propertyNames`, `patternProperties`, `if`, `then`, `else`, and of the properties
+  in a class's branches) must be flat: `type`, `format`, `enum`, `const`, the string and number keywords,
+  annotations and `x-` keys. A `$ref`, `properties`, `items`, `allOf` and the like, a `type` narrower than the value's
+  PHP type (`type: integer` in a list of strings), a keyword the bridge cannot turn into a constraint (a `pattern`
+  PHP cannot run) or a value that is no string, number, boolean or PHP enum and not of any type (an object, a list)
+  give a warning, and the keyword is not checked, rather than checked in part. A schema of annotations only accepts
+  every value; one whose `type` or `enum` allows `null` alone gets `IsNull`. On a PHP enum only `type`, `const` and
+  `enum` apply, compared with its cases (on a target without PHP enums the value is its plain string or int, which
+  the other keywords check too). On a value of any type (an untyped property, the values of a map without an
+  `additionalProperties` schema) `type` gives a `Type` constraint, and the string and number keywords need exactly
+  one `type` among `string`, `integer`, `number` and `boolean`, as Symfony would check them on other kinds of values
+  too; a `const` or `enum` with a whole number needs a `type` that admits no float (`integer`, not `number`), as PHP
+  tells `0` from `0.0`. Where `null` is a
+  value (an element, a map value), a schema that rejects it (a `type`, `const` or `enum` without it) gets `NotNull`
+  beside its constraints, which let `null` pass; `if`, `then` and `else` are the exception, below.
+- **`contains`** counts the elements that pass the constraints of its schema, each checked on its own;
+  `minContains` (1 by default) and `maxContains` of the same schema bound the count, and `minContains: 0` alone
+  checks nothing. Each `contains` (in `allOf` branches, or behind a `$ref`) must hold with its own bounds.
+- **`propertyNames`** checks each key of a map, or of `$additionalProperties`; the names of declared properties come
+  from the schema itself and are not checked. On a class without `$additionalProperties` it gives a warning (with
+  `additionalProperties: false` nothing is left to check). A violation is reported at `labels[key]` with the key as
+  its value, the same path as the violations of the value under that key.
+- **`dependentRequired`** reads a property as present when it is not `null`: like the rest of the DTO, it cannot tell
+  a missing key from `null`, so a pair whose first property has a default is not checked (it is always present),
+  with a warning. A name that is not a property of the class gives a warning and leaves its pair out. A class that
+  extends another (`allOf` with a `$ref`) does not know the inherited properties: a pair the parent's schema lists
+  is left to the parent, and any other pair with an inherited property gives a warning. Each missing property is
+  one violation at its own path.
+- **`patternProperties`** checks the value under each key a pattern matches: with `PatternProperty` on a map and on
+  `$additionalProperties`, reported at `labels[key]`; on a declared property whose wire name matches, the bridge
+  matches it while generating and writes the constraints of the pattern's schema on the property itself, where a
+  missing value (`null`) passes them. A pattern of a child's schema that matches a property the class inherits gives a
+  warning: the property belongs to the parent, which checks only the patterns of the schemas that declare it. A class
+  without `$additionalProperties` of its own gives a warning: the undeclared properties the patterns would check are
+  not kept. Beside an `additionalProperties` schema it warns too: the
+  generated type gives that schema's type to every undeclared property, including those the patterns match, which
+  JSON Schema exempts from it. A pattern PHP cannot run gives a warning and is left out; `additionalProperties:
+  false` still leaves the keys outside the patterns unchecked.
+- **`if`**, **`then`** and **`else`** become one `IfThenElse` per schema that holds `if` with `then` or `else` (an
+  `if` alone, or a `then` without `if`, has no effect and is not written). The value matches `if` when its
+  constraints find nothing. `null` is not checked, also where it is a value (a nullable element passes whatever the
+  branches say). On a class, the branches may hold `type: object` (always true there), `properties` (each checked by
+  `Property` with the constraints of its flat schema; a missing property passes, as in JSON Schema) and `required`
+  (`Present`), by wire names the bridge turns into PHP names. Names that are no property of the class, a property
+  with a default under `properties` or in the `required` of `if` (the DTO cannot tell it from a missing one), any
+  other keyword in a branch, or a branch that is no schema (`if: false` included) give a warning, and the condition
+  is not checked. As with
+  `dependentRequired`, a condition of a parent's schema is left to the parent, and one in the child's schema that
+  names inherited properties gives a warning.
+- `x-validator-skip` and `x-validator-groups` on a class's schema apply to `DependentRequired`, to the conditions of
+  the class, to the `Keys` and `PatternProperty` of `$additionalProperties` and to the constraints the patterns give
+  declared properties; those on the schema of a property or of `additionalProperties` apply to its own constraints
+  only.
 
 `format: byte` takes the standard alphabet only: base64url (`-`, `_`), MIME base64 with line breaks, a trailing newline
 and padding inside the string are rejected. The pattern checks the characters and that up to two `=` only end the

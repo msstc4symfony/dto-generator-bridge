@@ -28,6 +28,18 @@ final class SymfonyExtensionTest extends TestCase
         self::assertSame(['x-validator-*', 'x-serializer-*'], $registry->claimed);
     }
 
+    public function testClaimsTheKeywordsItChecksUnlessTheValidatorIsOff(): void
+    {
+        $auto = $this->registry();
+        $off = $this->registry();
+
+        (new SymfonyExtension())->register($auto, []);
+        (new SymfonyExtension())->register($off, ['validator' => false]);
+
+        self::assertSame(['dependentRequired', 'propertyNames', 'contains', 'minContains', 'maxContains', 'patternProperties', 'if', 'then', 'else'], $auto->keywords);
+        self::assertSame([], $off->keywords);
+    }
+
     public function testRefusesASectionItCannotUse(): void
     {
         $this->expectException(InvalidArgumentException::class);
@@ -37,13 +49,16 @@ final class SymfonyExtensionTest extends TestCase
     }
 
     /**
-     * @return ExtensionRegistry&object{claimed: list<string>}
+     * @return ExtensionRegistry&object{claimed: list<string>, keywords: list<string>}
      */
     private function registry(): ExtensionRegistry
     {
         return new class implements ExtensionRegistry {
             /** @var list<string> */
             public array $claimed = [];
+
+            /** @var list<string> */
+            public array $keywords = [];
 
             public function addPropertyEnricher(PropertyEnricher $enricher): void
             {
@@ -60,6 +75,11 @@ final class SymfonyExtensionTest extends TestCase
             public function claimExtensionKeys(string ...$globs): void
             {
                 array_push($this->claimed, ...$globs);
+            }
+
+            public function claimKeywords(string ...$keywords): void
+            {
+                array_push($this->keywords, ...$keywords);
             }
         };
     }

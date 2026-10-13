@@ -7,6 +7,7 @@ namespace Msstc4Symfony\DtoGeneratorBridge;
 use MSSTC4PHP\DtoGenerator\Contract\Extension;
 use MSSTC4PHP\DtoGenerator\Contract\ExtensionRegistry;
 use Msstc4Symfony\DtoGeneratorBridge\Serializer\SerializerEnricher;
+use Msstc4Symfony\DtoGeneratorBridge\Validator\ConstraintBuilder;
 use Msstc4Symfony\DtoGeneratorBridge\Validator\ValidatorEnricher;
 
 /**
@@ -24,7 +25,13 @@ final class SymfonyExtension implements Extension
     {
         $settings = Settings::fromConfig($config);
         $registry->claimExtensionKeys('x-validator-*', 'x-serializer-*');
-        $registry->addPropertyEnricher(new ValidatorEnricher($settings));
+        if ($settings->validator() !== false) {
+            $registry->claimKeywords(...ConstraintBuilder::CLAIMED_KEYWORDS);
+        }
+
+        $validator = new ValidatorEnricher($settings);
+        $registry->addClassEnricher($validator);
+        $registry->addPropertyEnricher($validator);
 
         $serializer = new SerializerEnricher($settings);
         $registry->addClassEnricher($serializer);

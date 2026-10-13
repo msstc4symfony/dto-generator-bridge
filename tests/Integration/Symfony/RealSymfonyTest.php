@@ -228,6 +228,59 @@ final class RealSymfonyTest extends TestCase
     }
 
     /**
+     * The runtime's constraints, which PHP 8.0 gets without the nested ones, as "new" in attributes needs PHP 8.1.
+     *
+     * @dataProvider targets
+     */
+    public function testChecksTheKeywordsOfTheRuntimeConstraints(string $php): void
+    {
+        $this->runTarget($php, function (string $namespace, bool $annotations) use ($php): void {
+            $paths = function (array $data) use ($namespace, $annotations): array {
+                $roster = $this->serializer($annotations)->denormalize($data, $namespace . '\Roster');
+                self::assertIsObject($roster);
+
+                return $this->violationPaths($roster, $annotations);
+            };
+            $nested = $php !== '8.0';
+
+            self::assertSame([], $paths(['card' => '4242', 'holder' => 'Ann', 'roles' => ['admin', 'user'], 'labels' => ['abc' => 1]]));
+            self::assertSame([], $paths([]));
+            self::assertSame(['holder'], $paths(['card' => '4242']));
+            self::assertSame($nested ? ['roles'] : [], $paths(['roles' => ['user']]));
+            self::assertSame($nested ? ['roles'] : [], $paths(['roles' => ['admin', 'admin']]));
+            self::assertSame($nested ? ['labels[abcd]'] : [], $paths(['labels' => ['abcd' => 1]]));
+        });
+    }
+
+    /**
+     * if/then/else on a class and on a property, and patternProperties on a map and on declared properties, which need
+     * no "new" and so are checked on PHP 8.0 too.
+     *
+     * @dataProvider targets
+     */
+    public function testChecksConditionsAndPatternProperties(string $php): void
+    {
+        $this->runTarget($php, function (string $namespace, bool $annotations) use ($php): void {
+            $paths = function (array $data) use ($namespace, $annotations): array {
+                $parcel = $this->serializer($annotations)->denormalize($data, $namespace . '\Parcel');
+                self::assertIsObject($parcel);
+
+                return $this->violationPaths($parcel, $annotations);
+            };
+            $nested = $php !== '8.0';
+
+            self::assertSame([], $paths(['country' => 'US', 'zip' => '12345', 'phone' => '+12345678', 'kind' => 'letter', 'weight' => 50]));
+            self::assertSame([], $paths(['country' => 'DE', 'kind' => 'box', 'weight' => 60, 'meta' => ['n-a' => 1, 'b' => 'x']]));
+            self::assertSame($nested ? ['zip'] : [], $paths(['country' => 'US']));
+            self::assertSame($nested ? ['zip'] : [], $paths(['country' => 'US', 'zip' => 'abc']));
+            self::assertSame($nested ? ['phone'] : [], $paths(['phone' => '+123']));
+            self::assertSame($nested ? ['weight'] : [], $paths(['kind' => 'letter', 'weight' => 60]));
+            self::assertSame($nested ? ['meta[n-a]'] : [], $paths(['meta' => ['n-a' => 'x']]));
+            self::assertSame(['xRef'], $paths(['x-ref' => 'abcd']));
+        });
+    }
+
+    /**
      * Symfony's RegexValidator reports a failed preg_match() as a violation, so the pattern must hold any size.
      */
     public function testAcceptsLargeBase64(): void
@@ -551,6 +604,8 @@ final class RealSymfonyTest extends TestCase
 
         copy(__DIR__ . '/api.yaml', $dir . '/api.yaml');
         file_put_contents($dir . '/composer.json', '{}');
+        // The bridge writes the runtime's constraints only for a project that has them.
+        file_put_contents($dir . '/composer.lock', (string) json_encode(['packages' => [['name' => 'msstc4symfony/dto-generator-bridge-runtime', 'version' => 'v1.1.0']]]));
         // Only the views name dto.readWriteModels, which a generator before 1.3 refuses.
         $dto = $variant === 'views' ? ['dto' => ['readWriteModels' => 'split']] : [];
         file_put_contents($dir . '/dto-generator.yaml', (string) json_encode($dto + [
