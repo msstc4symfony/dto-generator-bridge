@@ -55,11 +55,13 @@ final class DeclaredNamesTest extends TestCase
         $output = $this->generate(['allOf' => [
             ['$ref' => '#/components/schemas/Base'],
             ['type' => 'object', 'properties' => ['b' => ['type' => 'string']], 'propertyNames' => ['maxLength' => 1]],
-        ]], ['Base' => ['type' => 'object', 'properties' => ['aa' => ['type' => 'string']], 'propertyNames' => ['pattern' => '^a']]]);
+        ]], ['Base' => ['type' => 'object', 'properties' => ['aa' => ['type' => 'string'], 'zz' => ['type' => 'string']], 'propertyNames' => ['pattern' => '^a']]]);
 
         self::assertSame([
             'warning /api.yaml#/components/schemas/Base: "propertyNames" rejects "b", the name of a property of Pet, which can never be set.',
             self::AT . '/allOf/1: "propertyNames" rejects "aa", the name of a property of Pet, which can never be set.',
+            self::AT . '/allOf/1: "propertyNames" rejects "zz", the name of a property of Pet, which can never be set.',
+            'warning /api.yaml#/components/schemas/Base: "propertyNames" rejects "zz", the name of a property of Base, which can never be set.',
         ], $this->namesMessages($output->diagnostics()->all()));
     }
 
