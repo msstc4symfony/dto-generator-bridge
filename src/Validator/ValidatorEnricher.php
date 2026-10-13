@@ -62,12 +62,18 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         $runtime = new RuntimeConstraints($context->packages(), $diagnostics);
         $this->classes[$context->class()->name()->fqcn()] = new ClassKeywords($keywords, $schema->location(), $groups, $this->patterns($context, $keywords));
         $this->warnAboutNamesNotKept($context, $keywords);
+        $properties = new ClassProperties($context->class(), $context->ancestors(), $keywords, $context->references());
+        // The ancestor marks its own places: one whose class skips the validator stays unmarked, and the generator warns.
         foreach (['dependentRequired', 'if', 'then', 'else', 'not', 'dependentSchemas'] as $keyword) {
-            $this->markChecked($context, $keywords, $keyword);
+            foreach ($keywords->schemas() as $place) {
+                if ($place->hasKeyword($keyword) && !$properties->ofAncestor($place)) {
+                    $context->keywordChecks()->checked($place->location(), $keyword);
+                }
+            }
         }
 
         $builder = new ConstraintBuilder($context->references(), $context->target(), $diagnostics, $runtime, $context->keywordChecks(), $groups);
-        $constraints = array_merge($this->requirements($context, $keywords, $runtime), $this->conditions($context, $keywords, $builder, $runtime, $groups));
+        $constraints = array_merge($this->requirements($context, $keywords, $runtime, $properties), $this->conditions($context, $keywords, $builder, $runtime, $groups, $properties));
 
         return array_map(static fn (ConstraintSpec $constraint): AttributeModel => $constraint->withGroups($groups)->toAttribute(), $constraints);
     }
@@ -75,14 +81,14 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
     /**
      * @return list<ConstraintSpec> DependentRequired with the pairs the class checks
      */
-    private function requirements(ClassContext $context, Keywords $keywords, RuntimeConstraints $runtime): array
+    private function requirements(ClassContext $context, Keywords $keywords, RuntimeConstraints $runtime, ClassProperties $properties): array
     {
         $at = $context->schema()->location();
         if (!$keywords->has('dependentRequired') || !$runtime->available('dependentRequired', $at)) {
             return [];
         }
 
-        $requirements = (new DependentRequirements(new ClassProperties($context->class(), $context->ancestors()), $context->diagnostics(), $at))->of($keywords);
+        $requirements = (new DependentRequirements($properties, $context->diagnostics(), $at))->of($keywords);
         if ($requirements === []) {
             return [];
         }
@@ -100,10 +106,10 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
      *
      * @return list<ConstraintSpec> IfThenElse for each condition and dependency the class checks, Not for each negation
      */
-    private function conditions(ClassContext $context, Keywords $keywords, ConstraintBuilder $builder, RuntimeConstraints $runtime, array $groups): array
+    private function conditions(ClassContext $context, Keywords $keywords, ConstraintBuilder $builder, RuntimeConstraints $runtime, array $groups, ClassProperties $properties): array
     {
         $at = $context->schema()->location();
-        $class = new ClassConditions(new ClassProperties($context->class(), $context->ancestors()), $builder, $context->diagnostics(), $groups);
+        $class = new ClassConditions($properties, $builder, $context->diagnostics(), $groups);
 
         return array_merge(
             ClaimedConstraints::conditionPlaces($keywords) !== [] && $runtime->available('if', $at) ? $class->of($keywords) : [],

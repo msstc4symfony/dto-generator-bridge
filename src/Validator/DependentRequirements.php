@@ -13,8 +13,8 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
 
 /**
  * The pairs of `dependentRequired` a class can check, by the PHP names of its properties, those it inherits from the
- * ancestors the run generates included. A pair in an ancestor's schema is left to the ancestor; a pair with a property
- * of a parent the run does not generate is left to the class of the schema that declares both, or not checked.
+ * ancestors the run generates included. A pair the nearest ancestor reaches is left to it; a pair with a property of
+ * a parent the run does not generate gives a warning.
  *
  * @phpstan-import-type JsonValue from Json
  *

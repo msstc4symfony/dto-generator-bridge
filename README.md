@@ -201,7 +201,7 @@ They follow JSON Schema with these limits:
   with a default under `properties` or in the `required` of `if` (the DTO cannot tell it from a missing one), any
   other keyword in a branch, or a branch that is no schema (`if: false` included) give a warning, and the condition
   is not checked. As with `dependentRequired`, a condition of a parent's schema is left to the parent, and one in the
-  child's schema may name inherited properties.
+  child's schema may name inherited properties; the same condition written in both schemas is checked twice.
 - **`not`** becomes `Not` of the constraints of its schema: a value they find nothing wrong with is a violation. A
   schema that checks nothing (`{}`, `true`, annotations only) leaves no value but a missing one, and `not: false`
   forbids nothing. As with `if`, `null` is not checked: it stands for a missing value, so `not` of a schema that allows

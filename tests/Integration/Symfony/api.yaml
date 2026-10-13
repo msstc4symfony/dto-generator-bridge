@@ -88,6 +88,20 @@ components:
       dependentSchemas:
         card: {required: [holder]}
         cash: false
+    Wallet:
+      type: object
+      properties:
+        card: {type: string}
+        holder: {type: string}
+      dependentRequired: {card: [holder]}
+    Savings:
+      allOf:
+        - $ref: '#/components/schemas/Wallet'
+        - type: object
+          properties:
+            iban: {type: string}
+          if: {required: [iban]}
+          then: {required: [holder]}
     Animal:
       oneOf:
         - {$ref: '#/components/schemas/Cat'}

@@ -83,7 +83,7 @@ final class TuplesTest extends TestCase
         $code = $this->code($output, 'Pet.php');
         self::assertSame([], $this->attributesOf($code, 'typed'));
         self::assertSame([], $this->attributesOf($code, 'odd'));
-        self::assertSame(['Assert\\Count(max: 0)'], $this->attributesOf($code, 'shut'));
+        self::assertSame([], $this->attributesOf($code, 'shut'));
         self::assertSame([], $this->attributesOf($code, 'rest'));
         self::assertSame(['RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . 'NotNull(), new ' . self::ASSERT . "Type(type: 'string')])"], $this->attributesOf($code, 'found'));
         self::assertSame([
@@ -92,6 +92,7 @@ final class TuplesTest extends TestCase
             self::AT . '/properties/name: "prefixItems" is checked on arrays only; it is not checked here.',
             self::AT . '/properties/odd: "prefixItems" is checked only with a list of schemas; it is not checked.',
             self::AT . '/properties/shut: "prefixItems" is checked only with a list of schemas; it is not checked.',
+            self::AT . '/properties/shut: "unevaluatedItems" is checked only beside a list in "prefixItems"; it is not checked.',
             self::AT . '/properties/deep: "prefixItems" is checked on a value of any type only with one "type" of string, integer, number or boolean beside the keywords of strings and numbers; it is not checked.',
             self::AT . '/properties/rest: "unevaluatedItems" is checked beside "prefixItems" only when false; it is not checked.',
             self::AT . '/properties/found: "unevaluatedItems" is checked only without "contains", "if", "oneOf" and "anyOf" in its schema; it is not checked.',

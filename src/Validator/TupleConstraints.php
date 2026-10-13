@@ -170,9 +170,13 @@ final class TupleConstraints
 
         $lengths = [0];
         foreach ($scope->values('prefixItems') as $prefix) {
-            if (is_array($prefix) && Json::isList($prefix)) {
-                $lengths[] = count($prefix);
+            if (!is_array($prefix) || ($prefix !== [] && !Json::isList($prefix))) {
+                $this->diagnostics->warning('"unevaluatedItems" is checked only beside a list in "prefixItems"; it is not checked.', $at);
+
+                return [];
             }
+
+            $lengths[] = count($prefix);
         }
 
         if ($setting === false) {

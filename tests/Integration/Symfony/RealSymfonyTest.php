@@ -312,6 +312,28 @@ final class RealSymfonyTest extends TestCase
     }
 
     /**
+     * A child inherits the class constraints of its parent, which checks what its own schema says, once; the child's
+     * condition reads the parent's property.
+     *
+     * @dataProvider targets
+     */
+    public function testChecksInheritedPropertiesOnce(string $php): void
+    {
+        $this->runTarget($php, function (string $namespace, bool $annotations) use ($php): void {
+            $paths = function (array $data) use ($namespace, $annotations): array {
+                $savings = $this->serializer($annotations)->denormalize($data, $namespace . '\\Savings');
+                self::assertIsObject($savings);
+
+                return $this->violationPaths($savings, $annotations);
+            };
+
+            self::assertSame([], $paths(['card' => '4242', 'holder' => 'Ann', 'iban' => 'DE00']));
+            self::assertSame(['holder'], $paths(['card' => '4242']));
+            self::assertSame($php !== '8.0' ? ['holder'] : [], $paths(['iban' => 'DE00']));
+        });
+    }
+
+    /**
      * Symfony's RegexValidator reports a failed preg_match() as a violation, so the pattern must hold any size.
      */
     public function testAcceptsLargeBase64(): void

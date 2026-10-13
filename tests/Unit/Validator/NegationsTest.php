@@ -186,6 +186,46 @@ final class NegationsTest extends TestCase
         self::assertSame([], $this->messages($output));
     }
 
+    public function testLeavesWhatTheParentReachesToItsClass(): void
+    {
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Middle'],
+            ['type' => 'object', 'properties' => ['l' => ['type' => 'string']]],
+            ['$ref' => '#/components/schemas/Alias'],
+        ]], [
+            'Base' => ['type' => 'object', 'properties' => ['a' => ['type' => 'string'], 'b' => ['type' => 'string']]],
+            'Rules' => ['type' => 'object', 'not' => ['required' => ['a', 'b']]],
+            'Middle' => ['allOf' => [['$ref' => '#/components/schemas/Base'], ['$ref' => '#/components/schemas/Rules'], ['type' => 'object', 'properties' => ['m' => ['type' => 'string']]]]],
+            'Alias' => ['not' => ['required' => ['a', 'l']]],
+        ]);
+
+        self::assertSame(['RuntimeAssert\\Not(constraints: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['a', 'b'])])"], $this->classAttributesOf($this->code($output, 'Middle.php')));
+        self::assertSame(['RuntimeAssert\\Not(constraints: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['a', 'l'])])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
+        self::assertSame([], $this->messages($output));
+    }
+
+    public function testChecksTheNotOfAnInlineChildInsideItsParent(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'a' => ['type' => 'string'],
+            'child' => ['allOf' => [['$ref' => '#/components/schemas/Pet'], ['type' => 'object', 'properties' => ['c' => ['type' => 'string']], 'not' => ['required' => ['a', 'c']]]]],
+        ]]);
+
+        self::assertSame(['RuntimeAssert\\Not(constraints: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['a', 'c'])])"], $this->classAttributesOf($this->code($output, 'PetChild.php')));
+        self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
+    public function testLeavesTheNotOfASkippedParentUnmarked(): void
+    {
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['type' => 'object', 'properties' => ['b' => ['type' => 'string']]],
+        ]], ['Base' => ['type' => 'object', 'x-validator-skip' => true, 'properties' => ['a' => ['type' => 'string']], 'not' => ['required' => ['a']]]]);
+
+        self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
+        self::assertSame(['warning /api.yaml#/components/schemas/Base/not: "not" is not supported and has no effect on the generated type.'], $this->messages($output));
+    }
+
     public function testGroupsTheNotOfTheClassAsItsClass(): void
     {
         $code = $this->code($this->withRuntime(['type' => 'object', 'x-validator-groups' => ['api'], 'properties' => ['a' => ['type' => 'string']], 'not' => ['properties' => ['a' => ['const' => 'x']]]]), 'Pet.php');
