@@ -53,17 +53,18 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         $diagnostics = $context->diagnostics();
         $version = $this->gate->version($context->packages(), $context->target(), $diagnostics, $schema->location());
         $extensions = new ExtensionReader($schema, $diagnostics);
+        $keywords = new Keywords($schema, $context->references(), $this->variants($schema, $context->references()));
+        $properties = new ClassProperties($context->class(), $context->ancestors(), $keywords, $context->references());
+        // A contradiction of the schema itself, whatever the Validator writes.
+        $this->warnAboutRejectedNames($context, $keywords, $properties);
         if (!$version instanceof SymfonyVersion || $extensions->flag('x-validator-skip')) {
             return [];
         }
 
-        $keywords = new Keywords($schema, $context->references());
         $groups = $this->groups($extensions);
         $runtime = new RuntimeConstraints($context->packages(), $diagnostics);
         $this->classes[$context->class()->name()->fqcn()] = new ClassKeywords($keywords, $schema->location(), $groups, $this->patterns($context, $keywords));
         $this->warnAboutNamesNotKept($context, $keywords);
-        $properties = new ClassProperties($context->class(), $context->ancestors(), $keywords, $context->references());
-        $this->warnAboutRejectedNames($context, $keywords, $properties);
         // The ancestor marks its own places: one whose class skips the validator stays unmarked, and the generator warns.
         foreach (['dependentRequired', 'if', 'then', 'else', 'not', 'dependentSchemas'] as $keyword) {
             foreach ($keywords->schemas() as $place) {
@@ -80,6 +81,29 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
     }
 
     /**
+     * The members of the class's own union that lead back to it are its variants, subclasses that check their keywords
+     * themselves; the class reads nothing from them.
+     *
+     * @return list<string> their locations
+     */
+    private function variants(Schema $schema, SchemaReferences $references): array
+    {
+        $own = $schema->location()->toString();
+        $variants = [];
+        foreach (array_merge($schema->oneOf(), $schema->anyOf()) as $member) {
+            foreach ((new Keywords($member, $references))->schemas() as $place) {
+                if ($place->location()->toString() === $own) {
+                    $variants[] = $member->location()->toString();
+
+                    break;
+                }
+            }
+        }
+
+        return $variants;
+    }
+
+    /**
      * A property whose name `propertyNames` rejects can never be set. An ancestor's schema applies to the class too, but
      * the ancestor's class checks its own names against it.
      */
@@ -93,9 +117,8 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             foreach ($properties->names(!$properties->ofAncestor($place)) as $name) {
                 if (NameCheck::rejects($place->keyword('propertyNames'), $name)) {
                     $context->diagnostics()->warning(sprintf(
-                        '"propertyNames" rejects "%s", the name of a property of %s, which can never be set.',
+                        '"propertyNames" rejects "%s", the name of a declared property, which can never be set.',
                         $name,
-                        $context->class()->name()->shortName(),
                     ), $place->location());
                 }
             }

@@ -7,8 +7,8 @@ namespace Msstc4Symfony\DtoGeneratorBridge\Validator;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 
 /**
- * Whether a `propertyNames` schema rejects a name, by the keywords that need no validator: `pattern`, `minLength`,
- * `maxLength`, `const` and `enum`. Any other keyword, or a malformed one, decides nothing.
+ * Whether a `propertyNames` schema rejects a name, by the keywords that need no validator: `type`, `pattern`,
+ * `minLength`, `maxLength`, `const` and `enum`. Any other keyword (a `$ref` too), or a malformed one, decides nothing.
  *
  * @phpstan-import-type JsonValue from Json
  *
@@ -29,13 +29,27 @@ final class NameCheck
             return $schema === false;
         }
 
+        $type = $schema['type'] ?? 'string';
         $pattern = isset($schema['pattern']) && is_string($schema['pattern']) ? Pattern::toPcre($schema['pattern']) : null;
-        $length = mb_strlen($name, 'UTF-8');
+        // JSON Schema counts code points; a name is valid UTF-8.
+        $length = (int) preg_match_all('/./su', $name);
+        $minimum = self::count(Json::value($schema['minLength'] ?? null));
+        $maximum = self::count(Json::value($schema['maxLength'] ?? null));
+        $enum = $schema['enum'] ?? null;
 
-        return ($pattern !== null && preg_match($pattern, $name) !== 1)
-            || (is_int($schema['minLength'] ?? null) && $length < $schema['minLength'])
-            || (is_int($schema['maxLength'] ?? null) && $length > $schema['maxLength'])
+        return !in_array('string', is_array($type) ? $type : [$type], true)
+            || ($pattern !== null && preg_match($pattern, $name) === 0)
+            || ($minimum !== null && $length < $minimum)
+            || ($maximum !== null && $length > $maximum)
             || (array_key_exists('const', $schema) && $schema['const'] !== $name)
-            || (is_array($schema['enum'] ?? null) && !in_array($name, $schema['enum'], true));
+            || (is_array($enum) && Json::isList($enum) && !in_array($name, $enum, true));
+    }
+
+    /**
+     * @param JsonValue $value
+     */
+    private static function count($value): ?int
+    {
+        return is_int($value) || (is_float($value) && $value >= 0 && $value < PHP_INT_MAX && fmod($value, 1.0) === 0.0) ? (int) $value : null;
     }
 }

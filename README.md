@@ -172,8 +172,9 @@ They follow JSON Schema with these limits:
   `minContains` (1 by default) and `maxContains` of the same schema bound the count, and `minContains: 0` alone
   checks nothing. Each `contains` (in `allOf` branches, or behind a `$ref`) must hold with its own bounds.
 - **`propertyNames`** checks each key of a map, or of `$additionalProperties`. The names of declared properties are
-  checked while generating, by `pattern`, `minLength`, `maxLength`, `const` and `enum`: a name it rejects gives a
-  warning, as that property can never be set. On a class without `$additionalProperties` it gives a warning (with
+  checked while generating, by `type`, `pattern`, `minLength`, `maxLength`, `const` and `enum` (`false` rejects
+  every name), also for a class with `x-validator-skip`: a name it rejects gives a warning, as that property can never
+  be set. On a class without `$additionalProperties` it gives a warning (with
   `additionalProperties: false` nothing is left to check). A violation is reported at `labels[key]` with the key as
   its value, the same path as the violations of the value under that key.
 - **`dependentRequired`** reads a property as present when it is not `null`: like the rest of the DTO, it cannot tell

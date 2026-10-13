@@ -32,9 +32,13 @@ final class Keywords
 
     private SchemaReferences $references;
 
-    public function __construct(Schema $own, SchemaReferences $references)
+    /**
+     * @param list<string> $stops locations to read nothing from, as places another class owns
+     */
+    public function __construct(Schema $own, SchemaReferences $references, array $stops = [])
     {
         $this->references = $references;
+        $this->collected = $stops;
         $this->collect($own);
         $this->resolved = $this->unwrap($references->resolve($own), []);
     }

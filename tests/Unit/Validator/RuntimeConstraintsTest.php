@@ -552,6 +552,24 @@ final class RuntimeConstraintsTest extends TestCase
         self::assertSame([], $this->messages($output));
     }
 
+    public function testChecksTheOwnPairsOfTheOnlyVariantOfItsParent(): void
+    {
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['type' => 'object', 'properties' => ['meow' => ['type' => 'string'], 'lives' => ['type' => 'integer']], 'dependentRequired' => ['meow' => ['lives']]],
+        ]], ['Base' => [
+            'type' => 'object',
+            'required' => ['kind'],
+            'properties' => ['kind' => ['type' => 'string']],
+            'discriminator' => ['propertyName' => 'kind', 'mapping' => ['pet' => '#/components/schemas/Pet']],
+            'oneOf' => [['$ref' => '#/components/schemas/Pet']],
+        ]]);
+
+        self::assertSame(["RuntimeAssert\\DependentRequired(requirements: ['meow' => ['lives']])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
+        self::assertSame([], $this->classAttributesOf($this->code($output, 'Base.php')));
+        self::assertSame([], $this->messages($output));
+    }
+
     public function testGroupsTheClassConstraint(): void
     {
         $grouped = $this->withRuntime(['type' => 'object', 'x-validator-groups' => ['api'], 'dependentRequired' => ['a' => ['b']], 'properties' => [

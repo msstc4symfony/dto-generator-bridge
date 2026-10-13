@@ -43,7 +43,8 @@ final class ClassProperties
         $parent = $ancestors === [] ? null : $ancestors[0]->source()->toString();
         foreach ($keywords->schemas() as $place) {
             if ($place->location()->toString() === $parent) {
-                foreach ((new Keywords($place, $references))->schemas() as $reached) {
+                // A union of the parent may lead back to the class, whose own places stay its own.
+                foreach ((new Keywords($place, $references, [$class->source()->toString()]))->schemas() as $reached) {
                     $this->inherited[] = $reached->location()->toString();
                 }
             }
