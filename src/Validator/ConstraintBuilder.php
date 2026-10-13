@@ -70,7 +70,7 @@ final class ConstraintBuilder
         $this->runtime = $runtime;
         $this->kinds = new KindConstraints($diagnostics);
         $this->values = new ValueConstraints($target, $diagnostics);
-        $this->claimed = new ClaimedConstraints($this, $references, $diagnostics, $runtime, $checks);
+        $this->claimed = new ClaimedConstraints($this, $references, $diagnostics, $runtime, $checks, $groups);
         $this->groups = $groups;
     }
 
@@ -105,16 +105,6 @@ final class ConstraintBuilder
             $replaced ? [] : $this->claimed->conditions($keywords, $value, $at),
             $replaced ? [] : $this->claimed->negations($keywords, $value, $at),
         );
-    }
-
-    /**
-     * The groups of the value, which the composite constraints inside the value's own need too.
-     *
-     * @return list<non-empty-string>
-     */
-    public function groups(): array
-    {
-        return $this->groups;
     }
 
     /**

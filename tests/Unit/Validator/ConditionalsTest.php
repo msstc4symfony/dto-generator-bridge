@@ -168,6 +168,20 @@ final class ConditionalsTest extends TestCase
         ], $this->messages($output));
     }
 
+    public function testRequiresAPropertyWithADefaultInThenAndElse(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'a' => ['type' => 'string'],
+            'b' => ['type' => 'string', 'default' => 'x'],
+        ], 'if' => ['required' => ['a']], 'then' => ['required' => ['b']], 'else' => ['required' => ['b']]]);
+
+        self::assertSame(
+            ['RuntimeAssert\\IfThenElse(if: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['a'])], then: [new " . self::RUNTIME_ASSERT . "Present(properties: ['b'])], else: [new " . self::RUNTIME_ASSERT . "Present(properties: ['b'])])"],
+            $this->classAttributesOf($this->code($output, 'Pet.php')),
+        );
+        self::assertSame([], $this->messages($output));
+    }
+
     public function testWarnsAboutAConditionItCannotCheck(): void
     {
         $output = $this->withRuntime(['type' => 'object', 'properties' => [

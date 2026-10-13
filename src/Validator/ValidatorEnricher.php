@@ -103,7 +103,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
     private function conditions(ClassContext $context, Keywords $keywords, ConstraintBuilder $builder, RuntimeConstraints $runtime, array $groups): array
     {
         $at = $context->schema()->location();
-        $class = new ClassConditions($context->class(), $builder, $context->diagnostics(), $groups);
+        $class = new ClassConditions($context->class(), $builder, $context->diagnostics(), $groups, $at);
 
         return array_merge(
             ClaimedConstraints::conditionPlaces($keywords) !== [] && $runtime->available('if', $at) ? $class->of($keywords) : [],

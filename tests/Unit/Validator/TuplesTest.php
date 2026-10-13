@@ -70,7 +70,7 @@ final class TuplesTest extends TestCase
             'typed' => ['type' => 'array', 'items' => ['type' => 'string'], 'prefixItems' => [['maxLength' => 2]]],
             'open' => ['type' => 'array', 'items' => true, 'prefixItems' => [['type' => 'string']]],
             'name' => ['type' => 'string', 'prefixItems' => [true]],
-            'odd' => ['type' => 'array', 'prefixItems' => ['a' => true]],
+            'odd' => ['type' => 'array', 'prefixItems' => ['a' => ['type' => 'string']]],
             'deep' => ['type' => 'array', 'prefixItems' => [['type' => 'array']]],
             'rest' => ['type' => 'array', 'prefixItems' => [true], 'unevaluatedItems' => ['type' => 'string']],
             'found' => ['type' => 'array', 'contains' => ['type' => 'string'], 'unevaluatedItems' => false],
@@ -79,6 +79,11 @@ final class TuplesTest extends TestCase
         ]], [], '8.2', [], 'v7.1.0', ['msstc4symfony/dto-generator-bridge-runtime' => 'v1.2.0']);
 
         self::assertSame(['Assert\\Count(max: 0)'], $this->attributesOf($this->code($output, 'Pet.php'), 'branch'), 'A "then" without "if" evaluates nothing.');
+        $code = $this->code($output, 'Pet.php');
+        self::assertSame([], $this->attributesOf($code, 'typed'));
+        self::assertSame([], $this->attributesOf($code, 'odd'));
+        self::assertSame([], $this->attributesOf($code, 'rest'));
+        self::assertSame(['RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . 'NotNull(), new ' . self::ASSERT . "Type(type: 'string')])"], $this->attributesOf($code, 'found'));
         self::assertSame([
             self::AT . '/properties/typed: "prefixItems" is checked only without "items", which the generated type gives to every element; it is not checked.',
             self::AT . '/properties/open: "prefixItems" is checked only without "items", which the generated type gives to every element; it is not checked.',
@@ -128,6 +133,50 @@ final class TuplesTest extends TestCase
         self::assertSame(['Assert\\Count(max: 2)'], $this->attributesOf($code, 'closed'));
         self::assertSame(['Assert\\Count(max: 0)'], $this->attributesOf($code, 'sibling'));
         self::assertSame(['Assert\\Count(max: 0)'], $this->attributesOf($code, 'typed'));
+        self::assertSame([], $this->messages($output));
+    }
+
+    public function testLetsAnUnevaluatedItemsOfASubschemaEvaluateTheElements(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'words' => ['allOf' => [['$ref' => '#/components/schemas/Words']], 'unevaluatedItems' => false],
+        ]], ['Words' => ['type' => 'array', 'unevaluatedItems' => ['type' => 'string']]]);
+
+        self::assertSame(
+            ['Assert\\All(constraints: [new ' . self::ASSERT . 'NotNull(), new ' . self::ASSERT . "Type(type: 'string')])"],
+            $this->attributesOf($this->code($output, 'Pet.php'), 'words'),
+        );
+        self::assertSame([], $this->messages($output));
+    }
+
+    public function testReadsTheListOfANullableUnion(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'pair' => ['oneOf' => [['$ref' => '#/components/schemas/Pair'], ['type' => 'null']], 'unevaluatedItems' => false],
+        ]], ['Pair' => ['type' => 'array', 'prefixItems' => [true]]]);
+
+        self::assertSame(['Assert\\Count(max: 1)'], $this->attributesOf($this->code($output, 'Pet.php'), 'pair'));
+        self::assertSame([], $this->messages($output));
+    }
+
+    public function testWarnsNotAboutTuplesWithoutEffectOnOtherValues(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'name' => ['type' => 'string', 'prefixItems' => [], 'unevaluatedItems' => true],
+            'nick' => ['type' => 'string', 'unevaluatedItems' => new stdClass()],
+        ]]);
+
+        self::assertSame([], $this->messages($output));
+    }
+
+    public function testWritesOptionalOfTheGroupsInAnnotations(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'pair' => ['type' => 'array', 'x-validator-groups' => ['api'], 'prefixItems' => [['type' => 'string']]],
+        ]], [], '7.4', [], 'v6.4.1', ['doctrine/annotations' => '2.0.2']);
+
+        self::assertStringContainsString('@\\Symfony\\Component\\Validator\\Constraints\\Optional(', $this->code($output, 'Pet.php'));
+        self::assertStringContainsString('groups={"api", "Default"}', $this->code($output, 'Pet.php'));
         self::assertSame([], $this->messages($output));
     }
 

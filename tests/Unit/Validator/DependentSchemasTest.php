@@ -116,6 +116,20 @@ final class DependentSchemasTest extends TestCase
         self::assertSame([], $this->messages($output));
     }
 
+    public function testChecksEveryPlaceOfDependentSchemas(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'a' => ['type' => 'string'],
+            'b' => ['type' => 'string'],
+        ], 'allOf' => [['dependentSchemas' => [['required' => ['b']]]], ['dependentSchemas' => ['a' => ['required' => ['b']]]]]]);
+
+        self::assertSame(
+            ['RuntimeAssert\\IfThenElse(if: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['a'])], then: [new " . self::RUNTIME_ASSERT . "Present(properties: ['b'])])"],
+            $this->classAttributesOf($this->code($output, 'Pet.php')),
+        );
+        self::assertSame([self::AT . '/allOf/0: "dependentSchemas" is checked only with an object of schemas; it is not checked.'], $this->messages($output));
+    }
+
     public function testGroupsTheDependencyAsItsClass(): void
     {
         $code = $this->code($this->withRuntime(['type' => 'object', 'x-validator-groups' => ['api'], 'properties' => [

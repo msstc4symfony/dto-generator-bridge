@@ -199,33 +199,34 @@ They follow JSON Schema with these limits:
   (`Present`), by wire names the bridge turns into PHP names. Names that are no property of the class, a property
   with a default under `properties` or in the `required` of `if` (the DTO cannot tell it from a missing one), any
   other keyword in a branch, or a branch that is no schema (`if: false` included) give a warning, and the condition
-  is not checked. As with
-  `dependentRequired`, a condition of a parent's schema is left to the parent, and one in the child's schema that
-  names inherited properties gives a warning.
+  is not checked. As with `dependentRequired`, a condition of a parent's schema is left to the parent, and one in the
+  child's schema that names inherited properties gives a warning.
 - **`not`** becomes `Not` of the constraints of its schema: a value they find nothing wrong with is a violation. A
   schema that checks nothing (`{}`, `true`, annotations only) leaves no value but a missing one, and `not: false`
-  forbids nothing. As with `if`, `null` is not checked: it stands for a missing value, so `not` of a schema that
-  allows `null` alone gives a warning, and `not: {type: [string, 'null']}` does not forbid `null`. On a class, `not` holds `properties` and `required` as the branches of a
-  condition do, with the same warnings about names, defaults and inherited properties.
+  forbids nothing. As with `if`, `null` is not checked: it stands for a missing value, so `not` of a schema that allows
+  `null` alone gives a warning, and `not: {type: [string, 'null']}` does not forbid `null`. On a class, `not` holds
+  `properties` and `required` as the branches of a condition do, with the same warnings about names, defaults and
+  inherited properties; one of nothing but the object in a parent's schema is left to the parent.
 - **`dependentSchemas`** is checked on classes only: for each property it names, the schema (`properties` and
-  `required`, as in a condition) applies when the property is set; a `false` schema forbids the property. A name or
-  a property of its schema that is no property of the class, a named property with a default (always set), and a
-  value that is not a class give a warning; a dependency of a parent's schema is left to the parent.
+  `required`, as in a condition) applies when the property is set; a `false` schema forbids the property. A name or a
+  property of its schema that is no property of the class, a named property with a default (always set), and a value
+  that is not a class give a warning; a dependency of a parent's schema is left to the parent.
 - **`prefixItems`** checks each element of the prefix by its index with Symfony's `Collection`, which lets shorter and
-  longer lists through; under `x-validator-groups` each element's constraints go into an `Optional` of those groups,
-  as `Collection` would put them in `Default` only. The generated type gives `items` to every element, the prefix's too, so `prefixItems` beside
-  any `items` gives a warning and is not checked. An element's schema is that of a value of any type: its string and
-  number keywords need one `type`, and a `type` without `null` gets `NotNull`.
-- **`unevaluatedItems`** sees what its own schema and the subschemas it reaches (`allOf`, `$ref`) evaluate, not a
-  sibling in `allOf`, as in JSON Schema 2020-12. Beside `items` there it has no effect, and `true` or `{}` never has;
-  beside `contains`, `if`, `oneOf` or `anyOf`, which evaluate elements too, it gives a warning. `false` allows no
-  element beyond the longest `prefixItems` there (`Count`); a schema checks every element (`All`) when there is no
-  `prefixItems`, and gives a warning beside one. `unevaluatedProperties` is not checked: a DTO drops the undeclared properties it would judge, so the
-  generator's warning stays.
-- `x-validator-skip` and `x-validator-groups` on a class's schema apply to `DependentRequired`, to the conditions of
-  the class, its `not` and `dependentSchemas`, to the `Keys` and `PatternProperty` of `$additionalProperties` and to the constraints the patterns give
-  declared properties; those on the schema of a property or of `additionalProperties` apply to its own constraints
-  only.
+  longer lists through; under `x-validator-groups` each element's constraints go into an `Optional` of those groups, as
+  `Collection` would put them in `Default` only. The generated type gives `items` to every element, the prefix's too, so
+  `prefixItems` beside any `items` gives a warning and is not checked. An element's schema is that of a value of any
+  type: its string and number keywords need one `type`, and a `type` without `null` gets `NotNull`.
+- **`unevaluatedItems`** sees what its own schema and the subschemas it reaches (`allOf`, `$ref`, the one member of a
+  nullable `oneOf`/`anyOf`) evaluate, not a sibling in `allOf`, as in JSON Schema 2020-12. An `items` there, or an
+  `unevaluatedItems` there that is not `false`, evaluates every element, so it has no effect; `true` or `{}` never has.
+  Beside `contains`, `if` or a union of several values, which evaluate elements too, it gives a warning. `false` allows
+  no element beyond the longest `prefixItems` there (`Count`); a schema checks every element (`All`) when there is no
+  `prefixItems`, and gives a warning beside one. `unevaluatedProperties` is not checked: a DTO drops the undeclared
+  properties it would judge, so the generator's warning stays.
+- `x-validator-skip` and `x-validator-groups` on a class's schema apply to `DependentRequired`, to the conditions of the
+  class, its `not` and `dependentSchemas`, to the `Keys` and `PatternProperty` of `$additionalProperties` and to the
+  constraints the patterns give declared properties; those on the schema of a property or of `additionalProperties`
+  apply to its own constraints only.
 
 `format: byte` takes the standard alphabet only: base64url (`-`, `_`), MIME base64 with line breaks, a trailing newline
 and padding inside the string are rejected. The pattern checks the characters and that up to two `=` only end the

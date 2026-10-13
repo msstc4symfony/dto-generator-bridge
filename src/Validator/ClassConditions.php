@@ -11,6 +11,7 @@ use MSSTC4PHP\DtoGenerator\Domain\Model\ClassModel;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ClassName;
 use MSSTC4PHP\DtoGenerator\Domain\Model\PropertyModel;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\Schema;
+use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaLocation;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\DefaultValue;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use Msstc4Symfony\DtoGeneratorBridge\Keywords;
@@ -27,6 +28,10 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
  *
  * @phpstan-type BranchShape array{list<array{string, JsonValue}>, list<string>}
  *
+ * A branch with the keyword warnings name it by, and whether its `required` decides (it does not in `then`, `else` and
+ * the schema of `dependentSchemas`, where a property with a default meets it anyway).
+ * @phpstan-type NamedBranch array{non-empty-string, BranchShape, bool}
+ *
  * @internal
  */
 final class ClassConditions
@@ -38,16 +43,20 @@ final class ClassConditions
     /** @var list<non-empty-string> */
     private array $groups;
 
-    /** @var array<string, PropertyModel> by wire name */
+    /** @var array<array-key, PropertyModel> by wire name, a numeric one as an int */
     private array $own = [];
 
     private bool $inherits;
 
+    private string $location;
+
     /**
      * @param list<non-empty-string> $groups the groups of the class, which Property needs as a composite
+     * @param SchemaLocation $location where the class's own schema is, beside those of its parents
      */
-    public function __construct(ClassModel $class, ConstraintBuilder $builder, Diagnostics $diagnostics, array $groups)
+    public function __construct(ClassModel $class, ConstraintBuilder $builder, Diagnostics $diagnostics, array $groups, SchemaLocation $location)
     {
+        $this->location = $location->toString();
         $this->builder = $builder;
         $this->diagnostics = $diagnostics;
         $this->groups = $groups;
@@ -275,7 +284,7 @@ final class ClassConditions
     }
 
     /**
-     * @param list<array{non-empty-string, BranchShape, bool}> $branches each schema with the keyword warnings name it by
+     * @param list<NamedBranch> $branches
      * @param 'the condition'|'it' $subject what a warning says is not checked
      */
     private function namesOwnProperties(array $branches, Schema $place, Keywords $keywords, string $subject): bool
@@ -310,7 +319,7 @@ final class ClassConditions
      * and what a missing one holds, decide a condition differently than the schema does. In `then` and `else`,
      * `required` is met anyway, as in the schema of `dependentSchemas`; in `if` and `not` it decides.
      *
-     * @param list<array{non-empty-string, BranchShape, bool}> $branches each with whether its `required` decides
+     * @param list<NamedBranch> $branches
      * @param 'the condition'|'it' $subject
      */
     private function namesAlwaysSet(array $branches, Schema $place, string $subject): bool
@@ -368,16 +377,16 @@ final class ClassConditions
     }
 
     /**
-     * A schema of nothing but the object names no property to tell its class by: one in a schema that declares only
-     * inherited properties belongs to the parent, which checks it.
+     * A schema of nothing but the object names no property to tell its class by: one outside the class's own schema
+     * belongs to a parent, which checks it.
      *
      * @param BranchShape $read
      */
     private function belongsToParent(array $read, Schema $place): bool
     {
-        $names = $place->propertyNames();
+        $at = $place->location()->toString();
 
-        return $this->inherits && $read === [[], []] && $names !== [] && array_diff($names, array_keys($this->own)) === $names;
+        return $this->inherits && $read === [[], []] && $at !== $this->location && strncmp($at, $this->location . '/', strlen($this->location) + 1) !== 0;
     }
 
     private function declares(Keywords $keywords, string $name): bool

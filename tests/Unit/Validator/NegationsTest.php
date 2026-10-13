@@ -54,6 +54,19 @@ final class NegationsTest extends TestCase
         self::assertSame([], $this->messages($output));
     }
 
+    public function testChecksEveryNotOfAValue(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'code' => ['type' => ['string', 'null'], 'allOf' => [['not' => ['enum' => [null]]], ['not' => ['const' => 'x']], ['not' => ['const' => 'y']]]],
+        ]]);
+
+        self::assertSame([
+            'RuntimeAssert\\Not(constraints: [new ' . self::ASSERT . "IdenticalTo(value: 'x')])",
+            'RuntimeAssert\\Not(constraints: [new ' . self::ASSERT . "IdenticalTo(value: 'y')])",
+        ], $this->attributesOf($this->code($output, 'Pet.php'), 'code'));
+        self::assertSame([self::AT . '/properties/code/allOf/0: "not" of null is not checked: null stands for a missing value.'], $this->messages($output));
+    }
+
     public function testChecksAValueOfAnyTypeByTheTypeOfItsSchema(): void
     {
         $output = $this->withRuntime(['type' => 'object', 'properties' => [
@@ -162,6 +175,18 @@ final class NegationsTest extends TestCase
             [self::AT . '/allOf/2: "not" names "a", which this class inherits; it is not checked: write it in the schema that declares its properties.'],
             $this->messages($output),
         );
+    }
+
+    public function testChecksTheNotOfAChildThatNamesNoProperty(): void
+    {
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['type' => 'object', 'properties' => ['b' => ['type' => 'string']], 'not' => true],
+        ]], ['Base' => ['allOf' => [['type' => 'object', 'properties' => ['a' => ['type' => 'string']]], ['not' => ['type' => 'object']]]]]);
+
+        self::assertSame(['RuntimeAssert\\Not'], $this->classAttributesOf($this->code($output, 'Base.php')));
+        self::assertSame(['RuntimeAssert\\Not'], $this->classAttributesOf($this->code($output, 'Pet.php')));
+        self::assertSame([], $this->messages($output));
     }
 
     public function testGroupsTheNotOfTheClassAsItsClass(): void
