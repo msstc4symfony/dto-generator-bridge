@@ -14,6 +14,8 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
  * and left out.
  *
  * @phpstan-import-type JsonValue from Json
+ *
+ * @internal
  */
 final class KeywordReader
 {

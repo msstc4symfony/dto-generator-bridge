@@ -6,6 +6,8 @@ namespace Msstc4Symfony\DtoGeneratorBridge\Validator;
 
 /**
  * Whether a lower and an upper bound leave any value between them.
+ *
+ * @internal
  */
 final class Interval
 {

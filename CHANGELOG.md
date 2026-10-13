@@ -33,6 +33,9 @@ All notable changes to this package are documented here. The format follows
 
 ### Changed
 
+- The classes behind `ValidatorEnricher` (`Keywords`, `ConstraintBuilder`, `Subschema` and the other helpers of
+  `Validator\`) are marked `@internal`: only the bridge creates them, and their signatures change between minor
+  versions (this release: the constructor of `ConstraintBuilder`, and `Keywords::narrowsEnum()` is gone).
 - The bridge requires `msstc4php/dto-generator` ^1.4 and `msstc4symfony/dto-generator-bridge-runtime` ^1.1.
 - Regenerated DTOs reject what `format: uri` and `format: time` never allowed but went unchecked: a relative reference
   such as `/pets/1` (use `format: uri-reference`, which stays unchecked) and a time without its offset (`08:30:06`).

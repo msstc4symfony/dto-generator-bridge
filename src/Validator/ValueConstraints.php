@@ -22,6 +22,8 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
  * written as the PHP type of the property (1 on a float is 1.0, 2.0 on an int is 2).
  *
  * @phpstan-import-type JsonValue from Json
+ *
+ * @internal
  */
 final class ValueConstraints
 {
