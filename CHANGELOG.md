@@ -16,7 +16,10 @@ All notable changes to this package are documented here. The format follows
 
 ### Changed
 
-- The bridge requires `msstc4symfony/dto-generator-bridge-runtime` ^1.2.
+- `dependentRequired`, conditions (`if`/`then`/`else`), `not` and `dependentSchemas` in a child's schema may name
+  properties the class inherits (through `ClassContext::ancestors()` of the generator 1.5): they are checked instead
+  of warned about. What a parent's schema says stays with the parent's class, which Symfony checks on the child too.
+- The bridge requires `msstc4php/dto-generator` ^1.5 and `msstc4symfony/dto-generator-bridge-runtime` ^1.2.
 
 ## [1.3.0] - 2026-10-13
 

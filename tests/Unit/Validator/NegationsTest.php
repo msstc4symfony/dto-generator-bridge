@@ -161,7 +161,7 @@ final class NegationsTest extends TestCase
         ], $this->messages($output));
     }
 
-    public function testLeavesTheNotOfAParentToIt(): void
+    public function testChecksInheritedPropertiesAndLeavesTheNotOfAParentToIt(): void
     {
         $output = $this->withRuntime(['allOf' => [
             ['$ref' => '#/components/schemas/Base'],
@@ -170,11 +170,8 @@ final class NegationsTest extends TestCase
         ]], ['Base' => ['type' => 'object', 'properties' => ['a' => ['type' => 'string']], 'not' => ['required' => ['a']]]]);
 
         self::assertSame(['RuntimeAssert\\Not(constraints: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['a'])])"], $this->classAttributesOf($this->code($output, 'Base.php')));
-        self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
-        self::assertSame(
-            [self::AT . '/allOf/2: "not" names "a", which this class inherits; it is not checked: write it in the schema that declares its properties.'],
-            $this->messages($output),
-        );
+        self::assertSame(['RuntimeAssert\\Not(constraints: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['a', 'b'])])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
+        self::assertSame([], $this->messages($output));
     }
 
     public function testChecksTheNotOfAChildThatNamesNoProperty(): void

@@ -7,11 +7,8 @@ namespace Msstc4Symfony\DtoGeneratorBridge\Validator;
 use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostics;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ArgumentValue;
 use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeArgument;
-use MSSTC4PHP\DtoGenerator\Domain\Model\ClassModel;
-use MSSTC4PHP\DtoGenerator\Domain\Model\ClassName;
 use MSSTC4PHP\DtoGenerator\Domain\Model\PropertyModel;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\Schema;
-use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaLocation;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\DefaultValue;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use Msstc4Symfony\DtoGeneratorBridge\Keywords;
@@ -43,30 +40,17 @@ final class ClassConditions
     /** @var list<non-empty-string> */
     private array $groups;
 
-    /** @var array<array-key, PropertyModel> by wire name, a numeric one as an int */
-    private array $own = [];
-
-    private bool $inherits;
-
-    private string $location;
+    private ClassProperties $properties;
 
     /**
      * @param list<non-empty-string> $groups the groups of the class, which Property needs as a composite
-     * @param SchemaLocation $location where the class's own schema is, beside those of its parents
      */
-    public function __construct(ClassModel $class, ConstraintBuilder $builder, Diagnostics $diagnostics, array $groups, SchemaLocation $location)
+    public function __construct(ClassProperties $properties, ConstraintBuilder $builder, Diagnostics $diagnostics, array $groups)
     {
-        $this->location = $location->toString();
+        $this->properties = $properties;
         $this->builder = $builder;
         $this->diagnostics = $diagnostics;
         $this->groups = $groups;
-        foreach ($class->properties() as $property) {
-            if (!$property->isAdditionalProperties()) {
-                $this->own[$property->wireName()] = $property;
-            }
-        }
-
-        $this->inherits = $class->parent() instanceof ClassName;
     }
 
     /**
@@ -76,7 +60,7 @@ final class ClassConditions
     {
         $conditions = [];
         foreach (ClaimedConstraints::conditionPlaces($keywords) as $place) {
-            $condition = $this->condition($place, $keywords);
+            $condition = $this->properties->ofAncestor($place) ? null : $this->condition($place, $keywords);
             if ($condition instanceof ConstraintSpec) {
                 $conditions[] = $condition;
             }
@@ -94,7 +78,7 @@ final class ClassConditions
     {
         $negations = [];
         foreach ($keywords->schemas() as $place) {
-            if (!$place->hasKeyword('not') || $place->keyword('not') === false) {
+            if (!$place->hasKeyword('not') || $place->keyword('not') === false || $this->properties->ofAncestor($place)) {
                 continue;
             }
 
@@ -118,7 +102,7 @@ final class ClassConditions
     {
         $dependencies = [];
         foreach ($keywords->schemas() as $place) {
-            if (!$place->hasKeyword('dependentSchemas')) {
+            if (!$place->hasKeyword('dependentSchemas') || $this->properties->ofAncestor($place)) {
                 continue;
             }
 
@@ -177,7 +161,7 @@ final class ClassConditions
     private function negation(string $keyword, array $read, Schema $place, Keywords $keywords): ?ConstraintSpec
     {
         $branches = [[$keyword, $read, true]];
-        if ($this->belongsToParent($read, $place) || !$this->namesOwnProperties($branches, $place, $keywords, 'it') || $this->namesAlwaysSet($branches, $place, 'it')) {
+        if (!$this->namesOwnProperties($branches, $place, $keywords, 'it') || $this->namesAlwaysSet($branches, $place, 'it')) {
             return null;
         }
 
@@ -296,18 +280,18 @@ final class ClassConditions
             }
         }
 
-        $foreign = array_values(array_filter($named, fn (array $pair): bool => !isset($this->own[$pair[0]])));
+        $foreign = array_values(array_filter($named, fn (array $pair): bool => !$this->properties->find($pair[0]) instanceof PropertyModel));
         if ($foreign === []) {
             return true;
         }
 
         // The class generated from the schema that declares every property checks the condition itself.
-        if ($this->inherits && array_diff(array_column($named, 0), $place->propertyNames()) === []) {
+        if ($this->properties->inherits() && array_diff(array_column($named, 0), $place->propertyNames()) === []) {
             return false;
         }
 
         [$name, $branch] = $foreign[0];
-        $this->diagnostics->warning($this->inherits && $this->declares($keywords, $name)
+        $this->diagnostics->warning($this->properties->inherits() && $this->declares($keywords, $name)
             ? sprintf('"%s" names "%s", which this class inherits; %s is not checked: write it in the schema that declares its properties.', $branch, $name, $subject)
             : sprintf('"%s" names "%s", which is not a property of this class; %s is not checked.', $branch, $name, $subject), $place->location());
 
@@ -327,7 +311,7 @@ final class ClassConditions
         foreach ($branches as [$branch, [$properties, $required], $decides]) {
             $names = array_merge(array_column($properties, 0), $decides ? $required : []);
             foreach ($names as $name) {
-                $default = $this->own[$name]->default();
+                $default = $this->property($name)->default();
                 if ($default instanceof DefaultValue && $default->value() !== null) {
                     $this->diagnostics->warning(sprintf('"%s" names "%s", which has a default and is always set; %s is not checked.', $branch, $name, $subject), $place->location());
 
@@ -353,7 +337,7 @@ final class ClassConditions
         $at = $place->location();
         $checks = [];
         foreach ($properties as [$name, $schema]) {
-            $property = $this->own[$name];
+            $property = $this->property($name);
             $specs = $this->builder->subschema($branch, $schema, $at, $property->type(), true);
             $inner = $specs === null ? null : $this->builder->asNew($branch, $specs, $at);
             if ($inner === null) {
@@ -369,7 +353,7 @@ final class ClassConditions
         }
 
         if ($required !== []) {
-            $names = array_map(fn (string $name): ArgumentValue => ArgumentValue::literal($this->own[$name]->name()), array_unique($required));
+            $names = array_map(fn (string $name): ArgumentValue => ArgumentValue::literal($this->property($name)->name()), array_unique($required));
             $checks[] = ConstraintSpec::runtime('Present', [AttributeArgument::named('properties', ArgumentValue::listOf(...$names))]);
         }
 
@@ -377,16 +361,14 @@ final class ClassConditions
     }
 
     /**
-     * A schema of nothing but the object names no property to tell its class by: one outside the class's own schema
-     * belongs to a parent, which checks it.
-     *
-     * @param BranchShape $read
+     * A property namesOwnProperties() found.
      */
-    private function belongsToParent(array $read, Schema $place): bool
+    private function property(string $name): PropertyModel
     {
-        $at = $place->location()->toString();
+        $property = $this->properties->find($name);
+        assert($property instanceof PropertyModel);
 
-        return $this->inherits && $read === [[], []] && $at !== $this->location && strncmp($at, $this->location . '/', strlen($this->location) + 1) !== 0;
+        return $property;
     }
 
     private function declares(Keywords $keywords, string $name): bool

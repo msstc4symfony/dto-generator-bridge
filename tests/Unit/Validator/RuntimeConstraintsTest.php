@@ -540,19 +540,16 @@ final class RuntimeConstraintsTest extends TestCase
         ], $this->messages($output));
     }
 
-    public function testLeavesThePairsOfInheritedPropertiesToTheParent(): void
+    public function testChecksPairsOfInheritedPropertiesAndLeavesTheParentsToIt(): void
     {
         $output = $this->withRuntime(['allOf' => [
             ['$ref' => '#/components/schemas/Animal'],
             ['type' => 'object', 'dependentRequired' => ['name' => ['legs'], 'tail' => ['name'], 'legs' => ['name']], 'properties' => ['tail' => ['type' => 'string']]],
         ]], ['Animal' => ['type' => 'object', 'dependentRequired' => ['name' => ['legs']], 'properties' => ['name' => ['type' => 'string'], 'legs' => ['type' => 'integer']]]]);
 
-        self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
+        self::assertSame(["RuntimeAssert\\DependentRequired(requirements: ['tail' => ['name'], 'legs' => ['name']])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
         self::assertSame(["RuntimeAssert\\DependentRequired(requirements: ['name' => ['legs']])"], $this->classAttributesOf($this->code($output, 'Animal.php')));
-        self::assertSame([
-            'warning /api.yaml#/components/schemas/Pet: "dependentRequired": "tail" needing "name" is not checked, as the class inherits "name"; write the pair in the schema that declares both.',
-            'warning /api.yaml#/components/schemas/Pet: "dependentRequired": "legs" needing "name" is not checked, as the class inherits "legs"; write the pair in the schema that declares both.',
-        ], $this->messages($output));
+        self::assertSame([], $this->messages($output));
     }
 
     public function testGroupsTheClassConstraint(): void

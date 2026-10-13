@@ -36,7 +36,7 @@ Symfony versions in your `composer.lock`.
 ## Requirements
 
 - PHP >= 7.4 (the bridge runs inside the generator, which supports PHP 7.4).
-- `msstc4php/dto-generator` ^1.4 and `msstc4symfony/dto-generator-bridge-runtime` ^1.2 (both installed with the
+- `msstc4php/dto-generator` ^1.5 and `msstc4symfony/dto-generator-bridge-runtime` ^1.2 (both installed with the
   bridge).
 - In the application that uses the DTOs: `symfony/validator` and/or `symfony/serializer` 5.4, 6.4, 7.x or 8.x. By
   default the bridge writes constraints and attributes only for the components it finds in `composer.lock`.
@@ -178,9 +178,10 @@ They follow JSON Schema with these limits:
 - **`dependentRequired`** reads a property as present when it is not `null`: like the rest of the DTO, it cannot tell
   a missing key from `null`, so a pair whose first property has a default is not checked (it is always present),
   with a warning. A name that is not a property of the class gives a warning and leaves its pair out. A class that
-  extends another (`allOf` with a `$ref`) does not know the inherited properties: a pair the parent's schema lists
-  is left to the parent, and any other pair with an inherited property gives a warning. Each missing property is
-  one violation at its own path.
+  extends another (`allOf` with a `$ref`) checks pairs with inherited properties too; a pair a parent's schema lists
+  is left to the parent, which Symfony checks on the child as well. Only when the parent is not generated in the same
+  run are its properties unknown: a pair with one of them gives a warning. Each missing property is one violation at
+  its own path.
 - **`patternProperties`** checks the value under each key a pattern matches: with `PatternProperty` on a map and on
   `$additionalProperties`, reported at `labels[key]`; on a declared property whose wire name matches, the bridge
   matches it while generating and writes the constraints of the pattern's schema on the property itself, where a
@@ -200,7 +201,7 @@ They follow JSON Schema with these limits:
   with a default under `properties` or in the `required` of `if` (the DTO cannot tell it from a missing one), any
   other keyword in a branch, or a branch that is no schema (`if: false` included) give a warning, and the condition
   is not checked. As with `dependentRequired`, a condition of a parent's schema is left to the parent, and one in the
-  child's schema that names inherited properties gives a warning.
+  child's schema may name inherited properties.
 - **`not`** becomes `Not` of the constraints of its schema: a value they find nothing wrong with is a violation. A
   schema that checks nothing (`{}`, `true`, annotations only) leaves no value but a missing one, and `not: false`
   forbids nothing. As with `if`, `null` is not checked: it stands for a missing value, so `not` of a schema that allows

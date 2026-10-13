@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Msstc4Symfony\DtoGeneratorBridge\Validator;
 
 use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostics;
-use MSSTC4PHP\DtoGenerator\Domain\Model\ClassModel;
-use MSSTC4PHP\DtoGenerator\Domain\Model\ClassName;
 use MSSTC4PHP\DtoGenerator\Domain\Model\PropertyModel;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaLocation;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\DefaultValue;
@@ -14,9 +12,9 @@ use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use Msstc4Symfony\DtoGeneratorBridge\Keywords;
 
 /**
- * The pairs of `dependentRequired` a class can check, by the PHP names of its own properties. A class that extends
- * another does not know the PHP names of the inherited properties: a pair the schema declaring both properties lists
- * is left to the class of that schema; any other pair with an inherited property is not checked.
+ * The pairs of `dependentRequired` a class can check, by the PHP names of its properties, those it inherits from the
+ * ancestors the run generates included. A pair in an ancestor's schema is left to the ancestor; a pair with a property
+ * of a parent the run does not generate is left to the class of the schema that declares both, or not checked.
  *
  * @phpstan-import-type JsonValue from Json
  *
@@ -28,22 +26,13 @@ final class DependentRequirements
 
     private SchemaLocation $at;
 
-    /** @var array<string, PropertyModel> by wire name */
-    private array $own = [];
+    private ClassProperties $properties;
 
-    private bool $inherits;
-
-    public function __construct(ClassModel $class, Diagnostics $diagnostics, SchemaLocation $at)
+    public function __construct(ClassProperties $properties, Diagnostics $diagnostics, SchemaLocation $at)
     {
+        $this->properties = $properties;
         $this->diagnostics = $diagnostics;
         $this->at = $at;
-        foreach ($class->properties() as $property) {
-            if (!$property->isAdditionalProperties()) {
-                $this->own[$property->wireName()] = $property;
-            }
-        }
-
-        $this->inherits = $class->parent() instanceof ClassName;
     }
 
     /**
@@ -55,7 +44,7 @@ final class DependentRequirements
     {
         $requirements = [];
         foreach ($keywords->schemas() as $place) {
-            if (!$place->hasKeyword('dependentRequired')) {
+            if (!$place->hasKeyword('dependentRequired') || $this->properties->ofAncestor($place)) {
                 continue;
             }
 
@@ -102,18 +91,23 @@ final class DependentRequirements
      */
     private function pair(string $trigger, string $dependent, Keywords $keywords): ?array
     {
-        $triggerProperty = $this->own[$trigger] ?? null;
-        $dependentProperty = $this->own[$dependent] ?? null;
-        if ($triggerProperty !== null && $dependentProperty !== null) {
+        // Symfony gives the class the ancestor's constraints too, so a pair the ancestor checks is not repeated.
+        if ($this->listedByAncestor($keywords, $trigger, $dependent)) {
+            return null;
+        }
+
+        $triggerProperty = $this->properties->find($trigger);
+        $dependentProperty = $this->properties->find($dependent);
+        if ($triggerProperty instanceof PropertyModel && $dependentProperty instanceof PropertyModel) {
             return $this->unlessAlwaysSet($triggerProperty, $dependentProperty);
         }
 
-        if ($this->inherits && $this->leftToTheDeclaringClass($keywords, $trigger, $dependent)) {
+        if ($this->properties->inherits() && $this->leftToTheDeclaringClass($keywords, $trigger, $dependent)) {
             return null;
         }
 
         foreach ([$trigger, $dependent] as $name) {
-            if (!isset($this->own[$name]) && (!$this->inherits || !$this->declares($keywords, $name))) {
+            if (!$this->properties->find($name) instanceof PropertyModel && (!$this->properties->inherits() || !$this->declares($keywords, $name))) {
                 $this->diagnostics->warning(sprintf(
                     '"dependentRequired" names "%s", which is not a property of this class; "%s" needing "%s" is not checked.',
                     $name,
@@ -129,7 +123,7 @@ final class DependentRequirements
             '"dependentRequired": "%s" needing "%s" is not checked, as the class inherits "%s"; write the pair in the schema that declares both.',
             $trigger,
             $dependent,
-            $triggerProperty === null ? $trigger : $dependent,
+            $triggerProperty instanceof PropertyModel ? $dependent : $trigger,
         ), $this->at);
 
         return null;
@@ -166,6 +160,18 @@ final class DependentRequirements
             $listed = $place->hasKeyword('dependentRequired') ? Json::value($place->keyword('dependentRequired')) : null;
             if (in_array($trigger, $declared, true) && in_array($dependent, $declared, true) && is_array($listed)
                 && in_array($dependent, (array) ($listed[$trigger] ?? []), true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function listedByAncestor(Keywords $keywords, string $trigger, string $dependent): bool
+    {
+        foreach ($keywords->schemas() as $place) {
+            $listed = $place->hasKeyword('dependentRequired') ? Json::value($place->keyword('dependentRequired')) : null;
+            if (is_array($listed) && $this->properties->ofAncestor($place) && in_array($dependent, (array) ($listed[$trigger] ?? []), true)) {
                 return true;
             }
         }

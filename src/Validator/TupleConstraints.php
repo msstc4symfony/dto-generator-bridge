@@ -61,25 +61,20 @@ final class TupleConstraints
         }
 
         $itemized = $this->itemized($keywords);
-        $counts = [];
         $collections = [];
-        $all = [];
+        $rest = [];
         foreach ($keywords->schemas() as $place) {
             $collection = $place->hasKeyword('prefixItems') ? $this->prefix($place, $value->item(), $itemized) : null;
             if ($collection instanceof ConstraintSpec) {
                 $collections[] = $collection;
             }
 
-            foreach ($place->hasKeyword('unevaluatedItems') ? $this->unevaluated($place, $value->item()) : [] as $constraint) {
-                if ($constraint->is('Count')) {
-                    $counts[] = $constraint;
-                } else {
-                    $all[] = $constraint;
-                }
+            if ($place->hasKeyword('unevaluatedItems')) {
+                array_push($rest, ...$this->unevaluated($place, $value->item()));
             }
         }
 
-        return array_merge($counts, $collections, $all);
+        return array_merge($collections, $rest);
     }
 
     /**

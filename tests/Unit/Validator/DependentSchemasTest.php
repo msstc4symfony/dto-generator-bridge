@@ -83,7 +83,7 @@ final class DependentSchemasTest extends TestCase
         ], $this->messages($output));
     }
 
-    public function testLeavesTheDependencyOfAParentToIt(): void
+    public function testChecksInheritedPropertiesAndLeavesTheDependencyOfAParentToIt(): void
     {
         $output = $this->withRuntime(['allOf' => [
             ['$ref' => '#/components/schemas/Base'],
@@ -95,11 +95,11 @@ final class DependentSchemasTest extends TestCase
             ['RuntimeAssert\\IfThenElse(if: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['a'])], then: [new " . self::RUNTIME_ASSERT . "Present(properties: ['c'])])"],
             $this->classAttributesOf($this->code($output, 'Base.php')),
         );
-        self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
         self::assertSame(
-            [self::AT . '/allOf/2: "dependentSchemas" names "a", which this class inherits; it is not checked: write it in the schema that declares its properties.'],
-            $this->messages($output),
+            ['RuntimeAssert\\IfThenElse(if: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['a'])], then: [new " . self::RUNTIME_ASSERT . "Present(properties: ['b'])])"],
+            $this->classAttributesOf($this->code($output, 'Pet.php')),
         );
+        self::assertSame([], $this->messages($output));
     }
 
     public function testRequiresAPropertyWithADefaultInTheSchema(): void
