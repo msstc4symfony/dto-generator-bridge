@@ -17,11 +17,8 @@ use MSSTC4PHP\DtoGenerator\Domain\Schema\Schema;
  */
 final class ClassProperties
 {
-    /** @var array<array-key, PropertyModel> by wire name, a numeric one as an int */
-    private array $own;
-
-    /** @var array<array-key, PropertyModel> by wire name, the nearest ancestor's first */
-    private array $inherited = [];
+    /** @var array<array-key, PropertyModel> by wire name, a numeric one as an int: its own, then the nearest ancestor's */
+    private array $properties;
 
     /** @var list<string> */
     private array $ancestorLocations = [];
@@ -33,9 +30,9 @@ final class ClassProperties
      */
     public function __construct(ClassModel $class, array $ancestors)
     {
-        $this->own = $this->declared($class);
+        $this->properties = $this->declared($class);
         foreach ($ancestors as $ancestor) {
-            $this->inherited += $this->declared($ancestor);
+            $this->properties += $this->declared($ancestor);
             $this->ancestorLocations[] = $ancestor->source()->toString();
         }
 
@@ -44,7 +41,7 @@ final class ClassProperties
 
     public function find(string $wireName): ?PropertyModel
     {
-        return $this->own[$wireName] ?? $this->inherited[$wireName] ?? null;
+        return $this->properties[$wireName] ?? null;
     }
 
     public function inherits(): bool

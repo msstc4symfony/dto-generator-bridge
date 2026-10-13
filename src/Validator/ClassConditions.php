@@ -60,7 +60,7 @@ final class ClassConditions
     {
         $conditions = [];
         foreach (ClaimedConstraints::conditionPlaces($keywords) as $place) {
-            $condition = $this->properties->ofAncestor($place) ? null : $this->condition($place, $keywords);
+            $condition = $this->properties->ofAncestor($place) ? null : $this->condition($place);
             if ($condition instanceof ConstraintSpec) {
                 $conditions[] = $condition;
             }
@@ -83,7 +83,7 @@ final class ClassConditions
             }
 
             $read = $this->read('not', $place->keyword('not'), $place);
-            $negation = $read === null ? null : $this->negation('not', $read, $place, $keywords);
+            $negation = $read === null ? null : $this->negation('not', $read, $place);
             if ($negation instanceof ConstraintSpec) {
                 $negations[] = $negation;
             }
@@ -114,7 +114,7 @@ final class ClassConditions
             }
 
             foreach ($schemas as $name => $schema) {
-                $dependency = $this->dependency((string) $name, Json::value($schema), $place, $keywords);
+                $dependency = $this->dependency((string) $name, Json::value($schema), $place);
                 if ($dependency instanceof ConstraintSpec) {
                     $dependencies[] = $dependency;
                 }
@@ -127,11 +127,11 @@ final class ClassConditions
     /**
      * @param JsonValue $schema
      */
-    private function dependency(string $name, $schema, Schema $place, Keywords $keywords): ?ConstraintSpec
+    private function dependency(string $name, $schema, Schema $place): ?ConstraintSpec
     {
         $set = [[], [$name]];
         if ($schema === false) {
-            return $this->negation('dependentSchemas', $set, $place, $keywords);
+            return $this->negation('dependentSchemas', $set, $place);
         }
 
         $read = $this->read('dependentSchemas', $schema, $place);
@@ -140,7 +140,7 @@ final class ClassConditions
         }
 
         $branches = [['dependentSchemas', $set, true], ['dependentSchemas', $read, false]];
-        if (!$this->namesOwnProperties($branches, $place, $keywords, 'it') || $this->namesAlwaysSet($branches, $place, 'it')) {
+        if (!$this->namesOwnProperties($branches, $place, 'it') || $this->namesAlwaysSet($branches, $place, 'it')) {
             return null;
         }
 
@@ -158,10 +158,10 @@ final class ClassConditions
      * @param 'not'|'dependentSchemas' $keyword
      * @param BranchShape $read
      */
-    private function negation(string $keyword, array $read, Schema $place, Keywords $keywords): ?ConstraintSpec
+    private function negation(string $keyword, array $read, Schema $place): ?ConstraintSpec
     {
         $branches = [[$keyword, $read, true]];
-        if (!$this->namesOwnProperties($branches, $place, $keywords, 'it') || $this->namesAlwaysSet($branches, $place, 'it')) {
+        if (!$this->namesOwnProperties($branches, $place, 'it') || $this->namesAlwaysSet($branches, $place, 'it')) {
             return null;
         }
 
@@ -174,7 +174,7 @@ final class ClassConditions
         return ConstraintSpec::runtime('Not', $inner === [] ? [] : [AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner))]);
     }
 
-    private function condition(Schema $place, Keywords $keywords): ?ConstraintSpec
+    private function condition(Schema $place): ?ConstraintSpec
     {
         // The first branch that is not checked leaves the others unread, so it gets the only warning.
         $if = $this->branch('if', $place);
@@ -193,7 +193,7 @@ final class ClassConditions
         }
 
         $branches = [['if', $if, true], ['then', $then, false], ['else', $else, false]];
-        if (!$this->namesOwnProperties($branches, $place, $keywords, 'the condition') || $this->namesAlwaysSet($branches, $place, 'the condition')) {
+        if (!$this->namesOwnProperties($branches, $place, 'the condition') || $this->namesAlwaysSet($branches, $place, 'the condition')) {
             return null;
         }
 
@@ -271,7 +271,7 @@ final class ClassConditions
      * @param list<NamedBranch> $branches
      * @param 'the condition'|'it' $subject what a warning says is not checked
      */
-    private function namesOwnProperties(array $branches, Schema $place, Keywords $keywords, string $subject): bool
+    private function namesOwnProperties(array $branches, Schema $place, string $subject): bool
     {
         $named = [];
         foreach ($branches as [$branch, [$properties, $required]]) {
@@ -285,15 +285,8 @@ final class ClassConditions
             return true;
         }
 
-        // The class generated from the schema that declares every property checks the condition itself.
-        if ($this->properties->inherits() && array_diff(array_column($named, 0), $place->propertyNames()) === []) {
-            return false;
-        }
-
         [$name, $branch] = $foreign[0];
-        $this->diagnostics->warning($this->properties->inherits() && $this->declares($keywords, $name)
-            ? sprintf('"%s" names "%s", which this class inherits; %s is not checked: write it in the schema that declares its properties.', $branch, $name, $subject)
-            : sprintf('"%s" names "%s", which is not a property of this class; %s is not checked.', $branch, $name, $subject), $place->location());
+        $this->diagnostics->warning(sprintf('"%s" names "%s", which is not a property of this class; %s is not checked.', $branch, $name, $subject), $place->location());
 
         return false;
     }
@@ -369,16 +362,5 @@ final class ClassConditions
         assert($property instanceof PropertyModel);
 
         return $property;
-    }
-
-    private function declares(Keywords $keywords, string $name): bool
-    {
-        foreach ($keywords->schemas() as $place) {
-            if (in_array($name, $place->propertyNames(), true)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

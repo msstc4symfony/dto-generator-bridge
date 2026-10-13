@@ -102,28 +102,11 @@ final class DependentRequirements
             return $this->unlessAlwaysSet($triggerProperty, $dependentProperty);
         }
 
-        if ($this->properties->inherits() && $this->leftToTheDeclaringClass($keywords, $trigger, $dependent)) {
-            return null;
-        }
-
-        foreach ([$trigger, $dependent] as $name) {
-            if (!$this->properties->find($name) instanceof PropertyModel && (!$this->properties->inherits() || !$this->declares($keywords, $name))) {
-                $this->diagnostics->warning(sprintf(
-                    '"dependentRequired" names "%s", which is not a property of this class; "%s" needing "%s" is not checked.',
-                    $name,
-                    $trigger,
-                    $dependent,
-                ), $this->at);
-
-                return null;
-            }
-        }
-
         $this->diagnostics->warning(sprintf(
-            '"dependentRequired": "%s" needing "%s" is not checked, as the class inherits "%s"; write the pair in the schema that declares both.',
+            '"dependentRequired" names "%s", which is not a property of this class; "%s" needing "%s" is not checked.',
+            $triggerProperty instanceof PropertyModel ? $dependent : $trigger,
             $trigger,
             $dependent,
-            $triggerProperty instanceof PropertyModel ? $dependent : $trigger,
         ), $this->at);
 
         return null;
@@ -150,39 +133,11 @@ final class DependentRequirements
         return null;
     }
 
-    /**
-     * Whether a schema that declares both properties lists the pair, so the class generated from it checks it.
-     */
-    private function leftToTheDeclaringClass(Keywords $keywords, string $trigger, string $dependent): bool
-    {
-        foreach ($keywords->schemas() as $place) {
-            $declared = $place->propertyNames();
-            $listed = $place->hasKeyword('dependentRequired') ? Json::value($place->keyword('dependentRequired')) : null;
-            if (in_array($trigger, $declared, true) && in_array($dependent, $declared, true) && is_array($listed)
-                && in_array($dependent, (array) ($listed[$trigger] ?? []), true)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private function listedByAncestor(Keywords $keywords, string $trigger, string $dependent): bool
     {
         foreach ($keywords->schemas() as $place) {
             $listed = $place->hasKeyword('dependentRequired') ? Json::value($place->keyword('dependentRequired')) : null;
             if (is_array($listed) && $this->properties->ofAncestor($place) && in_array($dependent, (array) ($listed[$trigger] ?? []), true)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private function declares(Keywords $keywords, string $name): bool
-    {
-        foreach ($keywords->schemas() as $place) {
-            if (in_array($name, $place->propertyNames(), true)) {
                 return true;
             }
         }
