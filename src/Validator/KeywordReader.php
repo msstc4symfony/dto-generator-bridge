@@ -101,6 +101,20 @@ final class KeywordReader
     }
 
     /**
+     * Whether a lower count is at most an upper one; otherwise no value is valid, and neither is checked.
+     */
+    public function consistent(string $minimum, int $lower, string $maximum, int $upper): bool
+    {
+        if ($lower <= $upper) {
+            return true;
+        }
+
+        $this->diagnostics->warning(sprintf('"%s" is above "%s", so no value is valid; they are not checked.', $minimum, $maximum), $this->at);
+
+        return false;
+    }
+
+    /**
      * JSON Schema counts 2.0 as an integer.
      *
      * @param JsonValue $value

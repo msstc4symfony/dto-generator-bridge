@@ -65,7 +65,7 @@ final class ClassConditions
     public function of(Keywords $keywords): array
     {
         $conditions = [];
-        foreach (ConstraintBuilder::conditionPlaces($keywords) as $place) {
+        foreach (ClaimedConstraints::conditionPlaces($keywords) as $place) {
             $condition = $this->condition($place, $keywords);
             if ($condition instanceof ConstraintSpec) {
                 $conditions[] = $condition;

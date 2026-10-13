@@ -102,7 +102,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
      */
     private function conditions(ClassContext $context, Keywords $keywords, ConstraintBuilder $builder, RuntimeConstraints $runtime, array $groups): array
     {
-        if (ConstraintBuilder::conditionPlaces($keywords) === [] || !$runtime->available('if', $context->schema()->location())) {
+        if (ClaimedConstraints::conditionPlaces($keywords) === [] || !$runtime->available('if', $context->schema()->location())) {
             return [];
         }
 
@@ -265,9 +265,9 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             assert($type instanceof MapType);
             $patterns = $class->patterns();
             $constraints = array_merge(
-                $builder->names($class->keywords(), $class->location()),
+                $builder->claimed()->names($class->keywords(), $class->location()),
                 $patterns !== [] && (new RuntimeConstraints($context->packages(), $context->diagnostics()))->available('patternProperties', $class->location())
-                    ? $builder->patternProperties($patterns, $type->value())
+                    ? $builder->claimed()->patternProperties($patterns, $type->value())
                     : [],
             );
         } else {

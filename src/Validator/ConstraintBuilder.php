@@ -17,7 +17,6 @@ use MSSTC4PHP\DtoGenerator\Domain\Model\MixedType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\NullableType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ScalarType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\TypeModel;
-use MSSTC4PHP\DtoGenerator\Domain\Model\UnionType;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\Schema;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaLocation;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
@@ -26,7 +25,9 @@ use MSSTC4PHP\DtoGenerator\Domain\Target\TargetProfile;
 use Msstc4Symfony\DtoGeneratorBridge\Keywords;
 
 /**
- * The constraints a value's schema and type call for (bridge spec §5.1), in the order of that table.
+ * The constraints a value's schema and type call for (bridge spec §5.1), in the order of that table: those of the
+ * keywords of its kind (KindConstraints), of the keywords the bridge claims (ClaimedConstraints), of its enum and
+ * constant (ValueConstraints), and of the elements it holds. Subschemas are built here too, by a builder of their own.
  *
  * @phpstan-import-type JsonValue from Json
  *
@@ -34,69 +35,19 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
  */
 final class ConstraintBuilder
 {
-    /**
-     * The keywords the generator calls unsupported and the runtime's constraints check; the bridge claims them and warns
-     * where it cannot check one.
-     */
-    public const CLAIMED_KEYWORDS = ['dependentRequired', 'propertyNames', 'contains', 'minContains', 'maxContains', 'patternProperties', 'if', 'then', 'else'];
-
-    /** The branches of a condition, in the order IfThenElse takes them. */
-    public const BRANCHES = ['if', 'then', 'else'];
-
-    /**
-     * Format → the constraint that checks it, and the option it needs.
-     *
-     * @var array<string, array{non-empty-string, ?non-empty-string, string|bool|null}>
-     */
-    private const FORMATS = [
-        'email' => ['Email', 'mode', 'html5'],
-        'ipv4' => ['Ip', 'version', '4'],
-        'ipv6' => ['Ip', 'version', '6'],
-        'hostname' => ['Hostname', 'requireTld', false],
-        'uuid' => ['Uuid', null, null],
-        'byte' => ['Regex', 'pattern', FormatPatterns::BASE64],
-        'uri' => ['Regex', 'pattern', FormatPatterns::URI],
-        'time' => ['Regex', 'pattern', FormatPatterns::TIME],
-    ];
-
-    /**
-     * The keywords JSON Schema applies to one kind of value only.
-     *
-     * @var array{string: list<non-empty-string>, number: list<non-empty-string>, collection: list<non-empty-string>}
-     */
-    private const KEYWORDS_OF = [
-        'string' => ['minLength', 'maxLength', 'pattern'],
-        'number' => ['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf'],
-        'collection' => ['minItems', 'maxItems', 'minProperties', 'maxProperties', 'uniqueItems'],
-    ];
-
-    /**
-     * The bounds of `format: int32`; `int64` is PHP's own int on 64-bit platforms and needs none. The literal
-     * 2147483648 is a float on 32-bit PHP, so the minimum is computed.
-     */
-    private const INT32 = [-2147483647 - 1, 2147483647];
-
-    /** The name the int32 bounds go by, beside the keywords that compete with them. */
-    private const INT32_LABEL = 'format: int32';
-
-    /**
-     * The formats whose constraint checks one kind of value only, and that kind as a warning names it.
-     *
-     * @var array{int32: 'an integer', byte: 'a string', uri: 'a string', time: 'a string'}
-     */
-    private const FORMAT_KINDS = ['int32' => 'an integer', 'byte' => 'a string', 'uri' => 'a string', 'time' => 'a string'];
-
     private SchemaReferences $references;
 
     private TargetProfile $target;
 
     private Diagnostics $diagnostics;
 
-    private ValueConstraints $values;
-
     private RuntimeConstraints $runtime;
 
-    private KeywordChecks $checks;
+    private KindConstraints $kinds;
+
+    private ValueConstraints $values;
+
+    private ClaimedConstraints $claimed;
 
     /** @var list<non-empty-string> */
     private array $groups;
@@ -116,9 +67,10 @@ final class ConstraintBuilder
         $this->references = $references;
         $this->target = $target;
         $this->diagnostics = $diagnostics;
-        $this->values = new ValueConstraints($target, $diagnostics);
         $this->runtime = $runtime;
-        $this->checks = $checks;
+        $this->kinds = new KindConstraints($diagnostics);
+        $this->values = new ValueConstraints($target, $diagnostics);
+        $this->claimed = new ClaimedConstraints($this, $references, $diagnostics, $runtime, $checks);
         $this->groups = $groups;
     }
 
@@ -129,32 +81,36 @@ final class ConstraintBuilder
     {
         $keywords = new Keywords($schema, $this->references);
         $value = $type instanceof NullableType ? $type->inner() : $type;
-        $kind = $this->kindOf($value);
+        $kind = KindConstraints::kindOf($value);
         $at = $schema->location();
         $reader = new KeywordReader($keywords, $this->diagnostics, $at);
         // As in the generator, which stays quiet about what a schema whose type x-php-type replaces says.
         $replaced = $keywords->resolved()->extensions()->has('x-php-type');
-        $this->warnAboutFormatsOfOneKind($keywords, $kind, $at);
+        $this->kinds->warnAboutFormatsOfOneKind($keywords, $kind, $at);
 
         if (!$replaced) {
-            $this->warnAboutUnreachedMembers($keywords, $at);
+            $this->claimed->warnAboutUnreachedMembers($keywords, $at);
         }
 
         return array_merge(
-            $this->checks($keywords, $kind, 'string', $at) ? $this->strings($keywords, $reader, $at) : [],
-            $this->checks($keywords, $kind, 'number', $at)
-                ? $this->numbers($reader, $kind === 'integer', $this->implied($keywords, $kind), $at)
-                : [],
-            $this->checks($keywords, $kind, 'collection', $at) ? $this->collections($keywords, $reader, $value, $at) : [],
-            $replaced ? [] : $this->contains($keywords, $reader, $value, $at),
-            $replaced ? [] : $this->keys($keywords, $value, $at),
-            $replaced ? [] : $this->patterns($keywords, $value, $at),
+            $this->kinds->of($keywords, $reader, $value, $kind, $at),
+            $replaced ? [] : $this->claimed->contains($keywords, $reader, $value, $at),
+            $replaced ? [] : $this->claimed->keys($keywords, $value, $at),
+            $replaced ? [] : $this->claimed->patterns($keywords, $value, $at),
             $this->values->choices($keywords, $value, $at),
             $this->values->constants($keywords, $value, $at),
-            $this->formats($keywords, $value),
+            $this->kinds->formats($keywords, $value),
             $this->nested($keywords, $value, $at),
-            $replaced ? [] : $this->conditions($keywords, $value, $at),
+            $replaced ? [] : $this->claimed->conditions($keywords, $value, $at),
         );
+    }
+
+    /**
+     * The constraints of the keywords the bridge claims, for the classes that check them themselves.
+     */
+    public function claimed(): ClaimedConstraints
+    {
+        return $this->claimed;
     }
 
     /**
@@ -181,447 +137,6 @@ final class ConstraintBuilder
         }
 
         return $constraints;
-    }
-
-    /**
-     * The runtime's Keys for the names of the undeclared properties of a class, from the keywords of its schema.
-     *
-     * @return list<ConstraintSpec>
-     */
-    public function names(Keywords $keywords, SchemaLocation $at): array
-    {
-        $constraints = [];
-        if ($this->claimed($keywords, 'propertyNames') === [] || !$this->runtime->available('propertyNames', $at)) {
-            return [];
-        }
-
-        $name = ScalarType::string();
-        foreach (array_filter($keywords->schemas(), static fn (Schema $place): bool => $place->hasKeyword('propertyNames')) as $place) {
-            $inner = $this->newSubschema('propertyNames', $place, $name);
-            if ($inner !== null && $inner !== []) {
-                $constraints[] = ConstraintSpec::runtime('Keys', [AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner))]);
-            }
-        }
-
-        return $constraints;
-    }
-
-    /**
-     * Symfony checks a keyword on another kind of value anyway (Length counts the digits of a number), so a value that
-     * may be of several types gets none.
-     *
-     * @param 'string'|'integer'|'number'|'collection'|'several'|null $actual the kind of the value
-     * @param 'string'|'number'|'collection' $kind the kind the keywords apply to; an integer is a number
-     */
-    private function checks(Keywords $keywords, ?string $actual, string $kind, SchemaLocation $at): bool
-    {
-        $present = array_filter(self::KEYWORDS_OF[$kind], static fn (string $name): bool => $keywords->has($name));
-        if ($actual === 'several' && $present !== []) {
-            $this->diagnostics->warning(sprintf(
-                '"%s" %s only a %s, and the value may be of another type; %s not checked.',
-                implode('", "', $present),
-                count($present) === 1 ? 'checks' : 'check',
-                $kind,
-                count($present) === 1 ? 'it is' : 'they are',
-            ), $at);
-        }
-
-        return $actual === $kind || ($kind === 'number' && $actual === 'integer');
-    }
-
-    /**
-     * The constraint of such a format would reject the value's other types, so a value of several gets none.
-     *
-     * @param 'string'|'integer'|'number'|'collection'|'several'|null $actual
-     */
-    private function warnAboutFormatsOfOneKind(Keywords $keywords, ?string $actual, SchemaLocation $at): void
-    {
-        if ($actual !== 'several') {
-            return;
-        }
-
-        foreach (array_intersect(array_keys(self::FORMAT_KINDS), $keywords->formats()) as $format) {
-            $this->diagnostics->warning(sprintf(
-                '"format: %s" checks only %s, and the value may be of another type; it is not checked.',
-                $format,
-                self::FORMAT_KINDS[$format],
-            ), $at);
-        }
-    }
-
-    /**
-     * @return 'string'|'integer'|'number'|'collection'|'several'|null
-     */
-    private function kindOf(TypeModel $value): ?string
-    {
-        if ($value instanceof ScalarType) {
-            $kinds = ['string' => 'string', 'int' => 'integer', 'float' => 'number', 'bool' => null];
-
-            return $kinds[$value->kind()];
-        }
-
-        if ($value instanceof ListType || $value instanceof MapType) {
-            return 'collection';
-        }
-
-        return $value instanceof UnionType || $value instanceof MixedType ? 'several' : null;
-    }
-
-    /**
-     * @return list<ConstraintSpec>
-     */
-    private function strings(Keywords $keywords, KeywordReader $reader, SchemaLocation $at): array
-    {
-        $constraints = [];
-        $length = $this->bounds($reader, 'minLength', 'maxLength', $at);
-        if ($length !== []) {
-            $constraints[] = new ConstraintSpec('Length', $length);
-        }
-
-        foreach ($keywords->values('pattern') as $pattern) {
-            $regex = is_string($pattern) ? Pattern::toPcre($pattern) : null;
-            if ($regex === null) {
-                $this->diagnostics->warning('"pattern" is no regular expression PHP can run; it is not checked.', $at);
-
-                continue;
-            }
-
-            $constraints[] = new ConstraintSpec('Regex', [AttributeArgument::named('pattern', ArgumentValue::literal($regex))]);
-        }
-
-        return $constraints;
-    }
-
-    /**
-     * The inclusive bounds the format of an integer sets, each with the name a warning gives it.
-     *
-     * @param 'string'|'integer'|'number'|'collection'|'several'|null $kind
-     *
-     * @return array{array{int, 'format: int32'}, array{int, 'format: int32'}}|null
-     */
-    private function implied(Keywords $keywords, ?string $kind): ?array
-    {
-        if ($kind !== 'integer' || !in_array('int32', $keywords->formats(), true)) {
-            return null;
-        }
-
-        return [[self::INT32[0], self::INT32_LABEL], [self::INT32[1], self::INT32_LABEL]];
-    }
-
-    /**
-     * One lower and one upper bound: the strictest of the inclusive and exclusive keywords and the implied bounds,
-     * exclusive on a tie.
-     *
-     * @param array{array{int, 'format: int32'}, array{int, 'format: int32'}}|null $implied
-     *
-     * @return list<ConstraintSpec>
-     */
-    private function numbers(KeywordReader $reader, bool $integer, ?array $implied, SchemaLocation $at): array
-    {
-        [$impliedLower, $impliedUpper] = $implied ?? [null, null];
-        $lower = $this->strictest($reader, 'exclusiveMinimum', 'minimum', true, $impliedLower);
-        $upper = $this->strictest($reader, 'exclusiveMaximum', 'maximum', false, $impliedUpper);
-        $constraints = [];
-        if ($lower !== null && $upper !== null && !$this->satisfiable($lower, $upper, $integer, $at)) {
-            $lower = null;
-            $upper = null;
-        }
-
-        $lowerExclusive = $lower !== null && $lower[1] === 'exclusiveMinimum';
-        $upperExclusive = $upper !== null && $upper[1] === 'exclusiveMaximum';
-        if ($lower !== null && $upper !== null && !$lowerExclusive && !$upperExclusive) {
-            $constraints[] = new ConstraintSpec('Range', [
-                AttributeArgument::named('min', ArgumentValue::literal($lower[0])),
-                AttributeArgument::named('max', ArgumentValue::literal($upper[0])),
-            ]);
-        } else {
-            if ($lower !== null) {
-                $constraints[] = $this->comparison($lowerExclusive ? 'GreaterThan' : 'GreaterThanOrEqual', $lower[0]);
-            }
-
-            if ($upper !== null) {
-                $constraints[] = $this->comparison($upperExclusive ? 'LessThan' : 'LessThanOrEqual', $upper[0]);
-            }
-        }
-
-        foreach ($reader->divisors('multipleOf') as $multipleOf) {
-            $constraints[] = $this->comparison('DivisibleBy', $multipleOf);
-        }
-
-        return $constraints;
-    }
-
-    /**
-     * The strictest bound and its keyword. On a tie the first candidate stays: an exclusive keyword before an inclusive
-     * one, a keyword before an implied bound.
-     *
-     * @param 'exclusiveMinimum'|'exclusiveMaximum' $exclusive
-     * @param 'minimum'|'maximum' $inclusive
-     * @param bool $lower whether the greatest bound is the strictest
-     * @param array{int, 'format: int32'}|null $implied an inclusive bound a format sets, and its name
-     *
-     * @return array{int|float, 'exclusiveMinimum'|'minimum'|'exclusiveMaximum'|'maximum'|'format: int32'}|null
-     */
-    private function strictest(
-        KeywordReader $reader,
-        string $exclusive,
-        string $inclusive,
-        bool $lower,
-        ?array $implied
-    ): ?array {
-        $candidates = [];
-        foreach ([$exclusive, $inclusive] as $keyword) {
-            foreach ($reader->numbers($keyword) as $bound) {
-                $candidates[] = [$bound, $keyword];
-            }
-        }
-
-        if ($implied !== null) {
-            $candidates[] = $implied;
-        }
-
-        $strictest = null;
-        foreach ($candidates as $candidate) {
-            if ($strictest === null || ($lower ? $candidate[0] > $strictest[0] : $candidate[0] < $strictest[0])) {
-                $strictest = $candidate;
-            }
-        }
-
-        return $strictest;
-    }
-
-    /**
-     * @param array{int|float, 'exclusiveMinimum'|'minimum'|'exclusiveMaximum'|'maximum'|'format: int32'} $lower
-     * @param array{int|float, 'exclusiveMinimum'|'minimum'|'exclusiveMaximum'|'maximum'|'format: int32'} $upper
-     */
-    private function satisfiable(array $lower, array $upper, bool $integer, SchemaLocation $at): bool
-    {
-        if (!Interval::isEmpty($lower[0], $lower[1] === 'exclusiveMinimum', $upper[0], $upper[1] === 'exclusiveMaximum', $integer)) {
-            return true;
-        }
-
-        $this->diagnostics->warning(sprintf('"%s" and "%s" leave no valid value; they are not checked.', $lower[1], $upper[1]), $at);
-
-        return false;
-    }
-
-    /**
-     * JSON Schema applies uniqueItems to arrays only, and the properties of a map to minProperties/maxProperties.
-     *
-     * @return list<ConstraintSpec>
-     */
-    private function collections(Keywords $keywords, KeywordReader $reader, TypeModel $value, SchemaLocation $at): array
-    {
-        $isMap = $value instanceof MapType;
-        $constraints = [];
-        $count = $isMap
-            ? $this->bounds($reader, 'minProperties', 'maxProperties', $at)
-            : $this->bounds($reader, 'minItems', 'maxItems', $at);
-        if ($count !== []) {
-            $constraints[] = new ConstraintSpec('Count', $count);
-        }
-
-        if (!$isMap && in_array(true, $keywords->values('uniqueItems'), true)) {
-            $constraints[] = new ConstraintSpec('Unique');
-        }
-
-        return $constraints;
-    }
-
-    /**
-     * Every format applies; one the config maps to a class gives the property that type, and the class validates
-     * itself.
-     *
-     * @return list<ConstraintSpec>
-     */
-    private function formats(Keywords $keywords, TypeModel $value): array
-    {
-        if (!$value instanceof ScalarType || $value->kind() !== 'string') {
-            return [];
-        }
-
-        $constraints = [];
-        foreach ($keywords->formats() as $format) {
-            if (isset(self::FORMATS[$format])) {
-                [$name, $option, $setting] = self::FORMATS[$format];
-                $constraints[] = new ConstraintSpec($name, $option === null ? [] : [AttributeArgument::named($option, ArgumentValue::literal($setting))]);
-            }
-        }
-
-        return $constraints;
-    }
-
-    /**
-     * Valid traverses arrays itself and may not go inside All, so it stays on the property at any depth.
-     *
-     * @return list<ConstraintSpec>
-     */
-    private function nested(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
-    {
-        if ($keywords->describesObject()) {
-            return [new ConstraintSpec('Valid')];
-        }
-
-        $resolved = $keywords->resolved();
-        if ($value instanceof ListType) {
-            [$item, $itemSchema] = [$value->item(), $resolved->items()];
-        } elseif ($value instanceof MapType) {
-            [$item, $itemSchema] = [$value->value(), $resolved->additionalProperties()];
-        } else {
-            return [];
-        }
-
-        return $itemSchema instanceof Schema ? $this->elements($itemSchema, $item, $at) : [];
-    }
-
-    /**
-     * The runtime's Contains for each `contains`, bounded by the `minContains` and `maxContains` of its own schema.
-     *
-     * @return list<ConstraintSpec>
-     */
-    private function contains(Keywords $keywords, KeywordReader $reader, TypeModel $value, SchemaLocation $at): array
-    {
-        $places = array_filter($keywords->schemas(), static fn (Schema $place): bool => $place->hasKeyword('contains'));
-        $this->claimed($keywords, 'minContains');
-        $this->claimed($keywords, 'maxContains');
-        $this->claimed($keywords, 'contains');
-        foreach ($keywords->schemas() as $place) {
-            foreach (['minContains', 'maxContains'] as $bound) {
-                if ($place->hasKeyword($bound) && !$place->hasKeyword('contains')) {
-                    $this->diagnostics->warning(sprintf('"%s" has no effect without "contains" in the same schema.', $bound), $place->location());
-                }
-            }
-        }
-
-        if ($places === []) {
-            return [];
-        }
-
-        if (!$value instanceof ListType) {
-            $this->diagnostics->warning('"contains" is checked on arrays only; it is not checked here.', $at);
-
-            return [];
-        }
-
-        $checked = [];
-        foreach ($places as $place) {
-            $min = $this->bound($reader, $place, 'minContains') ?? 1;
-            $max = $this->bound($reader, $place, 'maxContains');
-            if (($min !== 0 || $max !== null) && ($max === null || $this->consistent('minContains', $min, 'maxContains', $max, $at))) {
-                $checked[] = [$place, $min, $max];
-            }
-        }
-
-        if ($checked === [] || !$this->runtime->available('contains', $at)) {
-            return [];
-        }
-
-        $constraints = [];
-        foreach ($checked as [$place, $min, $max]) {
-            $inner = $this->newSubschema('contains', $place, $value->item());
-            if ($inner !== null) {
-                $constraints[] = ConstraintSpec::runtime('Contains', array_merge(
-                    $inner === [] ? [] : [AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner))],
-                    $min === 1 ? [] : [AttributeArgument::named('min', ArgumentValue::literal($min))],
-                    $max === null ? [] : [AttributeArgument::named('max', ArgumentValue::literal($max))],
-                ));
-            }
-        }
-
-        return $constraints;
-    }
-
-    /**
-     * A member of a union of several values is no value of its own here, so its keywords go unchecked, with a warning
-     * at the value's schema (the property, or its items): a shared component may be checked through another value,
-     * which marks it. A place that is a class checks its keywords itself.
-     */
-    private function warnAboutUnreachedMembers(Keywords $keywords, SchemaLocation $at): void
-    {
-        $members = $keywords->unreachedMembers();
-        $seen = [];
-        while ($members !== []) {
-            $member = array_shift($members);
-            $places = new Keywords($member, $this->references);
-            $union = $places->unreachedMembers();
-            if ($places->resolved()->propertyNames() !== [] || ($union === [] && $places->describesObject())) {
-                // A class of its own, whose enrichment checks its keywords (and ignores a union beside its properties).
-                continue;
-            }
-
-            foreach ($places->schemas() as $place) {
-                if ($place->propertyNames() === []) {
-                    $this->warnAboutMemberPlace($place, $at);
-                }
-            }
-
-            // Members may loop back through `$ref`; each nested one is queued once.
-            foreach ($union as $nested) {
-                $location = $nested->location()->toString();
-                if (!in_array($location, $seen, true)) {
-                    $seen[] = $location;
-                    $members[] = $nested;
-                }
-            }
-        }
-    }
-
-    private function warnAboutMemberPlace(Schema $place, SchemaLocation $at): void
-    {
-        foreach (self::CLAIMED_KEYWORDS as $keyword) {
-            if ($place->hasKeyword($keyword)) {
-                $this->checks->checked($place->location(), $keyword);
-                $this->diagnostics->warning(sprintf('"%s" in a member of "oneOf" or "anyOf" is not checked.', $keyword), $at);
-            }
-        }
-    }
-
-    /**
-     * The values of a keyword the bridge claims, each place marked as handled: checked, or warned about by the caller.
-     *
-     * @return list<JsonValue>
-     */
-    private function claimed(Keywords $keywords, string $name): array
-    {
-        foreach ($keywords->schemas() as $place) {
-            if ($place->hasKeyword($name)) {
-                $this->checks->checked($place->location(), $name);
-            }
-        }
-
-        return $keywords->values($name);
-    }
-
-    private function bound(KeywordReader $reader, Schema $place, string $name): ?int
-    {
-        return $place->hasKeyword($name) ? $reader->count($name, $place->keyword($name)) : null;
-    }
-
-    /**
-     * A map gets Keys here; a class gets them on its $additionalProperties, from ValidatorEnricher, which reads the
-     * keywords of the class's own schema: those beside a `$ref` to the class stay unmarked, and the generator warns.
-     *
-     * @return list<ConstraintSpec>
-     */
-    private function keys(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
-    {
-        if ($keywords->describesObject()) {
-            return [];
-        }
-
-        if ($this->claimed($keywords, 'dependentRequired') !== []) {
-            $this->diagnostics->warning('"dependentRequired" is checked on classes only; it is not checked here.', $at);
-        }
-
-        if (!$value instanceof MapType) {
-            if ($this->claimed($keywords, 'propertyNames') !== []) {
-                $this->diagnostics->warning('"propertyNames" is checked on maps and on the undeclared properties of a class only; it is not checked here.', $at);
-            }
-
-            return [];
-        }
-
-        return $this->names($keywords, $at);
     }
 
     /**
@@ -664,20 +179,6 @@ final class ConstraintBuilder
     }
 
     /**
-     * A target without PHP enums holds an enum's value as its plain string or int, which the keywords of strings and
-     * numbers check too. Subschema reads the value apart from null, which subschema() decides on from the given type.
-     */
-    private function withoutEnums(TypeModel $type): TypeModel
-    {
-        $value = $type instanceof NullableType ? $type->inner() : $type;
-        if (!$value instanceof EnumType || $this->target->supports(Capability::from(Capability::ENUMS))) {
-            return $type;
-        }
-
-        return $value->backing()->value() === EnumBacking::INT ? ScalarType::int() : ScalarType::string();
-    }
-
-    /**
      * Constraints as `new` arguments of a composite constraint; null when the target's attributes cannot hold them.
      *
      * @param non-empty-string $keyword the keyword they check, as the warning names it
@@ -693,156 +194,6 @@ final class ConstraintBuilder
         }
 
         return $inner;
-    }
-
-    /**
-     * The runtime's PatternProperty for each pattern, on a map or the undeclared properties of a class.
-     *
-     * @param list<PatternSchema> $patterns
-     * @param TypeModel $value the type of the values
-     *
-     * @return list<ConstraintSpec>
-     */
-    public function patternProperties(array $patterns, TypeModel $value): array
-    {
-        $constraints = [];
-        foreach ($patterns as $pattern) {
-            $specs = $this->subschema('patternProperties', $pattern->schema(), $pattern->place(), $value, false);
-            $inner = $specs === null ? null : $this->asNew('patternProperties', $specs, $pattern->place());
-            // A schema of annotations only accepts every value.
-            if ($inner !== null && $inner !== []) {
-                $constraints[] = ConstraintSpec::runtime('PatternProperty', [
-                    AttributeArgument::named('pattern', ArgumentValue::literal($pattern->pcre())),
-                    AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner)),
-                ]);
-            }
-        }
-
-        return $constraints;
-    }
-
-    /**
-     * The places with a condition that has an effect: `if` with `then` or `else` beside it.
-     *
-     * @return list<Schema>
-     */
-    public static function conditionPlaces(Keywords $keywords): array
-    {
-        $places = [];
-        foreach ($keywords->schemas() as $place) {
-            if ($place->hasKeyword('if') && ($place->hasKeyword('then') || $place->hasKeyword('else'))) {
-                $places[] = $place;
-            }
-        }
-
-        return $places;
-    }
-
-    /**
-     * The constraints of a subschema as `new` arguments; null when it is not checked.
-     *
-     * @param non-empty-string $keyword
-     * @param Schema $place the schema that holds the keyword, where the warnings go
-     *
-     * @return list<ArgumentValue>|null
-     */
-    private function newSubschema(string $keyword, Schema $place, TypeModel $type): ?array
-    {
-        $constraints = $this->subschema($keyword, $place->keyword($keyword), $place->location(), $type, false);
-
-        return $constraints === null ? null : $this->asNew($keyword, $constraints, $place->location());
-    }
-
-    /**
-     * A map gets PatternProperty here; a class checks its declared properties and its $additionalProperties from
-     * ValidatorEnricher, which reads the keywords of the class's own schema.
-     *
-     * @return list<ConstraintSpec>
-     */
-    private function patterns(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
-    {
-        if ($keywords->describesObject() || $this->claimed($keywords, 'patternProperties') === []) {
-            return [];
-        }
-
-        if (!$value instanceof MapType) {
-            $this->diagnostics->warning('"patternProperties" is checked on maps and on classes only; it is not checked here.', $at);
-
-            return [];
-        }
-
-        if ($keywords->resolved()->additionalProperties() instanceof Schema) {
-            $this->diagnostics->warning(PatternSchema::ALSO_ADDITIONAL, $at);
-        }
-
-        $patterns = PatternSchema::allOf($keywords, $this->diagnostics);
-        if ($patterns === [] || !$this->runtime->available('patternProperties', $at)) {
-            return [];
-        }
-
-        return $this->patternProperties($patterns, $value->value());
-    }
-
-    /**
-     * The runtime's IfThenElse for each condition of a value; a class checks its own from ValidatorEnricher. It does
-     * not check null, which therefore needs no NotNull.
-     *
-     * @return list<ConstraintSpec>
-     */
-    private function conditions(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
-    {
-        if ($keywords->describesObject()) {
-            return [];
-        }
-
-        foreach (self::BRANCHES as $branch) {
-            $this->claimed($keywords, $branch);
-        }
-
-        $places = self::conditionPlaces($keywords);
-        if ($places === [] || !$this->runtime->available('if', $at)) {
-            return [];
-        }
-
-        $constraints = [];
-        foreach ($places as $place) {
-            $condition = $this->valueCondition($place, $value);
-            if ($condition instanceof ConstraintSpec) {
-                $constraints[] = $condition;
-            }
-        }
-
-        return $constraints;
-    }
-
-    /**
-     * The first branch that is not checked leaves the others unread, so it gets the only warning.
-     */
-    private function valueCondition(Schema $place, TypeModel $value): ?ConstraintSpec
-    {
-        $if = $this->branch('if', $place, $value);
-        if ($if === null) {
-            return null;
-        }
-
-        $then = $this->branch('then', $place, $value);
-        if ($then === null) {
-            return null;
-        }
-
-        $else = $this->branch('else', $place, $value);
-
-        return $else === null ? null : $this->condition(['if' => $if, 'then' => $then, 'else' => $else], $place->location());
-    }
-
-    /**
-     * @param 'if'|'then'|'else' $branch
-     *
-     * @return list<ConstraintSpec>|null none for a missing branch, null for one that is not checked
-     */
-    private function branch(string $branch, Schema $place, TypeModel $value): ?array
-    {
-        return $place->hasKeyword($branch) ? $this->subschema($branch, $place->keyword($branch), $place->location(), $value, true) : [];
     }
 
     /**
@@ -873,6 +224,43 @@ final class ConstraintBuilder
     }
 
     /**
+     * Valid traverses arrays itself and may not go inside All, so it stays on the property at any depth.
+     *
+     * @return list<ConstraintSpec>
+     */
+    private function nested(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
+    {
+        if ($keywords->describesObject()) {
+            return [new ConstraintSpec('Valid')];
+        }
+
+        $resolved = $keywords->resolved();
+        if ($value instanceof ListType) {
+            [$item, $itemSchema] = [$value->item(), $resolved->items()];
+        } elseif ($value instanceof MapType) {
+            [$item, $itemSchema] = [$value->value(), $resolved->additionalProperties()];
+        } else {
+            return [];
+        }
+
+        return $itemSchema instanceof Schema ? $this->elements($itemSchema, $item, $at) : [];
+    }
+
+    /**
+     * A target without PHP enums holds an enum's value as its plain string or int, which the keywords of strings and
+     * numbers check too. Subschema reads the value apart from null, which subschema() decides on from the given type.
+     */
+    private function withoutEnums(TypeModel $type): TypeModel
+    {
+        $value = $type instanceof NullableType ? $type->inner() : $type;
+        if (!$value instanceof EnumType || $this->target->supports(Capability::from(Capability::ENUMS))) {
+            return $type;
+        }
+
+        return $value->backing()->value() === EnumBacking::INT ? ScalarType::int() : ScalarType::string();
+    }
+
+    /**
      * @param string $warning with "%s" for the PHP version
      */
     private function allowsNew(SchemaLocation $at, string $warning): bool
@@ -884,48 +272,5 @@ final class ConstraintBuilder
         $this->diagnostics->warning(sprintf($warning, $this->target->php()->toString()), $at);
 
         return false;
-    }
-
-    /**
-     * @return list<AttributeArgument>
-     */
-    private function bounds(KeywordReader $reader, string $minimum, string $maximum, SchemaLocation $at): array
-    {
-        $lower = $reader->counts($minimum);
-        $upper = $reader->counts($maximum);
-        if ($lower !== [] && $upper !== [] && !$this->consistent($minimum, max($lower), $maximum, min($upper), $at)) {
-            return [];
-        }
-
-        $bounds = [];
-        if ($lower !== []) {
-            $bounds[] = AttributeArgument::named('min', ArgumentValue::literal(max($lower)));
-        }
-
-        if ($upper !== []) {
-            $bounds[] = AttributeArgument::named('max', ArgumentValue::literal(min($upper)));
-        }
-
-        return $bounds;
-    }
-
-    private function consistent(string $minimum, int $lower, string $maximum, int $upper, SchemaLocation $at): bool
-    {
-        if ($lower <= $upper) {
-            return true;
-        }
-
-        $this->diagnostics->warning(sprintf('"%s" is above "%s", so no value is valid; they are not checked.', $minimum, $maximum), $at);
-
-        return false;
-    }
-
-    /**
-     * @param non-empty-string $name
-     * @param bool|float|int|string $value
-     */
-    private function comparison(string $name, $value): ConstraintSpec
-    {
-        return new ConstraintSpec($name, [AttributeArgument::named('value', ArgumentValue::literal($value))]);
     }
 }
