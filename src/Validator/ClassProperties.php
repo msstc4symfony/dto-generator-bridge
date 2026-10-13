@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Msstc4Symfony\DtoGeneratorBridge\Validator;
 
 use MSSTC4PHP\DtoGenerator\Domain\Model\ClassModel;
-use MSSTC4PHP\DtoGenerator\Domain\Model\ClassName;
 use MSSTC4PHP\DtoGenerator\Domain\Model\PropertyModel;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\Schema;
 
@@ -23,8 +22,6 @@ final class ClassProperties
     /** @var list<string> */
     private array $ancestorLocations = [];
 
-    private bool $inherits;
-
     /**
      * @param list<ClassModel> $ancestors nearest first
      */
@@ -35,18 +32,11 @@ final class ClassProperties
             $this->properties += $this->declared($ancestor);
             $this->ancestorLocations[] = $ancestor->source()->toString();
         }
-
-        $this->inherits = $class->parent() instanceof ClassName;
     }
 
     public function find(string $wireName): ?PropertyModel
     {
         return $this->properties[$wireName] ?? null;
-    }
-
-    public function inherits(): bool
-    {
-        return $this->inherits;
     }
 
     /**
