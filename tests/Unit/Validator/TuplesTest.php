@@ -78,6 +78,7 @@ final class TuplesTest extends TestCase
             'nick' => ['type' => 'string', 'unevaluatedItems' => false],
         ]], [], '8.2', [], 'v7.1.0', ['msstc4symfony/dto-generator-bridge-runtime' => 'v1.2.0']);
 
+        self::assertSame(['Assert\\Count(max: 0)'], $this->attributesOf($this->code($output, 'Pet.php'), 'branch'), 'A "then" without "if" evaluates nothing.');
         self::assertSame([
             self::AT . '/properties/typed: "prefixItems" is checked only without "items", which the generated type gives to every element; it is not checked.',
             self::AT . '/properties/open: "prefixItems" is checked only without "items", which the generated type gives to every element; it is not checked.',
@@ -85,8 +86,7 @@ final class TuplesTest extends TestCase
             self::AT . '/properties/odd: "prefixItems" is checked only with a list of schemas; it is not checked.',
             self::AT . '/properties/deep: "prefixItems" is checked on a value of any type only with one "type" of string, integer, number or boolean beside the keywords of strings and numbers; it is not checked.',
             self::AT . '/properties/rest: "unevaluatedItems" is checked beside "prefixItems" only when false; it is not checked.',
-            self::AT . '/properties/found: "unevaluatedItems" is checked only without "contains", "if", "then", "else", "oneOf" and "anyOf" beside it; it is not checked.',
-            self::AT . '/properties/branch: "unevaluatedItems" is checked only without "contains", "if", "then", "else", "oneOf" and "anyOf" beside it; it is not checked.',
+            self::AT . '/properties/found: "unevaluatedItems" is checked only without "contains", "if", "oneOf" and "anyOf" in its schema; it is not checked.',
             self::AT . '/properties/nick: "unevaluatedItems" is checked on arrays only; it is not checked here.',
         ], $this->messages($output));
     }
@@ -99,19 +99,74 @@ final class TuplesTest extends TestCase
 
         $groups = "groups: ['api', 'Default']";
         self::assertSame(
-            ['Assert\\All(constraints: [new ' . self::ASSERT . 'Collection(fields: [0 => [new ' . self::ASSERT . 'NotNull(), new ' . self::ASSERT . "Type(type: 'string')]], " . self::OPEN . ", $groups)], $groups)"],
+            ['Assert\\All(constraints: [new ' . self::ASSERT . 'Collection(fields: [0 => new ' . self::ASSERT . 'Optional([new ' . self::ASSERT . 'NotNull(), new ' . self::ASSERT . "Type(type: 'string')], $groups)], " . self::OPEN . ", $groups)], $groups)"],
             $this->attributesOf($code, 'pairs'),
         );
+    }
+
+    public function testGroupsTheElementsOfThePrefixAsTheirList(): void
+    {
+        $code = $this->code($this->generate(['type' => 'object', 'properties' => [
+            'pair' => ['type' => 'array', 'x-validator-groups' => ['api'], 'x-validator-groups-exclusive' => true, 'prefixItems' => [['type' => 'string']]],
+        ]]), 'Pet.php');
+
+        self::assertSame(
+            ['Assert\\Collection(fields: [0 => new ' . self::ASSERT . 'Optional([new ' . self::ASSERT . 'NotNull(), new ' . self::ASSERT . "Type(type: 'string')], groups: ['api'])], " . self::OPEN . ", groups: ['api'])"],
+            $this->attributesOf($code, 'pair'),
+        );
+    }
+
+    public function testReadsUnevaluatedItemsInItsOwnSchema(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'closed' => ['type' => 'array', 'allOf' => [['$ref' => '#/components/schemas/Pair'], ['prefixItems' => [true, true, true]]]],
+            'sibling' => ['type' => 'array', 'allOf' => [['prefixItems' => [true, true]], ['unevaluatedItems' => false]]],
+            'typed' => ['type' => 'array', 'allOf' => [['items' => ['type' => 'string']], ['unevaluatedItems' => false]]],
+        ]], ['Pair' => ['type' => 'array', 'prefixItems' => [true, true], 'unevaluatedItems' => false]]);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame(['Assert\\Count(max: 2)'], $this->attributesOf($code, 'closed'));
+        self::assertSame(['Assert\\Count(max: 0)'], $this->attributesOf($code, 'sibling'));
+        self::assertSame(['Assert\\Count(max: 0)'], $this->attributesOf($code, 'typed'));
+        self::assertSame([], $this->messages($output));
+    }
+
+    public function testIgnoresUnevaluatedItemsThatAllowEveryElement(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'free' => ['type' => 'array', 'contains' => ['type' => 'string'], 'unevaluatedItems' => true],
+            'empty' => ['type' => 'array', 'contains' => ['type' => 'string'], 'unevaluatedItems' => new stdClass()],
+        ]], [], '8.2', [], 'v7.1.0', ['msstc4symfony/dto-generator-bridge-runtime' => 'v1.2.0']);
+
+        self::assertSame([], $this->messages($output));
+    }
+
+    public function testChecksNoPrefixWhoseElementIsNotChecked(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'none' => ['type' => 'array', 'prefixItems' => []],
+            'half' => ['type' => 'array', 'prefixItems' => [['type' => 'string'], false]],
+        ]]);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame([], $this->attributesOf($code, 'none'));
+        self::assertSame([], $this->attributesOf($code, 'half'));
+        self::assertSame([self::AT . '/properties/half: "prefixItems" is checked only with a schema object or true; it is not checked.'], $this->messages($output));
     }
 
     public function testNeedsNewInInitializers(): void
     {
         $output = $this->generate(['type' => 'object', 'properties' => [
             'pair' => ['type' => 'array', 'prefixItems' => [['type' => 'string']], 'unevaluatedItems' => false],
+            'codes' => ['type' => 'array', 'unevaluatedItems' => ['type' => 'string', 'maxLength' => 3]],
         ]], [], '8.0');
 
         self::assertSame(['Assert\\Count(max: 1)'], $this->attributesOf($this->code($output, 'Pet.php'), 'pair'));
-        self::assertSame([self::AT . '/properties/pair: "prefixItems" goes into the attribute as "new", which PHP 8.0 does not allow; it is not checked.'], $this->messages($output));
+        self::assertSame([], $this->attributesOf($this->code($output, 'Pet.php'), 'codes'));
+        self::assertSame([
+            self::AT . '/properties/pair: "prefixItems" goes into the attribute as "new", which PHP 8.0 does not allow; it is not checked.',
+            self::AT . '/properties/codes: The constraints of the elements go inside All as "new", which PHP 8.0 does not allow in attributes; they are not checked.',
+        ], $this->messages($output));
     }
 
     public function testWritesAnnotationsForPhp74(): void

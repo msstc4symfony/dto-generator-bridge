@@ -102,6 +102,57 @@ final class DependentSchemasTest extends TestCase
         );
     }
 
+    public function testRequiresAPropertyWithADefaultInTheSchema(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'card' => ['type' => 'string'],
+            'currency' => ['type' => 'string', 'default' => 'EUR'],
+        ], 'dependentSchemas' => ['card' => ['required' => ['currency']]]]);
+
+        self::assertSame(
+            ['RuntimeAssert\\IfThenElse(if: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['card'])], then: [new " . self::RUNTIME_ASSERT . "Present(properties: ['currency'])])"],
+            $this->classAttributesOf($this->code($output, 'Pet.php')),
+        );
+        self::assertSame([], $this->messages($output));
+    }
+
+    public function testGroupsTheDependencyAsItsClass(): void
+    {
+        $code = $this->code($this->withRuntime(['type' => 'object', 'x-validator-groups' => ['api'], 'properties' => [
+            'a' => ['type' => 'string'],
+            'b' => ['type' => 'string'],
+        ], 'dependentSchemas' => ['a' => ['properties' => ['b' => ['minLength' => 2]]]]]), 'Pet.php');
+
+        $groups = "groups: ['api', 'Default']";
+        self::assertSame(
+            ['RuntimeAssert\\IfThenElse(if: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['a'])], then: [new " . self::RUNTIME_ASSERT . "Property(name: 'b', constraints: [new " . self::ASSERT . "Length(min: 2)], $groups)], $groups)"],
+            $this->classAttributesOf($code),
+        );
+    }
+
+    public function testNeedsNewInInitializers(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'a' => ['type' => 'string'],
+            'b' => ['type' => 'string'],
+        ], 'dependentSchemas' => ['a' => ['required' => ['b']], 'b' => false]], [], '8.0');
+
+        self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
+        self::assertSame([self::AT . ': "dependentSchemas" goes into the attribute as "new", which PHP 8.0 does not allow; it is not checked.'], $this->messages($output));
+    }
+
+    public function testWritesAnnotationsForPhp74(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'a' => ['type' => 'string'],
+            'b' => ['type' => 'string'],
+        ], 'dependentSchemas' => ['a' => ['required' => ['b']]]], [], '7.4', [], 'v6.4.1', self::RUNTIME + ['doctrine/annotations' => '2.0.2']);
+
+        self::assertStringContainsString(' * @RuntimeAssert\\IfThenElse(', $this->code($output, 'Pet.php'));
+        self::assertStringContainsString('@\\Msstc4Symfony\\DtoGeneratorBridge\\Runtime\\Constraints\\Present(properties={"b"})', $this->code($output, 'Pet.php'));
+        self::assertSame([], $this->messages($output));
+    }
+
     public function testNeedsTheRuntime(): void
     {
         $output = $this->generate(['type' => 'object', 'properties' => [

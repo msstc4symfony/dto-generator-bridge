@@ -19,8 +19,8 @@ use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use Msstc4Symfony\DtoGeneratorBridge\Keywords;
 
 /**
- * The constraints of a value for the keywords the bridge claims from the generator, which the runtime's constraints
- * check. Every place of such a keyword is marked: checked, or warned about.
+ * The constraints of a value for the keywords the bridge claims from the generator, mostly the runtime's. Every place
+ * of such a keyword is marked: checked, or warned about.
  *
  * @phpstan-import-type JsonValue from Json
  *
@@ -29,8 +29,8 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
 final class ClaimedConstraints
 {
     /**
-     * The keywords the generator calls unsupported and the runtime's constraints check; the bridge claims them and warns
-     * where it cannot check one.
+     * The keywords the generator calls unsupported and the bridge checks, with the runtime's constraints or Symfony's;
+     * the bridge claims them and warns where it cannot check one.
      */
     public const KEYWORDS = [
         'dependentRequired', 'propertyNames', 'contains', 'minContains', 'maxContains', 'patternProperties', 'if', 'then', 'else', 'not',
@@ -41,7 +41,7 @@ final class ClaimedConstraints
     private const BRANCHES = ['if', 'then', 'else'];
 
     /** The keywords besides `prefixItems` and `items` that evaluate elements, which unevaluatedItems would have to follow. */
-    private const EVALUATING = ['contains', 'if', 'then', 'else', 'oneOf', 'anyOf'];
+    private const EVALUATING = ['contains', 'if', 'oneOf', 'anyOf'];
 
     private ConstraintBuilder $builder;
 
@@ -290,7 +290,7 @@ final class ClaimedConstraints
      */
     public function negations(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
     {
-        if ($keywords->describesObject() || $this->markClaimed($keywords, 'not') === [] || !$this->runtime->available('not', $at)) {
+        if ($keywords->describesObject() || !self::forbids($this->markClaimed($keywords, 'not')) || !$this->runtime->available('not', $at)) {
             return [];
         }
 
@@ -327,18 +327,18 @@ final class ClaimedConstraints
     }
 
     /**
-     * Collection for each `prefixItems`, and for `unevaluatedItems` the length `false` allows or All for a schema that
-     * applies to every element. The generated type gives `items` to every element, and it evaluates every element the
-     * prefix leaves.
+     * Collection for each `prefixItems`, and for each `unevaluatedItems` the length `false` allows or All for a schema
+     * that applies to every element. `unevaluatedItems` sees what its own schema and its subschemas evaluate (2020-12),
+     * not what a sibling in `allOf` does. The generated type gives `items` to every element.
      *
      * @return list<ConstraintSpec>
      */
     public function tuples(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
     {
         $prefixed = $this->markClaimed($keywords, 'prefixItems') !== [];
-        $unevaluated = $this->markClaimed($keywords, 'unevaluatedItems');
+        $unevaluated = $this->markClaimed($keywords, 'unevaluatedItems') !== [];
         if (!$value instanceof ListType) {
-            foreach (['prefixItems' => $prefixed, 'unevaluatedItems' => $unevaluated !== []] as $keyword => $present) {
+            foreach (['prefixItems' => $prefixed, 'unevaluatedItems' => $unevaluated] as $keyword => $present) {
                 if ($present) {
                     $this->diagnostics->warning(sprintf('"%s" is checked on arrays only; it is not checked here.', $keyword), $at);
                 }
@@ -348,38 +348,23 @@ final class ClaimedConstraints
         }
 
         $itemized = $this->itemized($keywords);
-        $longest = 0;
-        $constraints = [];
+        $collections = [];
+        $rest = [];
         foreach ($keywords->schemas() as $place) {
-            $longest = max($longest, $this->prefixLength($place));
             $collection = $place->hasKeyword('prefixItems') ? $this->prefix($place, $value->item(), $itemized) : null;
             if ($collection instanceof ConstraintSpec) {
-                $constraints[] = $collection;
+                $collections[] = $collection;
+            }
+
+            if ($place->hasKeyword('unevaluatedItems')) {
+                array_push($rest, ...$this->unevaluated($place, $value->item()));
             }
         }
 
-        if ($unevaluated === [] || $itemized) {
-            return $constraints;
-        }
+        $counts = array_values(array_filter($rest, static fn (ConstraintSpec $constraint): bool => $constraint->is('Count')));
+        $all = array_values(array_filter($rest, static fn (ConstraintSpec $constraint): bool => !$constraint->is('Count')));
 
-        if ($this->evaluatesElsewhere($keywords)) {
-            $this->diagnostics->warning('"unevaluatedItems" is checked only without "contains", "if", "then", "else", "oneOf" and "anyOf" beside it; it is not checked.', $at);
-
-            return $constraints;
-        }
-
-        foreach ($unevaluated as $setting) {
-            if ($setting === false) {
-                array_unshift($constraints, new ConstraintSpec('Count', [AttributeArgument::named('max', ArgumentValue::literal($longest))]));
-            } elseif ($setting !== true && $prefixed) {
-                $this->diagnostics->warning('"unevaluatedItems" is checked beside "prefixItems" only when false; it is not checked.', $at);
-            } elseif ($setting !== true) {
-                $specs = $this->builder->subschema('unevaluatedItems', $setting, $at, $value->item(), false);
-                array_push($constraints, ...($specs === null ? [] : $this->builder->each($specs, $at)));
-            }
-        }
-
-        return $constraints;
+        return array_merge($counts, $collections, $all);
     }
 
     /**
@@ -533,7 +518,7 @@ final class ClaimedConstraints
             }
 
             if ($inner !== []) {
-                $fields[$index] = ArgumentValue::listOf(...$inner);
+                $fields[$index] = $this->field($inner);
             }
         }
 
@@ -564,5 +549,71 @@ final class ClaimedConstraints
         }
 
         return false;
+    }
+
+    /**
+     * The constraints of one element of a prefix. Collection wraps them in Required of the Default group, so a value
+     * of other groups gets Optional of its groups, or Symfony would skip them, or refuse a Collection outside Default.
+     *
+     * @param non-empty-list<ArgumentValue> $inner
+     */
+    private function field(array $inner): ArgumentValue
+    {
+        $groups = $this->builder->groups();
+        if ($groups === []) {
+            return ArgumentValue::listOf(...$inner);
+        }
+
+        return (new ConstraintSpec('Optional', [AttributeArgument::positional(ArgumentValue::listOf(...$inner))]))->withGroups($groups)->toNewInstance();
+    }
+
+    /**
+     * The constraints of one `unevaluatedItems`, from what its own schema and subschemas evaluate.
+     *
+     * @return list<ConstraintSpec>
+     */
+    private function unevaluated(Schema $place, TypeModel $item): array
+    {
+        $at = $place->location();
+        $setting = $place->keyword('unevaluatedItems');
+        $scope = new Keywords($place, $this->references);
+        if ($setting === true || $setting === [] || $this->itemized($scope)) {
+            return [];
+        }
+
+        if ($this->evaluatesElsewhere($scope)) {
+            $this->diagnostics->warning('"unevaluatedItems" is checked only without "contains", "if", "oneOf" and "anyOf" in its schema; it is not checked.', $at);
+
+            return [];
+        }
+
+        $longest = 0;
+        foreach ($scope->schemas() as $evaluated) {
+            $longest = max($longest, $this->prefixLength($evaluated));
+        }
+
+        if ($setting === false) {
+            return [new ConstraintSpec('Count', [AttributeArgument::named('max', ArgumentValue::literal($longest))])];
+        }
+
+        if ($scope->has('prefixItems')) {
+            $this->diagnostics->warning('"unevaluatedItems" is checked beside "prefixItems" only when false; it is not checked.', $at);
+
+            return [];
+        }
+
+        $specs = $this->builder->subschema('unevaluatedItems', $setting, $at, $item, false);
+
+        return $specs === null ? [] : $this->builder->each($specs, $at);
+    }
+
+    /**
+     * Whether any of the values of `not` forbids something: `not: false` does not.
+     *
+     * @param list<JsonValue> $values
+     */
+    public static function forbids(array $values): bool
+    {
+        return array_filter($values, static fn ($value): bool => $value !== false) !== [];
     }
 }

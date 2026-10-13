@@ -107,7 +107,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
 
         return array_merge(
             ClaimedConstraints::conditionPlaces($keywords) !== [] && $runtime->available('if', $at) ? $class->of($keywords) : [],
-            $keywords->has('not') && $runtime->available('not', $at) ? $class->negations($keywords) : [],
+            ClaimedConstraints::forbids($keywords->values('not')) && $runtime->available('not', $at) ? $class->negations($keywords) : [],
             $keywords->has('dependentSchemas') && $runtime->available('dependentSchemas', $at) ? $class->dependencies($keywords) : [],
         );
     }

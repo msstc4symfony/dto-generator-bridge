@@ -146,7 +146,7 @@ final class ClassConditions
             return null;
         }
 
-        $branches = [['dependentSchemas', $set], ['dependentSchemas', $read]];
+        $branches = [['dependentSchemas', $set, true], ['dependentSchemas', $read, false]];
         if (!$this->namesOwnProperties($branches, $place, $keywords, 'it') || $this->namesAlwaysSet($branches, $place, 'it')) {
             return null;
         }
@@ -156,7 +156,7 @@ final class ClassConditions
             return null;
         }
 
-        return $this->builder->condition(['if' => $this->checks('dependentSchemas', $set, $place) ?? [], 'then' => $checks, 'else' => []], $place->location());
+        return $this->builder->condition(['if' => $this->checks('dependentSchemas', $set, $place) ?? [], 'then' => $checks, 'else' => []], $place->location(), 'dependentSchemas');
     }
 
     /**
@@ -167,8 +167,8 @@ final class ClassConditions
      */
     private function negation(string $keyword, array $read, Schema $place, Keywords $keywords): ?ConstraintSpec
     {
-        $branches = [[$keyword, $read]];
-        if (!$this->namesOwnProperties($branches, $place, $keywords, 'it') || $this->namesAlwaysSet($branches, $place, 'it')) {
+        $branches = [[$keyword, $read, true]];
+        if ($this->belongsToParent($read, $place) || !$this->namesOwnProperties($branches, $place, $keywords, 'it') || $this->namesAlwaysSet($branches, $place, 'it')) {
             return null;
         }
 
@@ -199,7 +199,7 @@ final class ClassConditions
             return null;
         }
 
-        $branches = [['if', $if], ['then', $then], ['else', $else]];
+        $branches = [['if', $if, true], ['then', $then, false], ['else', $else, false]];
         if (!$this->namesOwnProperties($branches, $place, $keywords, 'the condition') || $this->namesAlwaysSet($branches, $place, 'the condition')) {
             return null;
         }
@@ -275,7 +275,7 @@ final class ClassConditions
     }
 
     /**
-     * @param list<array{non-empty-string, BranchShape}> $branches each schema with the keyword warnings name it by
+     * @param list<array{non-empty-string, BranchShape, bool}> $branches each schema with the keyword warnings name it by
      * @param 'the condition'|'it' $subject what a warning says is not checked
      */
     private function namesOwnProperties(array $branches, Schema $place, Keywords $keywords, string $subject): bool
@@ -308,15 +308,15 @@ final class ClassConditions
     /**
      * A property with a default is always set, as the DTO cannot tell a missing key from it: whether it is missing,
      * and what a missing one holds, decide a condition differently than the schema does. In `then` and `else`,
-     * `required` is met anyway; in `if`, `not` and `dependentSchemas` it decides.
+     * `required` is met anyway, as in the schema of `dependentSchemas`; in `if` and `not` it decides.
      *
-     * @param list<array{non-empty-string, BranchShape}> $branches
+     * @param list<array{non-empty-string, BranchShape, bool}> $branches each with whether its `required` decides
      * @param 'the condition'|'it' $subject
      */
     private function namesAlwaysSet(array $branches, Schema $place, string $subject): bool
     {
-        foreach ($branches as [$branch, [$properties, $required]]) {
-            $names = array_merge(array_column($properties, 0), in_array($branch, ['then', 'else'], true) ? [] : $required);
+        foreach ($branches as [$branch, [$properties, $required], $decides]) {
+            $names = array_merge(array_column($properties, 0), $decides ? $required : []);
             foreach ($names as $name) {
                 $default = $this->own[$name]->default();
                 if ($default instanceof DefaultValue && $default->value() !== null) {
@@ -365,6 +365,19 @@ final class ClassConditions
         }
 
         return $checks;
+    }
+
+    /**
+     * A schema of nothing but the object names no property to tell its class by: one in a schema that declares only
+     * inherited properties belongs to the parent, which checks it.
+     *
+     * @param BranchShape $read
+     */
+    private function belongsToParent(array $read, Schema $place): bool
+    {
+        $names = $place->propertyNames();
+
+        return $this->inherits && $read === [[], []] && $names !== [] && array_diff($names, array_keys($this->own)) === $names;
     }
 
     private function declares(Keywords $keywords, string $name): bool

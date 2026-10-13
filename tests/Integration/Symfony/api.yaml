@@ -82,9 +82,12 @@ components:
         holder: {type: string}
         voucher: {type: string}
         seat: {type: array, prefixItems: [{type: string, maxLength: 2}, {type: integer, minimum: 1}], unevaluatedItems: false}
+        cash: {type: boolean}
+        pair: {type: array, x-validator-groups: [api], x-validator-groups-exclusive: true, prefixItems: [{type: string}]}
       not: {required: [card, voucher]}
       dependentSchemas:
         card: {required: [holder]}
+        cash: false
     Animal:
       oneOf:
         - {$ref: '#/components/schemas/Cat'}

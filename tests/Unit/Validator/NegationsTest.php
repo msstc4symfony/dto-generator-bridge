@@ -189,6 +189,28 @@ final class NegationsTest extends TestCase
         ], $this->messages($output));
     }
 
+    public function testNeedsNoRuntimeForANotThatForbidsNothing(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'a' => ['type' => 'string', 'not' => false],
+        ], 'not' => false], [], '8.2', [], 'v7.1.0', ['msstc4symfony/dto-generator-bridge-runtime' => 'v1.1.0']);
+
+        self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
+        self::assertSame([], $this->messages($output));
+    }
+
+    public function testLeavesTheNotOfAParentThatNamesNoPropertyToIt(): void
+    {
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['type' => 'object', 'properties' => ['b' => ['type' => 'string']]],
+        ]], ['Base' => ['type' => 'object', 'properties' => ['a' => ['type' => 'string']], 'not' => ['type' => 'object']]]);
+
+        self::assertSame(['RuntimeAssert\\Not'], $this->classAttributesOf($this->code($output, 'Base.php')));
+        self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
+        self::assertSame([], $this->messages($output));
+    }
+
     public function testNeedsNewInInitializers(): void
     {
         $output = $this->withRuntime(['type' => 'object', 'properties' => [

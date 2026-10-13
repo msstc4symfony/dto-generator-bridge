@@ -108,6 +108,16 @@ final class ConstraintBuilder
     }
 
     /**
+     * The groups of the value, which the composite constraints inside the value's own need too.
+     *
+     * @return list<non-empty-string>
+     */
+    public function groups(): array
+    {
+        return $this->groups;
+    }
+
+    /**
      * The runtime's Keys for the names of the undeclared properties of a class.
      *
      * @return list<ConstraintSpec>
@@ -230,8 +240,9 @@ final class ConstraintBuilder
      * attributes cannot hold them.
      *
      * @param array{if: list<ConstraintSpec>, then: list<ConstraintSpec>, else: list<ConstraintSpec>} $branches
+     * @param non-empty-string|null $keyword the keyword the warnings name; each branch's own when null
      */
-    public function condition(array $branches, SchemaLocation $at): ?ConstraintSpec
+    public function condition(array $branches, SchemaLocation $at, ?string $keyword = null): ?ConstraintSpec
     {
         if ($branches['then'] === [] && $branches['else'] === []) {
             return null;
@@ -239,7 +250,7 @@ final class ConstraintBuilder
 
         $arguments = [];
         foreach ($branches as $branch => $specs) {
-            $inner = $this->asNew($branch, $specs, $at);
+            $inner = $this->asNew($keyword ?? $branch, $specs, $at);
             if ($inner === null) {
                 return null;
             }
