@@ -92,9 +92,32 @@ final class DeclaredNamesTest extends TestCase
     {
         $output = $this->generate(['type' => 'object', 'x-validator-skip' => true, 'propertyNames' => ['maxLength' => 2], 'properties' => [
             'name' => ['type' => 'string'],
+        ]]);
+
+        self::assertSame([self::AT . ': "propertyNames" rejects "name", the name of a declared property, which can never be set.'], $this->namesMessages($output->diagnostics()->all()));
+    }
+
+    public function testChecksTheNamesWithoutTheValidator(): void
+    {
+        $output = $this->generate(['type' => 'object', 'propertyNames' => ['maxLength' => 2], 'properties' => [
+            'name' => ['type' => 'string'],
         ]], [], '8.2', [], null);
 
         self::assertSame([self::AT . ': "propertyNames" rejects "name", the name of a declared property, which can never be set.'], $this->namesMessages($output->diagnostics()->all()));
+    }
+
+    public function testDecidesNothingByMalformedKeywords(): void
+    {
+        $output = $this->generate(['type' => 'object', 'allOf' => [
+            ['propertyNames' => ['type' => 5]],
+            ['propertyNames' => ['type' => []]],
+            ['propertyNames' => ['type' => ['a' => 'integer']]],
+            ['propertyNames' => ['type' => [1]]],
+            ['propertyNames' => ['maxLength' => 2.5]],
+            ['propertyNames' => ['maxLength' => -1]],
+        ], 'properties' => ['name' => ['type' => 'string']]]);
+
+        self::assertSame([], $this->namesMessages($output->diagnostics()->all()));
     }
 
     public function testLeavesKeywordsItCannotRunAlone(): void

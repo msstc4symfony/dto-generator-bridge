@@ -586,6 +586,16 @@ final class RuntimeConstraintsTest extends TestCase
         self::assertSame(["RuntimeAssert\\DependentRequired(requirements: ['a' => ['b']])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
     }
 
+    public function testChecksTheOnlyReferencedMemberThatIsNoSubclass(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'a' => ['type' => 'string'],
+            'b' => ['type' => 'string'],
+        ], 'oneOf' => [['$ref' => '#/components/schemas/Rule'], ['type' => 'null']]], ['Rule' => ['dependentRequired' => ['a' => ['b']]]]);
+
+        self::assertSame(["RuntimeAssert\\DependentRequired(requirements: ['a' => ['b']])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
     public function testGroupsTheClassConstraint(): void
     {
         $grouped = $this->withRuntime(['type' => 'object', 'x-validator-groups' => ['api'], 'dependentRequired' => ['a' => ['b']], 'properties' => [

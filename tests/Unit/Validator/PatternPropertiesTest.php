@@ -245,6 +245,22 @@ final class PatternPropertiesTest extends TestCase
         self::assertContains('Assert\\Length(min: 2)', $this->attributesOf($this->code($output, 'Pet.php'), 'kind'));
     }
 
+    public function testWarnsAboutAnInheritedMatchOfTheOnlyVariantOfItsParent(): void
+    {
+        $output = $this->withRuntimeAnd(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['type' => 'object', 'properties' => ['meow' => ['type' => 'string']], 'patternProperties' => ['^k' => ['maxLength' => 3]]],
+        ]], ['Base' => [
+            'type' => 'object',
+            'required' => ['kind'],
+            'properties' => ['kind' => ['type' => 'string']],
+            'discriminator' => ['propertyName' => 'kind', 'mapping' => ['pet' => '#/components/schemas/Pet']],
+            'oneOf' => [['$ref' => '#/components/schemas/Pet']],
+        ]]);
+
+        self::assertContains(self::AT . '/allOf/1: "patternProperties" matches "kind", which this class inherits; it is not checked on it: write the pattern in the schema that declares the property.', $this->messages($output));
+    }
+
     /**
      * @param array<string, mixed> $pet
      */

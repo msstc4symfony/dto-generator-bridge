@@ -29,32 +29,45 @@ final class NameCheck
             return $schema === false;
         }
 
-        $type = $schema['type'] ?? 'string';
         $pattern = isset($schema['pattern']) && is_string($schema['pattern']) ? Pattern::toPcre($schema['pattern']) : null;
-        // JSON Schema counts code points; a name is valid UTF-8.
-        preg_match_all('/./su', $name, $characters);
-        $length = count($characters[0]);
-        $minimum = self::count(Json::value($schema['minLength'] ?? null));
-        $maximum = self::count(Json::value($schema['maxLength'] ?? null));
+        // JSON Schema counts code points; a name PCRE cannot read as UTF-8 has no length to compare.
+        $length = preg_match_all('/./su', $name);
+        $minimum = self::limit(Json::value($schema['minLength'] ?? null));
+        $maximum = self::limit(Json::value($schema['maxLength'] ?? null));
         $enum = $schema['enum'] ?? null;
 
-        return !in_array('string', is_array($type) ? $type : [$type], true)
+        return self::rejectsByType(Json::value($schema['type'] ?? null))
             || ($pattern !== null && preg_match($pattern, $name) === 0)
-            || ($minimum !== null && $length < $minimum)
-            || ($maximum !== null && $length > $maximum)
+            || ($length !== false && $minimum !== null && $length < $minimum)
+            || ($length !== false && $maximum !== null && $length > $maximum)
             || (array_key_exists('const', $schema) && $schema['const'] !== $name)
             || (is_array($enum) && Json::isList($enum) && !in_array($name, $enum, true));
     }
 
     /**
-     * JSON Schema counts 2.0 as an integer.
+     * A `type` without `string`; one that is no type name or list of them decides nothing.
+     *
+     * @param JsonValue $type
+     */
+    private static function rejectsByType($type): bool
+    {
+        $types = is_string($type) ? [$type] : $type;
+        if (!is_array($types) || $types === [] || !Json::isList($types) || array_filter($types, 'is_string') !== $types) {
+            return false;
+        }
+
+        return !in_array('string', $types, true);
+    }
+
+    /**
+     * A non-negative whole number, 2.0 included as JSON Schema counts it.
      *
      * @param JsonValue $value
      *
      * @return int|float|null
      */
-    private static function count($value)
+    private static function limit($value)
     {
-        return is_int($value) || (is_float($value) && fmod($value, 1.0) === 0.0) ? $value : null;
+        return (is_int($value) || (is_float($value) && fmod($value, 1.0) === 0.0)) && $value >= 0 ? $value : null;
     }
 }

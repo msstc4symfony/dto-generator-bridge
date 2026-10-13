@@ -53,7 +53,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         $diagnostics = $context->diagnostics();
         $version = $this->gate->version($context->packages(), $context->target(), $diagnostics, $schema->location());
         $extensions = new ExtensionReader($schema, $diagnostics);
-        $keywords = new Keywords($schema, $context->references(), $this->variants($schema, $context->references()));
+        $keywords = new Keywords($schema, $context->references(), $this->variantStop($schema, $context->references()));
         $properties = new ClassProperties($context->class(), $context->ancestors(), $keywords, $context->references());
         // A contradiction of the schema itself, whatever the Validator writes.
         $this->warnAboutRejectedNames($context, $keywords, $properties);
@@ -86,7 +86,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
      *
      * @return list<string> its location, if any
      */
-    private function variants(Schema $schema, SchemaReferences $references): array
+    private function variantStop(Schema $schema, SchemaReferences $references): array
     {
         $own = $schema->location()->toString();
         foreach (array_merge($schema->oneOf(), $schema->anyOf()) as $member) {
@@ -201,7 +201,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             $own[] = $property->wireName();
         }
 
-        $targets = $this->targets($keywords, $context->references());
+        $targets = $this->targets($keywords, $context->references(), $context->class()->source()->toString());
         foreach ($keywords->schemas() as $place) {
             foreach (array_diff($place->propertyNames(), $own) as $name) {
                 foreach ($patterns as $pattern) {
@@ -219,9 +219,12 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
     /**
      * The schemas the `$ref`s of the `allOf` branches lead to, at any depth, each with the locations of its places.
      *
+     * @param string $own where the class's own schema is: a target's union may lead back to it, a variant's places stay
+     *                    its own
+     *
      * @return array<string, list<string>> by the target's location
      */
-    private function targets(Keywords $keywords, SchemaReferences $references): array
+    private function targets(Keywords $keywords, SchemaReferences $references, string $own): array
     {
         $targets = [];
         $queue = [$keywords];
@@ -231,7 +234,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
                     $target = $references->resolve($branch);
                     $location = $target->location()->toString();
                     if ($branch->ref() !== null && !isset($targets[$location])) {
-                        $reached = new Keywords($target, $references);
+                        $reached = new Keywords($target, $references, [$own]);
                         $targets[$location] = array_map(static fn (Schema $schema): string => $schema->location()->toString(), $reached->schemas());
                         $queue[] = $reached;
                     }
