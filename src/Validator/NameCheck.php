@@ -32,7 +32,8 @@ final class NameCheck
         $type = $schema['type'] ?? 'string';
         $pattern = isset($schema['pattern']) && is_string($schema['pattern']) ? Pattern::toPcre($schema['pattern']) : null;
         // JSON Schema counts code points; a name is valid UTF-8.
-        $length = (int) preg_match_all('/./su', $name);
+        preg_match_all('/./su', $name, $characters);
+        $length = count($characters[0]);
         $minimum = self::count(Json::value($schema['minLength'] ?? null));
         $maximum = self::count(Json::value($schema['maxLength'] ?? null));
         $enum = $schema['enum'] ?? null;
@@ -46,10 +47,14 @@ final class NameCheck
     }
 
     /**
+     * JSON Schema counts 2.0 as an integer.
+     *
      * @param JsonValue $value
+     *
+     * @return int|float|null
      */
-    private static function count($value): ?int
+    private static function count($value)
     {
-        return is_int($value) || (is_float($value) && $value >= 0 && $value < PHP_INT_MAX && fmod($value, 1.0) === 0.0) ? (int) $value : null;
+        return is_int($value) || (is_float($value) && fmod($value, 1.0) === 0.0) ? $value : null;
     }
 }

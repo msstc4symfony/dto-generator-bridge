@@ -81,26 +81,22 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
     }
 
     /**
-     * The members of the class's own union that lead back to it are its variants, subclasses that check their keywords
-     * themselves; the class reads nothing from them.
+     * The member of the class's own union that leads back to it is a variant, a subclass that checks its keywords
+     * itself; the class reads nothing from it. Keywords reads a union only when it has one member besides null.
      *
-     * @return list<string> their locations
+     * @return list<string> its location, if any
      */
     private function variants(Schema $schema, SchemaReferences $references): array
     {
         $own = $schema->location()->toString();
-        $variants = [];
         foreach (array_merge($schema->oneOf(), $schema->anyOf()) as $member) {
-            foreach ((new Keywords($member, $references))->schemas() as $place) {
-                if ($place->location()->toString() === $own) {
-                    $variants[] = $member->location()->toString();
-
-                    break;
-                }
+            $reached = array_map(static fn (Schema $place): string => $place->location()->toString(), (new Keywords($member, $references))->schemas());
+            if (in_array($own, $reached, true)) {
+                return [$member->location()->toString()];
             }
         }
 
-        return $variants;
+        return [];
     }
 
     /**

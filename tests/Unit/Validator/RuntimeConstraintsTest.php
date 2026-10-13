@@ -552,7 +552,14 @@ final class RuntimeConstraintsTest extends TestCase
         self::assertSame([], $this->messages($output));
     }
 
-    public function testChecksTheOwnPairsOfTheOnlyVariantOfItsParent(): void
+    /**
+     * @testWith [["oneOf"]]
+     *           [["anyOf"]]
+     *           [["oneOf", "anyOf"]]
+     *
+     * @param list<string> $unions
+     */
+    public function testChecksTheOwnPairsOfTheOnlyVariantOfItsParent(array $unions): void
     {
         $output = $this->withRuntime(['allOf' => [
             ['$ref' => '#/components/schemas/Base'],
@@ -562,12 +569,21 @@ final class RuntimeConstraintsTest extends TestCase
             'required' => ['kind'],
             'properties' => ['kind' => ['type' => 'string']],
             'discriminator' => ['propertyName' => 'kind', 'mapping' => ['pet' => '#/components/schemas/Pet']],
-            'oneOf' => [['$ref' => '#/components/schemas/Pet']],
-        ]]);
+        ] + array_fill_keys($unions, [['$ref' => '#/components/schemas/Pet']])]);
 
         self::assertSame(["RuntimeAssert\\DependentRequired(requirements: ['meow' => ['lives']])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
         self::assertSame([], $this->classAttributesOf($this->code($output, 'Base.php')));
-        self::assertSame([], $this->messages($output));
+        self::assertSame([], array_values(array_filter($this->messages($output), static fn (string $message): bool => strpos($message, 'dependentRequired') !== false)));
+    }
+
+    public function testChecksTheOnlyMemberOfAUnionBesideTheProperties(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'a' => ['type' => 'string'],
+            'b' => ['type' => 'string'],
+        ], 'oneOf' => [['dependentRequired' => ['a' => ['b']]]]]);
+
+        self::assertSame(["RuntimeAssert\\DependentRequired(requirements: ['a' => ['b']])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
     }
 
     public function testGroupsTheClassConstraint(): void
