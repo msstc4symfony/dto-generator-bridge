@@ -341,14 +341,13 @@ dto_generator:
   check_on_warmup: false   # true: warn in the log on cache warmup when the DTOs are out of date
 ```
 
-`bin/console dto-generator:generate [--config=...] [--check] [--dry-run] [--format=text|json]` takes the same options
-and gives the same output and exit codes as the generator's own `generate` command, with the same process settings: it
-raises a `memory_limit` below 1G to 1G (or takes `DTO_GENERATOR_MEMORY_LIMIT`), moves PHP errors to stderr when
-`display_errors` shows them (`On` or `stdout`), and ends a PHP fatal error with exit code `2` (on PHP 7.4, an error
-raised inside a function keeps PHP's own `255`). A relative `config` or `--config` is
-resolved against the project directory, not the current one; an empty `--config` keeps the bundle's. The warmup check
-never writes files, never changes the process and never fails the warmup: whatever goes wrong becomes a warning in the
-log.
+`bin/console dto-generator:generate [--config=...] [--check] [--dry-run] [--format=text|json] [--refresh-remote]` takes
+the same options and gives the same output and exit codes as the generator's own `generate` command, with the same
+process settings: it raises a `memory_limit` below 1G to 1G (or takes `DTO_GENERATOR_MEMORY_LIMIT`), moves PHP errors to
+stderr when `display_errors` shows them (`On` or `stdout`), and ends a PHP fatal error with exit code `2` (on PHP 7.4,
+an error raised inside a function keeps PHP's own `255`). A relative `config` or `--config` is resolved against the
+project directory, not the current one; an empty `--config` keeps the bundle's. The warmup check never writes files,
+never changes the process and never fails the warmup: whatever goes wrong becomes a warning in the log.
 
 The command is meant for a `bin/console` process of its own. Run inside a long-lived process (`CommandTester` or
 `ApplicationTester` in a test suite, Messenger's `RunCommandMessage`, `Application::run()` from a controller), it leaves

@@ -16,6 +16,8 @@ All notable changes to this package are documented here. The format follows
 
 ### Changed
 
+- `bin/console dto-generator:generate --refresh-remote` is documented and tested: the command takes every option
+  of the generator's `generate`, this one included (the generator 1.4).
 - `dependentRequired`, conditions (`if`/`then`/`else`), `not` and `dependentSchemas` in a child's schema may name
   properties the class inherits (through `ClassContext::ancestors()` of the generator 1.5): they are checked instead
   of warned about. What a parent's schema says stays with the parent's class, which Symfony checks on the child too.

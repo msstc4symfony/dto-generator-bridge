@@ -112,6 +112,16 @@ final class DtoGeneratorBundleTest extends TestCase
         self::assertSame(0, $command->execute(['--check' => true]));
     }
 
+    public function testRefreshesRemoteDocumentsAsTheGeneratorCliDoes(): void
+    {
+        $command = $this->command([]);
+
+        self::assertSame(3, $command->execute(['--refresh-remote' => true, '--check' => true]));
+        self::assertStringContainsString('--refresh-remote fetches into the cache, which --check and --dry-run leave as it is.', $command->getDisplay());
+        self::assertSame(0, $command->execute(['--refresh-remote' => true]));
+        self::assertFileExists($this->project . '/src/Dto/Pet.php');
+    }
+
     public function testPreparesTheProcessAsTheGeneratorCliDoes(): void
     {
         self::assertLessThan(256 * 1024 * 1024, memory_get_usage(), 'The suite must run below 256M for this test.');
