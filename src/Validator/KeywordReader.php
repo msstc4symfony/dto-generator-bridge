@@ -102,6 +102,9 @@ final class KeywordReader
 
     /**
      * Whether a lower count is at most an upper one; otherwise no value is valid, and neither is checked.
+     *
+     * @param non-empty-string $minimum
+     * @param non-empty-string $maximum
      */
     public function consistent(string $minimum, int $lower, string $maximum, int $upper): bool
     {

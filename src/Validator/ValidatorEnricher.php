@@ -265,9 +265,9 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             assert($type instanceof MapType);
             $patterns = $class->patterns();
             $constraints = array_merge(
-                $builder->claimed()->names($class->keywords(), $class->location()),
+                $builder->names($class->keywords(), $class->location()),
                 $patterns !== [] && (new RuntimeConstraints($context->packages(), $context->diagnostics()))->available('patternProperties', $class->location())
-                    ? $builder->claimed()->patternProperties($patterns, $type->value())
+                    ? $builder->patternProperties($patterns, $type->value())
                     : [],
             );
         } else {

@@ -20,6 +20,16 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
  * The constraints of the keywords JSON Schema applies to one kind of value (strings, numbers, collections) and of the
  * formats.
  *
+ * The kind of a value, as the keywords of one kind of value see it; null for a boolean, an enum or a class.
+ *
+ * @phpstan-type Kind 'string'|'integer'|'number'|'collection'|'several'|null
+ *
+ * An inclusive bound a format sets, and its name.
+ * @phpstan-type ImpliedBound array{int, 'format: int32'}
+ *
+ * A bound and the keyword, or format, that sets it.
+ * @phpstan-type Bound array{int|float, 'exclusiveMinimum'|'minimum'|'exclusiveMaximum'|'maximum'|'format: int32'}
+ *
  * @internal
  */
 final class KindConstraints
@@ -75,9 +85,9 @@ final class KindConstraints
     }
 
     /**
-     * @return 'string'|'integer'|'number'|'collection'|'several'|null
+     * @return Kind
      */
-    public static function kindOf(TypeModel $value): ?string
+    private function kindOf(TypeModel $value): ?string
     {
         if ($value instanceof ScalarType) {
             $kinds = ['string' => 'string', 'int' => 'integer', 'float' => 'number', 'bool' => null];
@@ -95,12 +105,12 @@ final class KindConstraints
     /**
      * The constraints of the keywords of strings, numbers and collections the value is checked for.
      *
-     * @param 'string'|'integer'|'number'|'collection'|'several'|null $kind the kind of the value
-     *
      * @return list<ConstraintSpec>
      */
-    public function of(Keywords $keywords, KeywordReader $reader, TypeModel $value, ?string $kind, SchemaLocation $at): array
+    public function of(Keywords $keywords, KeywordReader $reader, TypeModel $value, SchemaLocation $at): array
     {
+        $kind = $this->kindOf($value);
+
         return array_merge(
             $this->checks($keywords, $kind, 'string', $at) ? $this->strings($keywords, $reader, $at) : [],
             $this->checks($keywords, $kind, 'number', $at) ? $this->numbers($reader, $kind === 'integer', $this->implied($keywords, $kind), $at) : [],
@@ -110,12 +120,10 @@ final class KindConstraints
 
     /**
      * The constraint of such a format would reject the value's other types, so a value of several gets none.
-     *
-     * @param 'string'|'integer'|'number'|'collection'|'several'|null $kind
      */
-    public function warnAboutFormatsOfOneKind(Keywords $keywords, ?string $kind, SchemaLocation $at): void
+    public function warnAboutFormatsOfOneKind(Keywords $keywords, TypeModel $value, SchemaLocation $at): void
     {
-        if ($kind !== 'several') {
+        if ($this->kindOf($value) !== 'several') {
             return;
         }
 
@@ -155,7 +163,7 @@ final class KindConstraints
      * Symfony checks a keyword on another kind of value anyway (Length counts the digits of a number), so a value that
      * may be of several types gets none.
      *
-     * @param 'string'|'integer'|'number'|'collection'|'several'|null $actual the kind of the value
+     * @param Kind $actual the kind of the value
      * @param 'string'|'number'|'collection' $kind the kind the keywords apply to; an integer is a number
      */
     private function checks(Keywords $keywords, ?string $actual, string $kind, SchemaLocation $at): bool
@@ -202,9 +210,9 @@ final class KindConstraints
     /**
      * The inclusive bounds the format of an integer sets, each with the name a warning gives it.
      *
-     * @param 'string'|'integer'|'number'|'collection'|'several'|null $kind
+     * @param Kind $kind
      *
-     * @return array{array{int, 'format: int32'}, array{int, 'format: int32'}}|null
+     * @return array{ImpliedBound, ImpliedBound}|null
      */
     private function implied(Keywords $keywords, ?string $kind): ?array
     {
@@ -219,7 +227,7 @@ final class KindConstraints
      * One lower and one upper bound: the strictest of the inclusive and exclusive keywords and the implied bounds,
      * exclusive on a tie.
      *
-     * @param array{array{int, 'format: int32'}, array{int, 'format: int32'}}|null $implied
+     * @param array{ImpliedBound, ImpliedBound}|null $implied
      *
      * @return list<ConstraintSpec>
      */
@@ -265,9 +273,9 @@ final class KindConstraints
      * @param 'exclusiveMinimum'|'exclusiveMaximum' $exclusive
      * @param 'minimum'|'maximum' $inclusive
      * @param bool $lower whether the greatest bound is the strictest
-     * @param array{int, 'format: int32'}|null $implied an inclusive bound a format sets, and its name
+     * @param ImpliedBound|null $implied an inclusive bound a format sets, and its name
      *
-     * @return array{int|float, 'exclusiveMinimum'|'minimum'|'exclusiveMaximum'|'maximum'|'format: int32'}|null
+     * @return Bound|null
      */
     private function strictest(
         KeywordReader $reader,
@@ -298,8 +306,8 @@ final class KindConstraints
     }
 
     /**
-     * @param array{int|float, 'exclusiveMinimum'|'minimum'|'exclusiveMaximum'|'maximum'|'format: int32'} $lower
-     * @param array{int|float, 'exclusiveMinimum'|'minimum'|'exclusiveMaximum'|'maximum'|'format: int32'} $upper
+     * @param Bound $lower
+     * @param Bound $upper
      */
     private function satisfiable(array $lower, array $upper, bool $integer, SchemaLocation $at): bool
     {
@@ -334,6 +342,9 @@ final class KindConstraints
     }
 
     /**
+     * @param non-empty-string $minimum
+     * @param non-empty-string $maximum
+     *
      * @return list<AttributeArgument>
      */
     private function bounds(KeywordReader $reader, string $minimum, string $maximum): array

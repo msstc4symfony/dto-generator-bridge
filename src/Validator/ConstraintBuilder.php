@@ -81,19 +81,18 @@ final class ConstraintBuilder
     {
         $keywords = new Keywords($schema, $this->references);
         $value = $type instanceof NullableType ? $type->inner() : $type;
-        $kind = KindConstraints::kindOf($value);
         $at = $schema->location();
         $reader = new KeywordReader($keywords, $this->diagnostics, $at);
         // As in the generator, which stays quiet about what a schema whose type x-php-type replaces says.
         $replaced = $keywords->resolved()->extensions()->has('x-php-type');
-        $this->kinds->warnAboutFormatsOfOneKind($keywords, $kind, $at);
+        $this->kinds->warnAboutFormatsOfOneKind($keywords, $value, $at);
 
         if (!$replaced) {
             $this->claimed->warnAboutUnreachedMembers($keywords, $at);
         }
 
         return array_merge(
-            $this->kinds->of($keywords, $reader, $value, $kind, $at),
+            $this->kinds->of($keywords, $reader, $value, $at),
             $replaced ? [] : $this->claimed->contains($keywords, $reader, $value, $at),
             $replaced ? [] : $this->claimed->keys($keywords, $value, $at),
             $replaced ? [] : $this->claimed->patterns($keywords, $value, $at),
@@ -106,11 +105,26 @@ final class ConstraintBuilder
     }
 
     /**
-     * The constraints of the keywords the bridge claims, for the classes that check them themselves.
+     * The runtime's Keys for the names of the undeclared properties of a class.
+     *
+     * @return list<ConstraintSpec>
      */
-    public function claimed(): ClaimedConstraints
+    public function names(Keywords $keywords, SchemaLocation $at): array
     {
-        return $this->claimed;
+        return $this->claimed->names($keywords, $at);
+    }
+
+    /**
+     * The runtime's PatternProperty for each pattern of a class, on its $additionalProperties.
+     *
+     * @param list<PatternSchema> $patterns
+     * @param TypeModel $value the type of the values
+     *
+     * @return list<ConstraintSpec>
+     */
+    public function patternProperties(array $patterns, TypeModel $value): array
+    {
+        return $this->claimed->patternProperties($patterns, $value);
     }
 
     /**

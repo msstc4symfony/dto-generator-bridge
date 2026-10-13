@@ -89,9 +89,9 @@ final class ClaimedConstraints
     public function contains(Keywords $keywords, KeywordReader $reader, TypeModel $value, SchemaLocation $at): array
     {
         $places = array_filter($keywords->schemas(), static fn (Schema $place): bool => $place->hasKeyword('contains'));
-        $this->claimed($keywords, 'minContains');
-        $this->claimed($keywords, 'maxContains');
-        $this->claimed($keywords, 'contains');
+        $this->markClaimed($keywords, 'minContains');
+        $this->markClaimed($keywords, 'maxContains');
+        $this->markClaimed($keywords, 'contains');
         foreach ($keywords->schemas() as $place) {
             foreach (['minContains', 'maxContains'] as $bound) {
                 if ($place->hasKeyword($bound) && !$place->hasKeyword('contains')) {
@@ -150,12 +150,12 @@ final class ClaimedConstraints
             return [];
         }
 
-        if ($this->claimed($keywords, 'dependentRequired') !== []) {
+        if ($this->markClaimed($keywords, 'dependentRequired') !== []) {
             $this->diagnostics->warning('"dependentRequired" is checked on classes only; it is not checked here.', $at);
         }
 
         if (!$value instanceof MapType) {
-            if ($this->claimed($keywords, 'propertyNames') !== []) {
+            if ($this->markClaimed($keywords, 'propertyNames') !== []) {
                 $this->diagnostics->warning('"propertyNames" is checked on maps and on the undeclared properties of a class only; it is not checked here.', $at);
             }
 
@@ -173,7 +173,7 @@ final class ClaimedConstraints
     public function names(Keywords $keywords, SchemaLocation $at): array
     {
         $constraints = [];
-        if ($this->claimed($keywords, 'propertyNames') === [] || !$this->runtime->available('propertyNames', $at)) {
+        if ($this->markClaimed($keywords, 'propertyNames') === [] || !$this->runtime->available('propertyNames', $at)) {
             return [];
         }
 
@@ -196,7 +196,7 @@ final class ClaimedConstraints
      */
     public function patterns(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
     {
-        if ($keywords->describesObject() || $this->claimed($keywords, 'patternProperties') === []) {
+        if ($keywords->describesObject() || $this->markClaimed($keywords, 'patternProperties') === []) {
             return [];
         }
 
@@ -257,7 +257,7 @@ final class ClaimedConstraints
         }
 
         foreach (self::BRANCHES as $branch) {
-            $this->claimed($keywords, $branch);
+            $this->markClaimed($keywords, $branch);
         }
 
         $places = self::conditionPlaces($keywords);
@@ -356,7 +356,7 @@ final class ClaimedConstraints
      *
      * @return list<JsonValue>
      */
-    private function claimed(Keywords $keywords, string $name): array
+    private function markClaimed(Keywords $keywords, string $name): array
     {
         foreach ($keywords->schemas() as $place) {
             if ($place->hasKeyword($name)) {
