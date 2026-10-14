@@ -113,7 +113,7 @@ final class TupleConstraints
 
         $fields = [];
         foreach ($entries as $index => $entry) {
-            $specs = $this->builder->subschema('prefixItems', Json::value($entry), $at, $item, false);
+            $specs = $this->builder->subschema('prefixItems', Json::value($entry), $at, $item, false, $at->child('prefixItems', (string) $index));
             $inner = $specs === null ? null : $this->builder->asNew('prefixItems', $specs, $at);
             if ($inner === null) {
                 return null;
@@ -189,7 +189,7 @@ final class TupleConstraints
             return [];
         }
 
-        $specs = $this->builder->subschema('unevaluatedItems', $setting, $at, $item, false);
+        $specs = $this->builder->subschema('unevaluatedItems', $setting, $at, $item, false, $at->child('unevaluatedItems'));
 
         return $specs === null ? [] : $this->builder->each($specs, $at);
     }

@@ -175,11 +175,13 @@ final class ConstraintBuilder
      * @param JsonValue $value
      * @param SchemaLocation $at the schema that holds the keyword, where the warnings go
      * @param bool $nullIsAbsent whether null stands for a missing value, which the subschema does not describe
+     * @param SchemaLocation $written where the subschema itself is, which its `$ref` is followed from
      *
      * @return list<ConstraintSpec>|null
      */
-    public function subschema(string $keyword, $value, SchemaLocation $at, TypeModel $type, bool $nullIsAbsent): ?array
+    public function subschema(string $keyword, $value, SchemaLocation $at, TypeModel $type, bool $nullIsAbsent, SchemaLocation $written): ?array
     {
+        $value = RawSchema::dereferenced($value, $written, $this->references);
         $parsed = Subschema::read($keyword, $value, $this->withoutEnums($type), $at, $this->diagnostics);
         if (!$parsed instanceof Subschema) {
             return null;

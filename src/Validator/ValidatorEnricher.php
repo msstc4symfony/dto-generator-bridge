@@ -105,13 +105,28 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
      */
     private function warnAboutRejectedNames(ClassContext $context, Keywords $keywords, ClassProperties $properties): void
     {
+        $references = $context->references();
+        $places = [];
         foreach ($keywords->schemas() as $place) {
+            $places[$place->location()->toString()] = $place;
+        }
+
+        // An adopted variant (one the base lists without a $ref back) reaches nothing of its ancestors' schemas.
+        foreach ($context->ancestors() as $ancestor) {
+            $schema = $references->at($ancestor->source());
+            foreach ($schema instanceof Schema ? (new Keywords($schema, $references))->schemas() : [] as $place) {
+                $places[$place->location()->toString()] = $place;
+            }
+        }
+
+        foreach ($places as $place) {
             if (!$place->hasKeyword('propertyNames')) {
                 continue;
             }
 
+            $schema = RawSchema::dereferenced($place->keyword('propertyNames'), $place->location()->child('propertyNames'), $references);
             foreach ($properties->names(!$properties->ofAncestor($place)) as $name) {
-                if (NameCheck::rejects($place->keyword('propertyNames'), $name)) {
+                if (NameCheck::rejects($schema, $name)) {
                     $context->diagnostics()->warning(sprintf(
                         '"propertyNames" rejects "%s", the name of a declared property, which can never be set.',
                         $name,
@@ -329,7 +344,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             $constraints = [];
             foreach ($class->patterns() as $pattern) {
                 if ($pattern->matches($property->wireName())) {
-                    array_push($constraints, ...($builder->subschema('patternProperties', $pattern->schema(), $pattern->place(), $type, true) ?? []));
+                    array_push($constraints, ...($builder->subschema('patternProperties', $pattern->schema(), $pattern->place(), $type, true, $pattern->written()) ?? []));
                 }
             }
         }

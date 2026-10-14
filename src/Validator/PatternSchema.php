@@ -28,15 +28,18 @@ final class PatternSchema
 
     private SchemaLocation $place;
 
+    private SchemaLocation $written;
+
     /**
      * @param non-empty-string $pcre
      * @param JsonValue $schema
      */
-    private function __construct(string $pcre, $schema, SchemaLocation $place)
+    private function __construct(string $pcre, $schema, SchemaLocation $place, SchemaLocation $written)
     {
         $this->pcre = $pcre;
         $this->schema = $schema;
         $this->place = $place;
+        $this->written = $written;
     }
 
     /**
@@ -68,7 +71,7 @@ final class PatternSchema
                     continue;
                 }
 
-                $patterns[] = new self($pcre, Json::value($schema), $at);
+                $patterns[] = new self($pcre, Json::value($schema), $at, $at->child('patternProperties', (string) $pattern));
             }
         }
 
@@ -97,6 +100,14 @@ final class PatternSchema
     public function place(): SchemaLocation
     {
         return $this->place;
+    }
+
+    /**
+     * Where the schema is, which its `$ref` is followed from.
+     */
+    public function written(): SchemaLocation
+    {
+        return $this->written;
     }
 
     public function matches(string $name): bool

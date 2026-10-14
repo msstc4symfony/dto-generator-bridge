@@ -9,6 +9,7 @@ use MSSTC4PHP\DtoGenerator\Domain\Model\ArgumentValue;
 use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeArgument;
 use MSSTC4PHP\DtoGenerator\Domain\Model\PropertyModel;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\Schema;
+use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaLocation;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\DefaultValue;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use Msstc4Symfony\DtoGeneratorBridge\Keywords;
@@ -21,9 +22,10 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
  *
  * @phpstan-import-type JsonValue from Json
  *
- * A branch of a condition: the wire names of `properties`, each with its schema, and the wire names `required` lists.
+ * A branch of a condition: the wire names of `properties`, each with its schema and where it is written, and the wire
+ * names `required` lists.
  *
- * @phpstan-type BranchShape array{list<array{string, JsonValue}>, list<string>}
+ * @phpstan-type BranchShape array{list<array{string, JsonValue, SchemaLocation}>, list<string>}
  *
  * A branch with the keyword warnings name it by, and whether its `required` decides (it does not in `then`, `else` and
  * the schema of `dependentSchemas`, where a property with a default meets it anyway).
@@ -82,7 +84,7 @@ final class ClassConditions
                 continue;
             }
 
-            $read = $this->read('not', $place->keyword('not'), $place);
+            $read = $this->read('not', $place->keyword('not'), $place, $place->location()->child('not'));
             $negation = $read === null ? null : $this->negation('not', $read, $place);
             if ($negation instanceof ConstraintSpec) {
                 $negations[] = $negation;
@@ -134,7 +136,7 @@ final class ClassConditions
             return $this->negation('dependentSchemas', $set, $place);
         }
 
-        $read = $this->read('dependentSchemas', $schema, $place);
+        $read = $this->read('dependentSchemas', $schema, $place, $place->location()->child('dependentSchemas', $name));
         if ($read === null) {
             return null;
         }
@@ -222,16 +224,17 @@ final class ClassConditions
      */
     private function branch(string $branch, Schema $place): ?array
     {
-        return $place->hasKeyword($branch) ? $this->read($branch, $place->keyword($branch), $place) : [[], []];
+        return $place->hasKeyword($branch) ? $this->read($branch, $place->keyword($branch), $place, $place->location()->child($branch)) : [[], []];
     }
 
     /**
      * @param non-empty-string $branch the keyword that holds the schema, as warnings name it
      * @param JsonValue $value
+     * @param SchemaLocation $written where the schema is
      *
      * @return BranchShape|null null for a schema that is not checked
      */
-    private function read(string $branch, $value, Schema $place): ?array
+    private function read(string $branch, $value, Schema $place, SchemaLocation $written): ?array
     {
         if ($value === true) {
             return [[], []];
@@ -250,7 +253,7 @@ final class ClassConditions
             $setting = Json::value($listed);
             if ($name === 'properties' && is_array($setting) && ($setting === [] || !Json::isList($setting))) {
                 foreach ($setting as $property => $schema) {
-                    $properties[] = [(string) $property, Json::value($schema)];
+                    $properties[] = [(string) $property, Json::value($schema), $written->child('properties', (string) $property)];
                 }
             } elseif ($name === 'required' && is_array($setting) && Json::isList($setting) && array_filter($setting, 'is_string') === $setting) {
                 $required = $setting;
@@ -329,9 +332,9 @@ final class ClassConditions
         [$properties, $required] = $read;
         $at = $place->location();
         $checks = [];
-        foreach ($properties as [$name, $schema]) {
+        foreach ($properties as [$name, $schema, $written]) {
             $property = $this->property($name);
-            $specs = $this->builder->subschema($branch, $schema, $at, $property->type(), true);
+            $specs = $this->builder->subschema($branch, $schema, $at, $property->type(), true, $written);
             $inner = $specs === null ? null : $this->builder->asNew($branch, $specs, $at);
             if ($inner === null) {
                 return null;
