@@ -53,36 +53,85 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         $diagnostics = $context->diagnostics();
         $version = $this->gate->version($context->packages(), $context->target(), $diagnostics, $schema->location());
         $extensions = new ExtensionReader($schema, $diagnostics);
+        $keywords = new Keywords($schema, $context->references(), $this->variantStop($schema, $context->references()));
+        $properties = new ClassProperties($context->class(), $context->ancestors(), $keywords, $context->references());
+        // A contradiction of the schema itself, whatever the Validator writes.
+        $this->warnAboutRejectedNames($context, $keywords, $properties);
         if (!$version instanceof SymfonyVersion || $extensions->flag('x-validator-skip')) {
             return [];
         }
 
-        $keywords = new Keywords($schema, $context->references());
         $groups = $this->groups($extensions);
         $runtime = new RuntimeConstraints($context->packages(), $diagnostics);
         $this->classes[$context->class()->name()->fqcn()] = new ClassKeywords($keywords, $schema->location(), $groups, $this->patterns($context, $keywords));
         $this->warnAboutNamesNotKept($context, $keywords);
-        foreach (['dependentRequired', 'if', 'then', 'else'] as $keyword) {
-            $this->markChecked($context, $keywords, $keyword);
+        // The ancestor marks its own places: one whose class skips the validator stays unmarked, and the generator warns.
+        foreach (['dependentRequired', 'if', 'then', 'else', 'not', 'dependentSchemas'] as $keyword) {
+            foreach ($keywords->schemas() as $place) {
+                if ($place->hasKeyword($keyword) && !$properties->ofAncestor($place)) {
+                    $context->keywordChecks()->checked($place->location(), $keyword);
+                }
+            }
         }
 
         $builder = new ConstraintBuilder($context->references(), $context->target(), $diagnostics, $runtime, $context->keywordChecks(), $groups);
-        $constraints = array_merge($this->requirements($context, $keywords, $runtime), $this->conditions($context, $keywords, $builder, $runtime, $groups));
+        $constraints = array_merge($this->requirements($context, $keywords, $runtime, $properties), $this->conditions($context, $keywords, $builder, $runtime, $groups, $properties));
 
         return array_map(static fn (ConstraintSpec $constraint): AttributeModel => $constraint->withGroups($groups)->toAttribute(), $constraints);
     }
 
     /**
+     * The member of the class's own union that leads back to it is a variant, a subclass that checks its keywords
+     * itself; the class reads nothing from it. Keywords reads a union only when it has one member besides null.
+     *
+     * @return list<string> its location, if any
+     */
+    private function variantStop(Schema $schema, SchemaReferences $references): array
+    {
+        $own = $schema->location()->toString();
+        foreach (array_merge($schema->oneOf(), $schema->anyOf()) as $member) {
+            $reached = array_map(static fn (Schema $place): string => $place->location()->toString(), (new Keywords($member, $references))->schemas());
+            if (in_array($own, $reached, true)) {
+                return [$member->location()->toString()];
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * A property whose name `propertyNames` rejects can never be set. An ancestor's schema applies to the class too, but
+     * the ancestor's class checks its own names against it.
+     */
+    private function warnAboutRejectedNames(ClassContext $context, Keywords $keywords, ClassProperties $properties): void
+    {
+        foreach ($keywords->schemas() as $place) {
+            if (!$place->hasKeyword('propertyNames')) {
+                continue;
+            }
+
+            foreach ($properties->names(!$properties->ofAncestor($place)) as $name) {
+                if (NameCheck::rejects($place->keyword('propertyNames'), $name)) {
+                    $context->diagnostics()->warning(sprintf(
+                        '"propertyNames" rejects "%s", the name of a declared property, which can never be set.',
+                        $name,
+                    ), $place->location());
+                }
+            }
+        }
+    }
+
+    /**
      * @return list<ConstraintSpec> DependentRequired with the pairs the class checks
      */
-    private function requirements(ClassContext $context, Keywords $keywords, RuntimeConstraints $runtime): array
+    private function requirements(ClassContext $context, Keywords $keywords, RuntimeConstraints $runtime, ClassProperties $properties): array
     {
         $at = $context->schema()->location();
         if (!$keywords->has('dependentRequired') || !$runtime->available('dependentRequired', $at)) {
             return [];
         }
 
-        $requirements = (new DependentRequirements($context->class(), $context->diagnostics(), $at))->of($keywords);
+        $requirements = (new DependentRequirements($properties, $context->diagnostics(), $at))->of($keywords);
         if ($requirements === []) {
             return [];
         }
@@ -98,15 +147,18 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
     /**
      * @param list<non-empty-string> $groups
      *
-     * @return list<ConstraintSpec> IfThenElse for each condition the class checks
+     * @return list<ConstraintSpec> IfThenElse for each condition and dependency the class checks, Not for each negation
      */
-    private function conditions(ClassContext $context, Keywords $keywords, ConstraintBuilder $builder, RuntimeConstraints $runtime, array $groups): array
+    private function conditions(ClassContext $context, Keywords $keywords, ConstraintBuilder $builder, RuntimeConstraints $runtime, array $groups, ClassProperties $properties): array
     {
-        if (ClaimedConstraints::conditionPlaces($keywords) === [] || !$runtime->available('if', $context->schema()->location())) {
-            return [];
-        }
+        $at = $context->schema()->location();
+        $class = new ClassConditions($properties, $builder, $context->diagnostics(), $groups);
 
-        return (new ClassConditions($context->class(), $builder, $context->diagnostics(), $groups))->of($keywords);
+        return array_merge(
+            ClaimedConstraints::conditionPlaces($keywords) !== [] && $runtime->available('if', $at) ? $class->of($keywords) : [],
+            ClaimedConstraints::forbids($keywords->values('not')) && $runtime->available('not', $at) ? $class->negations($keywords) : [],
+            $keywords->has('dependentSchemas') && $runtime->available('dependentSchemas', $at) ? $class->dependencies($keywords) : [],
+        );
     }
 
     /**
@@ -149,7 +201,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             $own[] = $property->wireName();
         }
 
-        $targets = $this->targets($keywords, $context->references());
+        $targets = $this->targets($keywords, $context->references(), $context->class()->source()->toString());
         foreach ($keywords->schemas() as $place) {
             foreach (array_diff($place->propertyNames(), $own) as $name) {
                 foreach ($patterns as $pattern) {
@@ -167,9 +219,12 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
     /**
      * The schemas the `$ref`s of the `allOf` branches lead to, at any depth, each with the locations of its places.
      *
+     * @param string $own where the class's own schema is: a target's union may lead back to it, a variant's places stay
+     *                    its own
+     *
      * @return array<string, list<string>> by the target's location
      */
-    private function targets(Keywords $keywords, SchemaReferences $references): array
+    private function targets(Keywords $keywords, SchemaReferences $references, string $own): array
     {
         $targets = [];
         $queue = [$keywords];
@@ -179,7 +234,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
                     $target = $references->resolve($branch);
                     $location = $target->location()->toString();
                     if ($branch->ref() !== null && !isset($targets[$location])) {
-                        $reached = new Keywords($target, $references);
+                        $reached = new Keywords($target, $references, [$own]);
                         $targets[$location] = array_map(static fn (Schema $schema): string => $schema->location()->toString(), $reached->schemas());
                         $queue[] = $reached;
                     }

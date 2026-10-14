@@ -19,8 +19,8 @@ use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use Msstc4Symfony\DtoGeneratorBridge\Keywords;
 
 /**
- * The constraints of a value for the keywords the bridge claims from the generator, which the runtime's constraints
- * check. Every place of such a keyword is marked: checked, or warned about.
+ * The constraints of a value for the keywords the bridge claims from the generator, mostly the runtime's. Every place
+ * of such a keyword is marked: checked, or warned about.
  *
  * @phpstan-import-type JsonValue from Json
  *
@@ -29,10 +29,13 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
 final class ClaimedConstraints
 {
     /**
-     * The keywords the generator calls unsupported and the runtime's constraints check; the bridge claims them and warns
-     * where it cannot check one.
+     * The keywords the generator calls unsupported and the bridge checks, with the runtime's constraints or Symfony's;
+     * the bridge claims them and warns where it cannot check one.
      */
-    public const KEYWORDS = ['dependentRequired', 'propertyNames', 'contains', 'minContains', 'maxContains', 'patternProperties', 'if', 'then', 'else'];
+    public const KEYWORDS = [
+        'dependentRequired', 'propertyNames', 'contains', 'minContains', 'maxContains', 'patternProperties', 'if', 'then', 'else', 'not',
+        'dependentSchemas', 'prefixItems', 'unevaluatedItems',
+    ];
 
     /** The branches of a condition, in the order IfThenElse takes them. */
     private const BRANCHES = ['if', 'then', 'else'];
@@ -47,21 +50,36 @@ final class ClaimedConstraints
 
     private KeywordChecks $checks;
 
+    private TupleConstraints $tuples;
+
     /**
      * @param ConstraintBuilder $builder which turns the subschemas of the keywords into constraints
+     * @param list<non-empty-string> $groups the groups of the value
      */
     public function __construct(
         ConstraintBuilder $builder,
         SchemaReferences $references,
         Diagnostics $diagnostics,
         RuntimeConstraints $runtime,
-        KeywordChecks $checks
+        KeywordChecks $checks,
+        array $groups
     ) {
         $this->builder = $builder;
         $this->references = $references;
         $this->diagnostics = $diagnostics;
         $this->runtime = $runtime;
         $this->checks = $checks;
+        $this->tuples = new TupleConstraints($builder, $references, $diagnostics, $groups);
+    }
+
+    /**
+     * Whether any of the values of `not` forbids something: `not: false` does not.
+     *
+     * @param list<JsonValue> $values
+     */
+    public static function forbids(array $values): bool
+    {
+        return array_filter($values, static fn ($value): bool => $value !== false) !== [];
     }
 
     /**
@@ -274,6 +292,63 @@ final class ClaimedConstraints
         }
 
         return $constraints;
+    }
+
+    /**
+     * The runtime's Not for each `not` of a value; a class checks its own from ValidatorEnricher. A schema that checks
+     * nothing leaves no value allowed but null, which stands for a missing one.
+     *
+     * @return list<ConstraintSpec>
+     */
+    public function negations(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
+    {
+        if ($keywords->describesObject() || !self::forbids($this->markClaimed($keywords, 'not')) || !$this->runtime->available('not', $at)) {
+            return [];
+        }
+
+        $constraints = [];
+        foreach ($keywords->schemas() as $place) {
+            if (!$place->hasKeyword('not') || $place->keyword('not') === false) {
+                continue;
+            }
+
+            $specs = $this->builder->subschema('not', $place->keyword('not'), $place->location(), $value, true);
+            if ($specs !== null && $specs !== [] && $specs[0]->is('IsNull')) {
+                $this->diagnostics->warning('"not" of null is not checked: null stands for a missing value.', $place->location());
+
+                continue;
+            }
+
+            $inner = $specs === null ? null : $this->builder->asNew('not', $specs, $place->location());
+            if ($inner !== null) {
+                $constraints[] = ConstraintSpec::runtime('Not', $inner === [] ? [] : [AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner))]);
+            }
+        }
+
+        return $constraints;
+    }
+
+    /**
+     * `dependentSchemas` names properties, which only a class checks, from ValidatorEnricher.
+     */
+    public function warnAboutDependencies(Keywords $keywords, SchemaLocation $at): void
+    {
+        if (!$keywords->describesObject() && $this->markClaimed($keywords, 'dependentSchemas') !== []) {
+            $this->diagnostics->warning('"dependentSchemas" is checked on classes only; it is not checked here.', $at);
+        }
+    }
+
+    /**
+     * The constraints of `prefixItems` and `unevaluatedItems`, each place marked.
+     *
+     * @return list<ConstraintSpec>
+     */
+    public function tuples(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
+    {
+        $this->markClaimed($keywords, 'prefixItems');
+        $this->markClaimed($keywords, 'unevaluatedItems');
+
+        return $this->tuples->of($keywords, $value, $at);
     }
 
     /**

@@ -540,19 +540,60 @@ final class RuntimeConstraintsTest extends TestCase
         ], $this->messages($output));
     }
 
-    public function testLeavesThePairsOfInheritedPropertiesToTheParent(): void
+    public function testChecksPairsOfInheritedPropertiesAndLeavesTheParentsToIt(): void
     {
         $output = $this->withRuntime(['allOf' => [
             ['$ref' => '#/components/schemas/Animal'],
             ['type' => 'object', 'dependentRequired' => ['name' => ['legs'], 'tail' => ['name'], 'legs' => ['name']], 'properties' => ['tail' => ['type' => 'string']]],
         ]], ['Animal' => ['type' => 'object', 'dependentRequired' => ['name' => ['legs']], 'properties' => ['name' => ['type' => 'string'], 'legs' => ['type' => 'integer']]]]);
 
-        self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
+        self::assertSame(["RuntimeAssert\\DependentRequired(requirements: ['tail' => ['name'], 'legs' => ['name']])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
         self::assertSame(["RuntimeAssert\\DependentRequired(requirements: ['name' => ['legs']])"], $this->classAttributesOf($this->code($output, 'Animal.php')));
-        self::assertSame([
-            'warning /api.yaml#/components/schemas/Pet: "dependentRequired": "tail" needing "name" is not checked, as the class inherits "name"; write the pair in the schema that declares both.',
-            'warning /api.yaml#/components/schemas/Pet: "dependentRequired": "legs" needing "name" is not checked, as the class inherits "legs"; write the pair in the schema that declares both.',
-        ], $this->messages($output));
+        self::assertSame([], $this->messages($output));
+    }
+
+    /**
+     * @testWith [["oneOf"]]
+     *           [["anyOf"]]
+     *           [["oneOf", "anyOf"]]
+     *
+     * @param list<string> $unions
+     */
+    public function testChecksTheOwnPairsOfTheOnlyVariantOfItsParent(array $unions): void
+    {
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['type' => 'object', 'properties' => ['meow' => ['type' => 'string'], 'lives' => ['type' => 'integer']], 'dependentRequired' => ['meow' => ['lives']]],
+        ]], ['Base' => [
+            'type' => 'object',
+            'required' => ['kind'],
+            'properties' => ['kind' => ['type' => 'string']],
+            'discriminator' => ['propertyName' => 'kind', 'mapping' => ['pet' => '#/components/schemas/Pet']],
+        ] + array_fill_keys($unions, [['$ref' => '#/components/schemas/Pet']])]);
+
+        self::assertSame(["RuntimeAssert\\DependentRequired(requirements: ['meow' => ['lives']])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
+        self::assertSame([], $this->classAttributesOf($this->code($output, 'Base.php')));
+        self::assertSame([], array_values(array_filter($this->messages($output), static fn (string $message): bool => strpos($message, 'dependentRequired') !== false)));
+    }
+
+    public function testChecksTheOnlyMemberOfAUnionBesideTheProperties(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'a' => ['type' => 'string'],
+            'b' => ['type' => 'string'],
+        ], 'oneOf' => [['dependentRequired' => ['a' => ['b']]]]]);
+
+        self::assertSame(["RuntimeAssert\\DependentRequired(requirements: ['a' => ['b']])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
+    public function testChecksTheOnlyReferencedMemberThatIsNoSubclass(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'a' => ['type' => 'string'],
+            'b' => ['type' => 'string'],
+        ], 'oneOf' => [['$ref' => '#/components/schemas/Rule'], ['type' => 'null']]], ['Rule' => ['dependentRequired' => ['a' => ['b']]]]);
+
+        self::assertSame(["RuntimeAssert\\DependentRequired(requirements: ['a' => ['b']])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
     }
 
     public function testGroupsTheClassConstraint(): void

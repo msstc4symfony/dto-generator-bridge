@@ -20,6 +20,9 @@ final class RuntimeConstraints
     /** The release that brought the constraints. */
     private const MINIMUM = '1.1';
 
+    /** The keywords whose constraints came later. */
+    private const MINIMUM_OF = ['not' => '1.2', 'dependentSchemas' => '1.2'];
+
     private InstalledPackages $packages;
 
     private Diagnostics $diagnostics;
@@ -35,7 +38,8 @@ final class RuntimeConstraints
      */
     public function available(string $keyword, SchemaLocation $at): bool
     {
-        if ($this->installed()) {
+        $minimum = self::MINIMUM_OF[$keyword] ?? self::MINIMUM;
+        if ($this->installed($minimum)) {
             return true;
         }
 
@@ -43,7 +47,7 @@ final class RuntimeConstraints
             '"%s" is checked by %s %s or newer, which the project does not install; it is not checked.',
             $keyword,
             self::PACKAGE,
-            self::MINIMUM,
+            $minimum,
         ), $at);
 
         return false;
@@ -52,7 +56,7 @@ final class RuntimeConstraints
     /**
      * A branch (dev-main) counts as new: it is what a project tries before a release.
      */
-    private function installed(): bool
+    private function installed(string $minimum): bool
     {
         $version = $this->packages->version(self::PACKAGE);
         if ($version === null) {
@@ -63,6 +67,6 @@ final class RuntimeConstraints
             return true;
         }
 
-        return version_compare($match[1] . '.' . $match[2], self::MINIMUM, '>=');
+        return version_compare($match[1] . '.' . $match[2], $minimum, '>=');
     }
 }

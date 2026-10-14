@@ -168,6 +168,20 @@ final class ConditionalsTest extends TestCase
         ], $this->messages($output));
     }
 
+    public function testRequiresAPropertyWithADefaultInThenAndElse(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'a' => ['type' => 'string'],
+            'b' => ['type' => 'string', 'default' => 'x'],
+        ], 'if' => ['required' => ['a']], 'then' => ['required' => ['b']], 'else' => ['required' => ['b']]]);
+
+        self::assertSame(
+            ['RuntimeAssert\\IfThenElse(if: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['a'])], then: [new " . self::RUNTIME_ASSERT . "Present(properties: ['b'])], else: [new " . self::RUNTIME_ASSERT . "Present(properties: ['b'])])"],
+            $this->classAttributesOf($this->code($output, 'Pet.php')),
+        );
+        self::assertSame([], $this->messages($output));
+    }
+
     public function testWarnsAboutAConditionItCannotCheck(): void
     {
         $output = $this->withRuntime(['type' => 'object', 'properties' => [
@@ -211,7 +225,7 @@ final class ConditionalsTest extends TestCase
         ], $this->messages($output));
     }
 
-    public function testLeavesTheConditionOfAParentToIt(): void
+    public function testChecksInheritedPropertiesAndLeavesTheConditionOfAParentToIt(): void
     {
         $output = $this->withRuntime(['allOf' => [
             ['$ref' => '#/components/schemas/Base'],
@@ -225,13 +239,37 @@ final class ConditionalsTest extends TestCase
             ['RuntimeAssert\\IfThenElse(if: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['a'])], then: [new " . self::RUNTIME_ASSERT . "Property(name: 'a', constraints: [new " . self::ASSERT . 'Length(min: 2)])])'],
             $this->classAttributesOf($this->code($output, 'Base.php')),
         );
-        self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
+        self::assertSame(
+            ['RuntimeAssert\\IfThenElse(if: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['a'])], then: [new " . self::RUNTIME_ASSERT . "Present(properties: ['b'])])"],
+            $this->classAttributesOf($this->code($output, 'Pet.php')),
+        );
         self::assertSame(
             [
-                self::AT . '/allOf/2: "if" names "a", which this class inherits; the condition is not checked: write it in the schema that declares its properties.',
                 self::AT . '/allOf/3: "if" names "zzz", which is not a property of this class; the condition is not checked.',
                 self::AT . '/allOf/4: "if" names "7", which is not a property of this class; the condition is not checked.',
             ],
+            $this->messages($output),
+        );
+    }
+
+    public function testNamesThePropertiesOfEveryAncestor(): void
+    {
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Middle'],
+            ['type' => 'object', 'properties' => ['c' => ['type' => 'string']], 'if' => ['required' => ['a']], 'then' => ['required' => ['b', 'c']]],
+            ['$ref' => '#/components/schemas/BaseRules'],
+        ]], [
+            'Base' => ['type' => 'object', 'properties' => ['a' => ['type' => 'string'], 'd' => ['type' => 'string', 'default' => 'x']]],
+            'Middle' => ['allOf' => [['$ref' => '#/components/schemas/Base'], ['type' => 'object', 'properties' => ['b' => ['type' => 'string']]]]],
+            'BaseRules' => ['if' => ['required' => ['d']], 'then' => ['required' => ['c']]],
+        ]);
+
+        self::assertSame(
+            ['RuntimeAssert\\IfThenElse(if: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['a'])], then: [new " . self::RUNTIME_ASSERT . "Present(properties: ['b', 'c'])])"],
+            $this->classAttributesOf($this->code($output, 'Pet.php')),
+        );
+        self::assertSame(
+            ['warning /api.yaml#/components/schemas/BaseRules: "if" names "d", which has a default and is always set; the condition is not checked.'],
             $this->messages($output),
         );
     }

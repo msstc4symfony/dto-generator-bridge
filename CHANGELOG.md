@@ -6,6 +6,25 @@ All notable changes to this package are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `not` gets `Not` of `msstc4symfony/dto-generator-bridge-runtime` 1.2, on values and on classes (`properties` and
+  `required`), and `dependentSchemas` on classes gets `IfThenElse` with `Present` (or `Not` for a `false` schema).
+- `prefixItems` gets Symfony's `Collection` of the prefix's elements, `unevaluatedItems: false` a `Count` of the longest
+  prefix, and an `unevaluatedItems` schema without `prefixItems` an `All`. The bridge claims `not`, `dependentSchemas`,
+  `prefixItems` and `unevaluatedItems` from the generator and warns where it cannot check one.
+- A declared property whose name `propertyNames` rejects (by `pattern`, `minLength`, `maxLength`, `const` or `enum`)
+  gives a warning while generating: it can never be set.
+
+### Changed
+
+- `bin/console dto-generator:generate --refresh-remote` is documented and tested: the command takes every option
+  of the generator's `generate`, this one included (the generator 1.4).
+- `dependentRequired`, conditions (`if`/`then`/`else`), `not` and `dependentSchemas` in a child's schema may name
+  properties the class inherits (through `ClassContext::ancestors()` of the generator 1.5): they are checked instead
+  of warned about. What a parent's schema says stays with the parent's class, which Symfony checks on the child too.
+- The bridge requires `msstc4php/dto-generator` ^1.5 and `msstc4symfony/dto-generator-bridge-runtime` ^1.2.
+
 ## [1.3.0] - 2026-10-13
 
 ### Added

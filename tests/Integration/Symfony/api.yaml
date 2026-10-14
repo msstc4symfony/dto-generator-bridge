@@ -74,6 +74,34 @@ components:
         - if: {properties: {kind: {const: letter}}, required: [kind]}
           then: {properties: {weight: {maximum: 50}}}
       patternProperties: {'^x-': {maxLength: 3}}
+    Ticket:
+      type: object
+      properties:
+        code: {type: string, not: {enum: [TEST, DEMO]}}
+        card: {type: string}
+        holder: {type: string}
+        voucher: {type: string}
+        seat: {type: array, prefixItems: [{type: string, maxLength: 2}, {type: integer, minimum: 1}], unevaluatedItems: false}
+        cash: {type: boolean}
+        pair: {type: array, x-validator-groups: [api], x-validator-groups-exclusive: true, prefixItems: [{type: string}]}
+      not: {required: [card, voucher]}
+      dependentSchemas:
+        card: {required: [holder]}
+        cash: false
+    Wallet:
+      type: object
+      properties:
+        card: {type: string}
+        holder: {type: string}
+      dependentRequired: {card: [holder]}
+    Savings:
+      allOf:
+        - $ref: '#/components/schemas/Wallet'
+        - type: object
+          properties:
+            iban: {type: string}
+          if: {required: [iban]}
+          then: {required: [holder]}
     Animal:
       oneOf:
         - {$ref: '#/components/schemas/Cat'}
