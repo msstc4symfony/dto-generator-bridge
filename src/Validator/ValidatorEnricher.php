@@ -312,7 +312,8 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
 
             foreach ($schemas as $schema) {
                 foreach ($builder->build($schema, $property->type()) as $spec) {
-                    if (!in_array(serialize($spec), $checked, true)) {
+                    // Valid may not go inside Property; the parent's property, of the same type, traverses the value.
+                    if (!$spec->is('Valid') && !in_array(serialize($spec), $checked, true)) {
                         $checked[] = serialize($spec);
                         $added[$property->name()][] = $spec;
                     }

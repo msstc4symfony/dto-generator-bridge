@@ -93,6 +93,23 @@ final class NarrowingsTest extends TestCase
         self::assertSame(['RuntimeAssert\\Property(name: \'code\', constraints: [new ' . self::ASSERT . 'Length(max: 8)])'], $this->classAttributesOf($this->code($output, 'Pet.php')));
     }
 
+    public function testLeavesTheTraversalOfAnObjectToTheParentsProperty(): void
+    {
+        $variant = ['type' => 'object', 'required' => ['kind'], 'properties' => [
+            'kind' => ['type' => 'string'],
+            'cfg' => ['$ref' => '#/components/schemas/Cfg'],
+            'tags' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Cfg']],
+        ]];
+        $output = $this->withRuntime(
+            ['oneOf' => [['$ref' => '#/components/schemas/Cat'], ['$ref' => '#/components/schemas/Dog']], 'discriminator' => ['propertyName' => 'kind']],
+            ['Cat' => $variant, 'Dog' => $variant, 'Cfg' => ['type' => 'object', 'properties' => ['on' => ['type' => 'boolean']]]],
+        );
+
+        self::assertSame(["RuntimeAssert\\Present(properties: ['kind'])"], $this->classAttributesOf($this->code($output, 'Cat.php')));
+        self::assertSame(['Assert\\Valid'], $this->attributesOf($this->code($output, 'Pet.php'), 'cfg'));
+        self::assertSame(['Assert\\Valid'], $this->attributesOf($this->code($output, 'Pet.php'), 'tags'));
+    }
+
     public function testSaysNothingOfTheRuntimeWhenTheChildAddsNothing(): void
     {
         $output = $this->generate(['allOf' => [
