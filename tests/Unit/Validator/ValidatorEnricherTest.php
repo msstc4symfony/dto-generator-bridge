@@ -29,7 +29,7 @@ final class ValidatorEnricherTest extends TestCase
         $output = $this->generate($union + ['required' => ['method'], 'additionalProperties' => false, 'enum' => [['method' => 'cash']], 'minProperties' => 1, 'not' => ['required' => ['secret']]], $others);
         $quiet = $this->generate($union, $others);
 
-        self::assertSame(['warning /api.yaml#/components/schemas/Pet: App\\Dto\\Pet is an interface, which carries no constraints: its "required", "additionalProperties", "enum", "minProperties", "not" holds only where the variants\' schemas say it too.'], $this->messages($output));
+        self::assertSame(['warning /api.yaml#/components/schemas/Pet: App\\Dto\\Pet is an interface, which carries no constraints: the keywords "required", "additionalProperties", "enum", "minProperties", "not" of its schema are checked only where the variants\' schemas repeat them.'], $this->messages($output));
         self::assertStringNotContainsString('#[', $this->code($output, 'Pet.php'));
         self::assertSame([], array_values(array_filter($this->messages($quiet), static fn (string $m): bool => strpos($m, 'interface') !== false)));
     }

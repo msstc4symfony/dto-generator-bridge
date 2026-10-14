@@ -125,7 +125,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
 
         if ($asserted !== []) {
             $context->diagnostics()->warning(
-                sprintf('%s is an interface, which carries no constraints: its "%s" holds only where the variants\' schemas say it too.', $context->class()->name()->fqcn(), implode('", "', $asserted)),
+                sprintf('%s is an interface, which carries no constraints: the keywords "%s" of its schema are checked only where the variants\' schemas repeat them.', $context->class()->name()->fqcn(), implode('", "', $asserted)),
                 $schema->location(),
             );
         }
