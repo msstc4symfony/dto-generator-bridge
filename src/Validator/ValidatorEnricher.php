@@ -32,6 +32,11 @@ use Msstc4Symfony\DtoGeneratorBridge\SymfonyVersion;
  */
 final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
 {
+    private const OBJECT_KEYWORDS = [
+        'patternProperties', 'propertyNames', 'unevaluatedProperties', 'minProperties', 'maxProperties',
+        'dependentRequired', 'dependentSchemas', 'not', 'if', 'const',
+    ];
+
     private Settings $settings;
 
     private ComponentGate $gate;
@@ -64,6 +69,12 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             return [];
         }
 
+        if ($scope->class()->kind()->isInterface()) {
+            $this->warnAboutInterfaceKeywords($scope);
+
+            return [];
+        }
+
         $groups = $this->groups($extensions);
         $patterns = $this->patterns($scope, $keywords);
         $this->classes[$scope->class()->name()->fqcn()] = new ClassKeywords($keywords, $schema->location(), $groups, $patterns);
@@ -92,6 +103,31 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         }
 
         return $attributes;
+    }
+
+    /**
+     * An interface has no property to check, and Symfony would merge its class constraints into the variants under a
+     * group of its own, so what its schema asserts of the object is left to the variants.
+     */
+    private function warnAboutInterfaceKeywords(ClassScope $context): void
+    {
+        $schema = $context->schema();
+        $asserted = array_merge(
+            $schema->required() === [] ? [] : ['required'],
+            $schema->additionalProperties() === null ? [] : ['additionalProperties'],
+            array_filter(self::OBJECT_KEYWORDS, static fn (string $keyword): bool => $schema->hasKeyword($keyword)),
+        );
+        foreach ($asserted as $keyword) {
+            // Said here once, so the generator does not report the keyword again.
+            $context->keywordChecks()->checked($schema->location(), $keyword);
+        }
+
+        if ($asserted !== []) {
+            $context->diagnostics()->warning(
+                sprintf('%s is an interface, which carries no constraints: its "%s" holds only where the variants\' schemas say it too.', $context->class()->name()->fqcn(), implode('", "', $asserted)),
+                $schema->location(),
+            );
+        }
     }
 
     /**
