@@ -12,6 +12,7 @@ use MSSTC4PHP\DtoGenerator\Contract\SchemaReferences;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ArgumentValue;
 use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeArgument;
 use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeModel;
+use MSSTC4PHP\DtoGenerator\Domain\Model\ClassModel;
 use MSSTC4PHP\DtoGenerator\Domain\Model\MapType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\MixedType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\PropertyModel;
@@ -50,40 +51,101 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
 
     public function enrichClass(ClassContext $context): array
     {
-        $schema = $context->schema();
-        $diagnostics = $context->diagnostics();
-        $version = $this->gate->version($context->packages(), $context->target(), $diagnostics, $schema->location());
+        $scope = ClassScope::of($context);
+        $schema = $scope->schema();
+        $diagnostics = $scope->diagnostics();
+        $version = $this->gate->version($scope->packages(), $scope->target(), $diagnostics, $schema->location());
         $extensions = new ExtensionReader($schema, $diagnostics);
-        $keywords = new Keywords($schema, $context->references(), $this->variantStop($schema, $context->references()));
-        $properties = new ClassProperties($context->class(), $context->ancestors(), $keywords, $context->references());
+        $keywords = $this->keywordsOf($scope);
+        $properties = new ClassProperties($scope->class(), $scope->ancestors(), $keywords, $scope->references());
         // A contradiction of the schema itself, whatever the Validator writes.
-        $this->warnAboutRejectedNames($context, $keywords, $properties);
+        $this->warnAboutRejectedNames($scope, $keywords, $properties);
         if (!$version instanceof SymfonyVersion || $extensions->flag('x-validator-skip')) {
             return [];
         }
 
         $groups = $this->groups($extensions);
-        $runtime = new RuntimeConstraints($context->packages(), $diagnostics);
-        $patterns = $this->patterns($context, $keywords);
-        $this->classes[$context->class()->name()->fqcn()] = new ClassKeywords($keywords, $schema->location(), $groups, $patterns);
-        $this->warnAboutNamesNotKept($context, $keywords);
+        $patterns = $this->patterns($scope, $keywords);
+        $this->classes[$scope->class()->name()->fqcn()] = new ClassKeywords($keywords, $schema->location(), $groups, $patterns);
+        $this->warnAboutNamesNotKept($scope, $keywords);
         // The ancestor marks its own places: one whose class skips the validator stays unmarked, and the generator warns.
         foreach (['dependentRequired', 'if', 'then', 'else', 'not', 'dependentSchemas'] as $keyword) {
             foreach ($keywords->schemas() as $place) {
                 if ($place->hasKeyword($keyword) && !$properties->ofAncestor($place)) {
-                    $context->keywordChecks()->checked($place->location(), $keyword);
+                    $scope->keywordChecks()->checked($place->location(), $keyword);
                 }
             }
         }
 
-        $builder = new ConstraintBuilder($context->references(), $context->target(), $diagnostics, $runtime, $context->keywordChecks(), $groups);
+        // Symfony gives the class the constraints of its ancestors too: one they write already would report twice.
+        $inherited = [];
+        $ancestors = $scope->ancestors();
+        foreach ($ancestors as $index => $ancestor) {
+            array_push($inherited, ...$this->writtenBy($ancestor, array_slice($ancestors, $index + 1), $scope));
+        }
+
+        $attributes = [];
+        foreach ($this->classSpecs($scope, $keywords, $properties, $groups, $patterns) as $constraint) {
+            if (!in_array(serialize($constraint), $inherited, true)) {
+                $attributes[] = $constraint->toAttribute();
+            }
+        }
+
+        return $attributes;
+    }
+
+    /**
+     * @param list<non-empty-string> $groups
+     * @param list<PatternSchema> $patterns
+     *
+     * @return list<ConstraintSpec> the class constraints of the class, in its groups
+     */
+    private function classSpecs(ClassScope $context, Keywords $keywords, ClassProperties $properties, array $groups, array $patterns): array
+    {
+        $runtime = new RuntimeConstraints($context->packages(), $context->diagnostics());
+        $builder = new ConstraintBuilder($context->references(), $context->target(), $context->diagnostics(), $runtime, $context->keywordChecks(), $groups);
         $constraints = array_merge(
             $this->requirements($context, $keywords, $runtime, $properties),
             $this->conditions($context, $keywords, $builder, $runtime, $groups, $properties),
             $this->inheritedMatches($context, $keywords, $patterns, $properties, $builder, $runtime),
         );
 
-        return array_map(static fn (ConstraintSpec $constraint): AttributeModel => $constraint->withGroups($groups)->toAttribute(), $constraints);
+        return array_map(static fn (ConstraintSpec $constraint): ConstraintSpec => $constraint->withGroups($groups), $constraints);
+    }
+
+    /**
+     * The class constraints an ancestor writes, each serialized, as its own enrichment would, whatever the order the
+     * generator enriches the classes in. The class passed the gate, so the ancestor does too.
+     *
+     * @param list<ClassModel> $above the ancestor's own ancestors, nearest first
+     *
+     * @return list<string>
+     */
+    private function writtenBy(ClassModel $ancestor, array $above, ClassScope $context): array
+    {
+        $references = $context->references();
+        $schema = $references->at($ancestor->source());
+        if (!$schema instanceof Schema) {
+            return [];
+        }
+
+        $quiet = $context->ancestor($ancestor, $schema, $above);
+        $extensions = new ExtensionReader($schema, $quiet->diagnostics());
+        if ($extensions->flag('x-validator-skip')) {
+            return [];
+        }
+
+        $keywords = $this->keywordsOf($quiet);
+        $properties = new ClassProperties($ancestor, $above, $keywords, $references);
+
+        return array_map('serialize', $this->classSpecs($quiet, $keywords, $properties, $this->groups($extensions), $this->patterns($quiet, $keywords)));
+    }
+
+    private function keywordsOf(ClassScope $context): Keywords
+    {
+        $schema = $context->schema();
+
+        return new Keywords($schema, $context->references(), $this->variantStop($schema, $context->references()));
     }
 
     /**
@@ -109,7 +171,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
      * A property whose name `propertyNames` rejects can never be set. An ancestor's schema applies to the class too, but
      * the ancestor's class checks its own names against it.
      */
-    private function warnAboutRejectedNames(ClassContext $context, Keywords $keywords, ClassProperties $properties): void
+    private function warnAboutRejectedNames(ClassScope $context, Keywords $keywords, ClassProperties $properties): void
     {
         $references = $context->references();
         $places = [];
@@ -145,7 +207,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
     /**
      * @return list<ConstraintSpec> DependentRequired with the pairs the class checks
      */
-    private function requirements(ClassContext $context, Keywords $keywords, RuntimeConstraints $runtime, ClassProperties $properties): array
+    private function requirements(ClassScope $context, Keywords $keywords, RuntimeConstraints $runtime, ClassProperties $properties): array
     {
         $at = $context->schema()->location();
         if (!$keywords->has('dependentRequired') || !$runtime->available('dependentRequired', $at)) {
@@ -170,10 +232,10 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
      *
      * @return list<ConstraintSpec> IfThenElse for each condition and dependency the class checks, Not for each negation
      */
-    private function conditions(ClassContext $context, Keywords $keywords, ConstraintBuilder $builder, RuntimeConstraints $runtime, array $groups, ClassProperties $properties): array
+    private function conditions(ClassScope $context, Keywords $keywords, ConstraintBuilder $builder, RuntimeConstraints $runtime, array $groups, ClassProperties $properties): array
     {
         $at = $context->schema()->location();
-        $class = new ClassConditions($properties, $this->inheritedConditions($context, $keywords, $properties, $groups), $builder, $context->diagnostics(), $groups);
+        $class = new ClassConditions($properties, $builder, $context->diagnostics(), $groups);
 
         return array_merge(
             ClaimedConstraints::conditionPlaces($keywords) !== [] && $runtime->available('if', $at) ? $class->of($keywords) : [],
@@ -183,31 +245,12 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
     }
 
     /**
-     * The nearest ancestor writes the conditions of its schema unless it skips the validator; in other groups they
-     * check other validations than the class's own.
-     *
-     * @param list<non-empty-string> $groups
-     */
-    private function inheritedConditions(ClassContext $context, Keywords $keywords, ClassProperties $properties, array $groups): InheritedConditions
-    {
-        $ancestors = $context->ancestors();
-        $parent = $ancestors === [] ? null : $context->references()->at($ancestors[0]->source());
-        if (!$parent instanceof Schema) {
-            return InheritedConditions::none();
-        }
-
-        $extensions = new ExtensionReader($parent, $context->diagnostics());
-
-        return $extensions->flag('x-validator-skip') || $this->groups($extensions) !== $groups ? InheritedConditions::none() : InheritedConditions::of($keywords, $properties);
-    }
-
-    /**
      * The patterns of the class, for its declared properties and its $additionalProperties, each place marked: every
      * pattern is checked or warned about, and undeclared properties the class does not keep are warned about.
      *
      * @return list<PatternSchema>
      */
-    private function patterns(ClassContext $context, Keywords $keywords): array
+    private function patterns(ClassScope $context, Keywords $keywords): array
     {
         $this->markChecked($context, $keywords, 'patternProperties');
         if (!$keywords->has('patternProperties')) {
@@ -234,7 +277,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
      *
      * @return list<ConstraintSpec>
      */
-    private function inheritedMatches(ClassContext $context, Keywords $keywords, array $patterns, ClassProperties $properties, ConstraintBuilder $builder, RuntimeConstraints $runtime): array
+    private function inheritedMatches(ClassScope $context, Keywords $keywords, array $patterns, ClassProperties $properties, ConstraintBuilder $builder, RuntimeConstraints $runtime): array
     {
         $targets = $this->targets($keywords, $context->references(), $context->class()->source()->toString());
         $matches = [];
@@ -266,7 +309,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
     /**
      * @return list<ConstraintSpec>
      */
-    private function inheritedMatch(ClassContext $context, ?PropertyModel $property, string $name, PatternSchema $pattern, ConstraintBuilder $builder): array
+    private function inheritedMatch(ClassScope $context, ?PropertyModel $property, string $name, PatternSchema $pattern, ConstraintBuilder $builder): array
     {
         if (!$property instanceof PropertyModel) {
             $context->diagnostics()->warning(sprintf(
@@ -416,7 +459,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
      * Every pair of `dependentRequired` is checked or warned about below, and `propertyNames` without
      * $additionalProperties is warned about, or has nothing left to check.
      */
-    private function markChecked(ClassContext $context, Keywords $keywords, string $keyword): void
+    private function markChecked(ClassScope $context, Keywords $keywords, string $keyword): void
     {
         foreach ($keywords->schemas() as $place) {
             if ($place->hasKeyword($keyword)) {
@@ -429,7 +472,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
      * Without $additionalProperties the class keeps no undeclared property whose name could be checked; with
      * `additionalProperties: false` there is none to check.
      */
-    private function warnAboutNamesNotKept(ClassContext $context, Keywords $keywords): void
+    private function warnAboutNamesNotKept(ClassScope $context, Keywords $keywords): void
     {
         $schema = $context->schema();
         if ($this->keepsUndeclared($context)) {
@@ -442,7 +485,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         }
     }
 
-    private function keepsUndeclared(ClassContext $context): bool
+    private function keepsUndeclared(ClassScope $context): bool
     {
         foreach ($context->class()->properties() as $property) {
             if ($property->isAdditionalProperties()) {

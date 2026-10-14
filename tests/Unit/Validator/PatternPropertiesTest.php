@@ -200,6 +200,16 @@ final class PatternPropertiesTest extends TestCase
         self::assertSame([], array_values(array_filter($this->messages($output), static fn (string $message): bool => strpos($message, 'does not have') !== false)));
     }
 
+    public function testGroupsAnInheritedMatchAsTheClass(): void
+    {
+        $output = $this->withRuntimeAnd(['x-validator-groups' => ['api'], 'allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['type' => 'object', 'properties' => ['b' => ['type' => 'string']], 'patternProperties' => ['^x-' => ['maxLength' => 3]]],
+        ]], ['Base' => ['type' => 'object', 'properties' => ['x-a' => ['type' => 'string']]]]);
+
+        self::assertSame(["RuntimeAssert\\Property(name: 'xA', constraints: [new " . self::ASSERT . "Length(max: 3)], groups: ['api', 'Default'])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
     public function testWarnsAboutAMatchOfAPropertyTheParentLeavesOut(): void
     {
         $output = $this->withRuntimeAnd(['allOf' => [
@@ -280,6 +290,20 @@ final class PatternPropertiesTest extends TestCase
         ]], [], '8.0', [], 'v7.1.0', self::RUNTIME);
 
         self::assertContains('Assert\\Length(min: 2)', $this->attributesOf($this->code($output, 'Pet.php'), 'kind'));
+    }
+
+    public function testLeavesAnInheritedMatchToTheClassBetweenThatChecksIt(): void
+    {
+        $output = $this->withRuntimeAnd(['allOf' => [
+            ['$ref' => '#/components/schemas/Mid'],
+            ['type' => 'object', 'properties' => ['p' => ['type' => 'string']]],
+        ]], [
+            'Mid' => ['allOf' => [['$ref' => '#/components/schemas/Base'], ['type' => 'object', 'properties' => ['m' => ['type' => 'string']], 'patternProperties' => ['^x-' => ['maxLength' => 3]]]]],
+            'Base' => ['type' => 'object', 'properties' => ['x-a' => ['type' => 'string']]],
+        ]);
+
+        self::assertSame(['RuntimeAssert\\Property(name: \'xA\', constraints: [new ' . self::ASSERT . 'Length(max: 3)])'], $this->classAttributesOf($this->code($output, 'Mid.php')));
+        self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
     }
 
     public function testChecksAnInheritedMatchOfTheOnlyVariantOfItsParent(): void

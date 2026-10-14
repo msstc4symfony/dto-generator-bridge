@@ -23,6 +23,12 @@ use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
  */
 final class RawSchema
 {
+    /** What a reusable schema says about its document, its API or its storage, which holds for no value. */
+    private const METADATA = [
+        'example', 'readOnly', 'writeOnly', 'nullable', 'xml', 'externalDocs', '$id', '$anchor', '$defs', '$schema',
+        'contentMediaType', 'contentEncoding',
+    ];
+
     private function __construct()
     {
     }
@@ -41,7 +47,7 @@ final class RawSchema
         }
 
         $chain = $references->follow($ref, $at);
-        if ($chain === [] || $chain[count($chain) - 1]->ref() !== null || array_filter($chain, [self::class, 'isFlat']) !== $chain) {
+        if ($chain === [] || $chain[count($chain) - 1]->ref() !== null || array_filter($chain, static fn (Schema $schema): bool => self::isFlat($schema)) !== $chain) {
             return $value;
         }
 
@@ -77,7 +83,7 @@ final class RawSchema
     }
 
     /**
-     * The keywords of a flat schema as JSON, but for annotations, which hold for no value.
+     * The keywords of a flat schema as JSON, but for annotations and metadata, which hold for no value.
      *
      * @return array<string, JsonValue>
      */
@@ -98,7 +104,7 @@ final class RawSchema
         }
 
         foreach ($schema->keywordNames() as $name) {
-            if (!Subschema::annotates($name)) {
+            if (!Subschema::annotates($name) && !in_array($name, self::METADATA, true)) {
                 $keywords[$name] = $schema->keyword($name);
             }
         }

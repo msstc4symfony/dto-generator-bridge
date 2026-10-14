@@ -187,7 +187,7 @@ final class NegationsTest extends TestCase
         self::assertSame([], $this->messages($output));
     }
 
-    public function testChecksTheNotOfAChildThatNamesNoProperty(): void
+    public function testLeavesToTheParentANotOfTheChildThatRejectsAlike(): void
     {
         $output = $this->withRuntime(['allOf' => [
             ['$ref' => '#/components/schemas/Base'],
@@ -195,7 +195,7 @@ final class NegationsTest extends TestCase
         ]], ['Base' => ['allOf' => [['type' => 'object', 'properties' => ['a' => ['type' => 'string']]], ['not' => ['type' => 'object']]]]]);
 
         self::assertSame(['RuntimeAssert\\Not'], $this->classAttributesOf($this->code($output, 'Base.php')));
-        self::assertSame(['RuntimeAssert\\Not'], $this->classAttributesOf($this->code($output, 'Pet.php')));
+        self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
         self::assertSame([], $this->messages($output));
     }
 

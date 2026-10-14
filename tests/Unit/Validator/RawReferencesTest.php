@@ -54,6 +54,38 @@ final class RawReferencesTest extends TestCase
         self::assertSame(['RuntimeAssert\\IfThenElse(if: [new ' . self::ASSERT . "Regex(pattern: '/^[a-z]+$/uD')], then: [new " . self::ASSERT . 'Length(min: 2)])'], $this->attributesOf($code, 'grade'));
     }
 
+    public function testFollowsAReferenceUnderAPatternThePointerEscapes(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'paths' => ['type' => 'object', 'additionalProperties' => true, 'patternProperties' => ['^a/b~' => ['$ref' => '#/components/schemas/Code']]],
+        ]]);
+
+        self::assertSame(["RuntimeAssert\\PatternProperty(pattern: '/^a\\/b~/uD', constraints: [new " . self::ASSERT . 'NotNull(), new ' . self::ASSERT . "Type(type: 'string'), new " . self::ASSERT . 'Length(min: 2)])'], $this->attributesOf($this->code($output, 'Pet.php'), 'paths'));
+    }
+
+    public function testFollowsAReferenceInTheNotAndTheDependentSchemasOfAClass(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'kind' => ['type' => 'string'],
+            'code' => ['type' => 'string'],
+        ], 'not' => ['properties' => ['kind' => ['$ref' => '#/components/schemas/Word']]], 'dependentSchemas' => ['kind' => ['properties' => ['code' => ['$ref' => '#/components/schemas/Code']]]]]);
+
+        self::assertSame([], $this->messages($output));
+        self::assertSame([
+            'RuntimeAssert\\Not(constraints: [new \\' . self::PROPERTY . "(name: 'kind', constraints: [new " . self::ASSERT . "Regex(pattern: '/^[a-z]+$/uD')])])",
+            'RuntimeAssert\\IfThenElse(if: [new \\Msstc4Symfony\\DtoGeneratorBridge\\Runtime\\Constraints\\Present(properties: [\'kind\'])], then: [new \\' . self::PROPERTY . "(name: 'code', constraints: [new " . self::ASSERT . 'Length(min: 2)])])',
+        ], $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
+    public function testSetsAsideTheMetadataOfAReferencedSchema(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['$ref' => '#/components/schemas/Tag']],
+        ]], ['Tag' => ['type' => 'string', 'maxLength' => 4, 'example' => 'blue', 'readOnly' => true, 'xml' => ['name' => 'tag'], 'externalDocs' => ['url' => 'https://example.com']]]);
+
+        self::assertSame(['RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . 'Length(max: 4)])'], $this->attributesOf($this->code($output, 'Pet.php'), 'tags'));
+    }
+
     public function testLeavesUncheckedAReferenceItCannotMerge(): void
     {
         $output = $this->withRuntime(['type' => 'object', 'properties' => [

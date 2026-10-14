@@ -156,8 +156,10 @@ They follow JSON Schema with these limits:
 - **Subschemas** (of `contains`, `propertyNames`, `patternProperties`, `if`, `then`, `else`, `not`, `prefixItems`,
   `unevaluatedItems`, and of the properties in a class's branches, its `not` and its `dependentSchemas`) must be flat: `type`, `format`, `enum`, `const`, the string and number keywords,
   annotations and `x-` keys. A `$ref` is followed (with the generator 1.6): the keywords of every schema on the way are
-  checked together, as long as each schema is flat and no two of them hold the same keyword; otherwise, or when it
-  does not resolve, the `$ref` counts as a keyword the bridge cannot check. `properties`, `items`, `allOf` and the
+  checked together, their annotations and metadata (`example`, `readOnly`, `xml`…) aside, as long as each schema is
+  flat and no two of them hold the same keyword; otherwise, or when it does not resolve (the generator warns about
+  that too), the `$ref` counts as a keyword the bridge cannot check. A branch of a class's condition, its `not` or a
+  schema of its `dependentSchemas` written as a `$ref` itself is not followed: only the property schemas inside it are. `properties`, `items`, `allOf` and the
   like, a `type` narrower than the value's
   PHP type (`type: integer` in a list of strings), a keyword the bridge cannot turn into a constraint (a `pattern`
   PHP cannot run) or a value that is no string, number, boolean or PHP enum and not of any type (an object, a list)
@@ -209,8 +211,8 @@ They follow JSON Schema with these limits:
   with a default under `properties` or in the `required` of `if` (the DTO cannot tell it from a missing one), any
   other keyword in a branch, or a branch that is no schema (`if: false` included) give a warning, and the condition
   is not checked. As with `dependentRequired`, a condition of a parent's schema is left to the parent, and one in the
-  child's schema may name inherited properties; one the child's schema repeats word for word from its parent's is left
-  to the parent (unless the parent skips the validator or is in other groups), so a violation is reported once.
+  child's schema may name inherited properties. A class constraint an ancestor's class already writes, the same in
+  the same groups, is left to the ancestor, so a violation is reported once.
 - **`not`** becomes `Not` of the constraints of its schema: a value they find nothing wrong with is a violation. A
   schema that checks nothing (`{}`, `true`, annotations only) leaves no value but a missing one, and `not: false`
   forbids nothing. As with `if`, `null` is not checked: it stands for a missing value, so `not` of a schema that allows

@@ -270,6 +270,55 @@ final class ConditionalsTest extends TestCase
         self::assertSame($twice, $this->classAttributesOf($this->code($this->withRuntime($child, ['Base' => $base + ['x-validator-groups' => ['api']]]), 'Pet.php')));
     }
 
+    public function testChecksARepeatedConditionTheParentCannotCheck(): void
+    {
+        $condition = ['if' => ['required' => ['a']], 'then' => ['required' => ['extra']]];
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['type' => 'object', 'properties' => ['extra' => ['type' => 'string']]] + $condition,
+        ]], ['Base' => ['type' => 'object', 'properties' => ['a' => ['type' => 'string']]] + $condition]);
+
+        self::assertSame([], $this->classAttributesOf($this->code($output, 'Base.php')));
+        self::assertSame(
+            ['RuntimeAssert\\IfThenElse(if: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['a'])], then: [new " . self::RUNTIME_ASSERT . "Present(properties: ['extra'])])"],
+            $this->classAttributesOf($this->code($output, 'Pet.php')),
+        );
+    }
+
+    public function testChecksAConditionAGrandparentSkipping(): void
+    {
+        $condition = ['if' => ['required' => ['a']], 'then' => ['required' => ['b']]];
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Mid'],
+            ['type' => 'object', 'properties' => ['c' => ['type' => 'string']]] + $condition,
+        ]], [
+            'Base' => ['type' => 'object', 'x-validator-skip' => true, 'properties' => ['a' => ['type' => 'string'], 'b' => ['type' => 'string']]] + $condition,
+            'Mid' => ['allOf' => [['$ref' => '#/components/schemas/Base'], ['type' => 'object', 'properties' => ['m' => ['type' => 'string']]]]],
+        ]);
+
+        self::assertSame([], $this->classAttributesOf($this->code($output, 'Mid.php')));
+        self::assertSame(
+            ['RuntimeAssert\\IfThenElse(if: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['a'])], then: [new " . self::RUNTIME_ASSERT . "Present(properties: ['b'])])"],
+            $this->classAttributesOf($this->code($output, 'Pet.php')),
+        );
+    }
+
+    public function testLeavesToAnAncestorAConditionOnThePropertyOfItsOwnAncestor(): void
+    {
+        $condition = ['if' => ['required' => ['m']], 'then' => ['required' => ['t']]];
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Top'],
+            ['type' => 'object', 'properties' => ['p' => ['type' => 'string']]] + $condition,
+        ]], [
+            'Base' => ['type' => 'object', 'properties' => ['a' => ['type' => 'string']]],
+            'Mid' => ['allOf' => [['$ref' => '#/components/schemas/Base'], ['type' => 'object', 'properties' => ['m' => ['type' => 'string']]]]],
+            'Top' => ['allOf' => [['$ref' => '#/components/schemas/Mid'], ['type' => 'object', 'properties' => ['t' => ['type' => 'string']]] + $condition]],
+        ]);
+
+        self::assertCount(1, $this->classAttributesOf($this->code($output, 'Top.php')));
+        self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
     public function testNamesThePropertiesOfEveryAncestor(): void
     {
         $output = $this->withRuntime(['allOf' => [

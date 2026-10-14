@@ -19,9 +19,9 @@ All notable changes to this package are documented here. The format follows
 
 - A variant the base lists without a `$ref` back to it checks the names of its properties against the base's
   `propertyNames` too.
-- A condition (`if`/`then`/`else`, `not`, an entry of `dependentSchemas`) a child's schema repeats word for word from
-  its parent's is left to the parent, which Symfony checks on the child too, so a violation is reported once; unless
-  the parent skips the validator or is in other groups.
+- A class constraint (a condition, a `not`, a dependency, a pattern's `Property`) that an ancestor's class already
+  writes, the same in the same groups, is left to the ancestor, which Symfony checks on the child too, so a violation
+  is reported once.
 - The bridge requires `msstc4php/dto-generator` ^1.6.
 
 ## [1.4.0] - 2026-10-14
