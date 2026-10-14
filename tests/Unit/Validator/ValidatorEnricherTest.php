@@ -26,10 +26,10 @@ final class ValidatorEnricherTest extends TestCase
             'Cash' => $variant('Cash'),
         ];
         $union = ['oneOf' => [$ref('Card'), $ref('Cash')], 'discriminator' => ['propertyName' => 'method']];
-        $output = $this->generate($union + ['required' => ['method'], 'additionalProperties' => false, 'minProperties' => 1, 'not' => ['required' => ['secret']]], $others);
+        $output = $this->generate($union + ['required' => ['method'], 'additionalProperties' => false, 'enum' => [['method' => 'cash']], 'minProperties' => 1, 'not' => ['required' => ['secret']]], $others);
         $quiet = $this->generate($union, $others);
 
-        self::assertSame(['warning /api.yaml#/components/schemas/Pet: App\\Dto\\Pet is an interface, which carries no constraints: its "required", "additionalProperties", "minProperties", "not" holds only where the variants\' schemas say it too.'], $this->messages($output));
+        self::assertSame(['warning /api.yaml#/components/schemas/Pet: App\\Dto\\Pet is an interface, which carries no constraints: its "required", "additionalProperties", "enum", "minProperties", "not" holds only where the variants\' schemas say it too.'], $this->messages($output));
         self::assertStringNotContainsString('#[', $this->code($output, 'Pet.php'));
         self::assertSame([], array_values(array_filter($this->messages($quiet), static fn (string $m): bool => strpos($m, 'interface') !== false)));
     }

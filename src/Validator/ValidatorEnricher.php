@@ -115,6 +115,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         $asserted = array_merge(
             $schema->required() === [] ? [] : ['required'],
             $schema->additionalProperties() === null ? [] : ['additionalProperties'],
+            $schema->enum() === null ? [] : ['enum'],
             array_filter(self::OBJECT_KEYWORDS, static fn (string $keyword): bool => $schema->hasKeyword($keyword)),
         );
         foreach ($asserted as $keyword) {
