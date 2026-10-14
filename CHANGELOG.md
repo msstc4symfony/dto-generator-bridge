@@ -6,6 +6,8 @@ All notable changes to this package are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-14
+
 ### Added
 
 - `not` gets `Not` of `msstc4symfony/dto-generator-bridge-runtime` 1.2, on values and on classes (`properties` and
@@ -178,7 +180,8 @@ First release.
   annotations for PHP 7.4 targets.
 - `DtoGeneratorBundle`: the `dto-generator:generate` console command and an optional check on cache warmup.
 
-[Unreleased]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.0.2...v1.1.0
