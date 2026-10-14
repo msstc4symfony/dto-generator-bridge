@@ -102,6 +102,21 @@ final class DependentSchemasTest extends TestCase
         self::assertSame([], $this->messages($output));
     }
 
+    public function testLeavesToTheParentADependencyTheChildRepeats(): void
+    {
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['type' => 'object', 'properties' => ['b' => ['type' => 'string']]],
+            ['dependentSchemas' => ['c' => ['required' => ['a']], 'a' => ['required' => ['b']]]],
+        ]], ['Base' => ['type' => 'object', 'properties' => ['a' => ['type' => 'string'], 'c' => ['type' => 'string']], 'dependentSchemas' => ['a' => ['required' => ['c']], 'c' => ['required' => ['a']]]]]);
+
+        self::assertSame(
+            ['RuntimeAssert\\IfThenElse(if: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['a'])], then: [new " . self::RUNTIME_ASSERT . "Present(properties: ['b'])])"],
+            $this->classAttributesOf($this->code($output, 'Pet.php')),
+        );
+        self::assertSame([], $this->messages($output));
+    }
+
     public function testRequiresAPropertyWithADefaultInTheSchema(): void
     {
         $output = $this->withRuntime(['type' => 'object', 'properties' => [

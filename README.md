@@ -36,7 +36,7 @@ Symfony versions in your `composer.lock`.
 ## Requirements
 
 - PHP >= 7.4 (the bridge runs inside the generator, which supports PHP 7.4).
-- `msstc4php/dto-generator` ^1.5 and `msstc4symfony/dto-generator-bridge-runtime` ^1.2 (both installed with the
+- `msstc4php/dto-generator` ^1.6 and `msstc4symfony/dto-generator-bridge-runtime` ^1.2 (both installed with the
   bridge).
 - In the application that uses the DTOs: `symfony/validator` and/or `symfony/serializer` 5.4, 6.4, 7.x or 8.x. By
   default the bridge writes constraints and attributes only for the components it finds in `composer.lock`.
@@ -155,7 +155,10 @@ They follow JSON Schema with these limits:
 
 - **Subschemas** (of `contains`, `propertyNames`, `patternProperties`, `if`, `then`, `else`, `not`, `prefixItems`,
   `unevaluatedItems`, and of the properties in a class's branches, its `not` and its `dependentSchemas`) must be flat: `type`, `format`, `enum`, `const`, the string and number keywords,
-  annotations and `x-` keys. A `$ref`, `properties`, `items`, `allOf` and the like, a `type` narrower than the value's
+  annotations and `x-` keys. A `$ref` is followed (with the generator 1.6): the keywords of every schema on the way are
+  checked together, as long as each schema is flat and no two of them hold the same keyword; otherwise, or when it
+  does not resolve, the `$ref` counts as a keyword the bridge cannot check. `properties`, `items`, `allOf` and the
+  like, a `type` narrower than the value's
   PHP type (`type: integer` in a list of strings), a keyword the bridge cannot turn into a constraint (a `pattern`
   PHP cannot run) or a value that is no string, number, boolean or PHP enum and not of any type (an object, a list)
   give a warning, and the keyword is not checked, rather than checked in part. A schema of annotations only accepts
@@ -175,7 +178,8 @@ They follow JSON Schema with these limits:
   checked while generating, by `type`, `pattern`, `minLength`, `maxLength`, `const` and `enum` (`false` rejects
   every name), whatever the bridge writes for the Validator (also with `x-validator-skip`, `validator: false` or no
   `symfony/validator`), as it is a contradiction in the schema: a name it rejects gives a warning, as that property
-  can never be set. On a class without `$additionalProperties` it gives a warning (with
+  can never be set. A variant its base lists without a `$ref` back to it is checked against the base's
+  `propertyNames` too. On a class without `$additionalProperties` it gives a warning (with
   `additionalProperties: false` nothing is left to check). A violation is reported at `labels[key]` with the key as
   its value, the same path as the violations of the value under that key.
 - **`dependentRequired`** reads a property as present when it is not `null`: like the rest of the DTO, it cannot tell
@@ -188,8 +192,9 @@ They follow JSON Schema with these limits:
 - **`patternProperties`** checks the value under each key a pattern matches: with `PatternProperty` on a map and on
   `$additionalProperties`, reported at `labels[key]`; on a declared property whose wire name matches, the bridge
   matches it while generating and writes the constraints of the pattern's schema on the property itself, where a
-  missing value (`null`) passes them. A pattern of a child's schema that matches a property the class inherits gives a
-  warning: the property belongs to the parent, which checks only the patterns of the schemas that declare it. A class
+  missing value (`null`) passes them. A pattern of a child's schema that matches a property the class inherits is
+  checked on the child with `Property`: the property belongs to the parent, which checks only the patterns of the
+  schemas that declare it. A class
   without `$additionalProperties` of its own gives a warning: the undeclared properties the patterns would check are
   not kept. Beside an `additionalProperties` schema it warns too: the
   generated type gives that schema's type to every undeclared property, including those the patterns match, which
@@ -204,7 +209,8 @@ They follow JSON Schema with these limits:
   with a default under `properties` or in the `required` of `if` (the DTO cannot tell it from a missing one), any
   other keyword in a branch, or a branch that is no schema (`if: false` included) give a warning, and the condition
   is not checked. As with `dependentRequired`, a condition of a parent's schema is left to the parent, and one in the
-  child's schema may name inherited properties; the same condition written in both schemas is checked twice.
+  child's schema may name inherited properties; one the child's schema repeats word for word from its parent's is left
+  to the parent (unless the parent skips the validator or is in other groups), so a violation is reported once.
 - **`not`** becomes `Not` of the constraints of its schema: a value they find nothing wrong with is a violation. A
   schema that checks nothing (`{}`, `true`, annotations only) leaves no value but a missing one, and `not: false`
   forbids nothing. As with `if`, `null` is not checked: it stands for a missing value, so `not` of a schema that allows

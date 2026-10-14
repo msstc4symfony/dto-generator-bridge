@@ -6,6 +6,24 @@ All notable changes to this package are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A `$ref` in the schema of `contains`, `propertyNames`, `not`, `if`, `then`, `else`, `prefixItems`, `patternProperties`
+  or `unevaluatedItems`, and in the `properties` of a condition on a class, is followed (the generator 1.6 loads it):
+  the keywords of every schema on the way are checked together. A reference that does not resolve, a schema on the
+  way with `properties`, `items`, `allOf` or the like, or a keyword two of them hold still gives a warning.
+- A pattern of a child's schema that matches a property the class inherits is checked on the child with `Property`,
+  instead of a warning.
+
+### Changed
+
+- A variant the base lists without a `$ref` back to it checks the names of its properties against the base's
+  `propertyNames` too.
+- A condition (`if`/`then`/`else`, `not`, an entry of `dependentSchemas`) a child's schema repeats word for word from
+  its parent's is left to the parent, which Symfony checks on the child too, so a violation is reported once; unless
+  the parent skips the validator or is in other groups.
+- The bridge requires `msstc4php/dto-generator` ^1.6.
+
 ## [1.4.0] - 2026-10-14
 
 ### Added

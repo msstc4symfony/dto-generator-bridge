@@ -44,12 +44,15 @@ final class ClassConditions
 
     private ClassProperties $properties;
 
+    private InheritedConditions $inherited;
+
     /**
      * @param list<non-empty-string> $groups the groups of the class, which Property needs as a composite
      */
-    public function __construct(ClassProperties $properties, ConstraintBuilder $builder, Diagnostics $diagnostics, array $groups)
+    public function __construct(ClassProperties $properties, InheritedConditions $inherited, ConstraintBuilder $builder, Diagnostics $diagnostics, array $groups)
     {
         $this->properties = $properties;
+        $this->inherited = $inherited;
         $this->builder = $builder;
         $this->diagnostics = $diagnostics;
         $this->groups = $groups;
@@ -62,7 +65,7 @@ final class ClassConditions
     {
         $conditions = [];
         foreach (ClaimedConstraints::conditionPlaces($keywords) as $place) {
-            $condition = $this->properties->ofAncestor($place) ? null : $this->condition($place);
+            $condition = $this->properties->ofAncestor($place) || $this->inherited->repeats(InheritedConditions::branches($place)) ? null : $this->condition($place);
             if ($condition instanceof ConstraintSpec) {
                 $conditions[] = $condition;
             }
@@ -80,7 +83,7 @@ final class ClassConditions
     {
         $negations = [];
         foreach ($keywords->schemas() as $place) {
-            if (!$place->hasKeyword('not') || $place->keyword('not') === false || $this->properties->ofAncestor($place)) {
+            if (!$place->hasKeyword('not') || $place->keyword('not') === false || $this->properties->ofAncestor($place) || $this->inherited->repeats(['not' => $place->keyword('not')])) {
                 continue;
             }
 
@@ -116,7 +119,7 @@ final class ClassConditions
             }
 
             foreach ($schemas as $name => $schema) {
-                $dependency = $this->dependency((string) $name, Json::value($schema), $place);
+                $dependency = $this->inherited->repeats(InheritedConditions::dependency((string) $name, Json::value($schema))) ? null : $this->dependency((string) $name, Json::value($schema), $place);
                 if ($dependency instanceof ConstraintSpec) {
                     $dependencies[] = $dependency;
                 }

@@ -252,6 +252,24 @@ final class ConditionalsTest extends TestCase
         );
     }
 
+    public function testLeavesToTheParentAConditionTheChildRepeats(): void
+    {
+        $base = ['type' => 'object', 'properties' => ['a' => ['type' => 'string'], 'b' => ['type' => 'string']], 'if' => ['required' => ['a']], 'then' => ['required' => ['b']]];
+        $child = ['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['type' => 'object', 'properties' => ['c' => ['type' => 'string']], 'if' => ['required' => ['a']], 'then' => ['required' => ['b']]],
+            ['if' => ['required' => ['c']], 'then' => ['required' => ['b']]],
+        ]];
+        $once = ['RuntimeAssert\\IfThenElse(if: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['c'])], then: [new " . self::RUNTIME_ASSERT . "Present(properties: ['b'])])"];
+        $twice = array_merge(['RuntimeAssert\\IfThenElse(if: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['a'])], then: [new " . self::RUNTIME_ASSERT . "Present(properties: ['b'])])"], $once);
+
+        $output = $this->withRuntime($child, ['Base' => $base]);
+        self::assertSame($once, $this->classAttributesOf($this->code($output, 'Pet.php')));
+        self::assertSame([], $this->messages($output));
+        self::assertSame($twice, $this->classAttributesOf($this->code($this->withRuntime($child, ['Base' => $base + ['x-validator-skip' => true]]), 'Pet.php')));
+        self::assertSame($twice, $this->classAttributesOf($this->code($this->withRuntime($child, ['Base' => $base + ['x-validator-groups' => ['api']]]), 'Pet.php')));
+    }
+
     public function testNamesThePropertiesOfEveryAncestor(): void
     {
         $output = $this->withRuntime(['allOf' => [
