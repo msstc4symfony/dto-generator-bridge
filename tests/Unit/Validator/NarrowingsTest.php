@@ -108,7 +108,7 @@ final class NarrowingsTest extends TestCase
         self::assertSame(["RuntimeAssert\\Present(properties: ['kind'])"], $this->classAttributesOf($this->code($output, 'Cat.php')));
         self::assertSame(['Assert\\Valid'], $this->attributesOf($this->code($output, 'Pet.php'), 'cfg'));
         self::assertSame(['Assert\\Valid'], $this->attributesOf($this->code($output, 'Pet.php'), 'tags'));
-        self::assertSame([], array_values(array_filter($this->messages($output), static fn (string $m): bool => strpos($m, 'does not traverse') !== false)));
+        self::assertSame([], array_values(array_filter($this->messages($output), static fn (string $m): bool => strpos($m, 'may go unvalidated') !== false)));
     }
 
     public function testChecksWhatFollowsAConstraintTheParentHas(): void
@@ -137,8 +137,8 @@ final class NarrowingsTest extends TestCase
         ]);
 
         self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
-        $message = static fn (string $name): string => 'warning /api.yaml#/components/schemas/Pet/allOf/1/properties/' . $name . ': The parent does not traverse "' . $name . '" in the groups of this class, and Symfony allows no Valid inside Property; the object it holds is not validated here.';
-        $warnings = array_values(array_filter($this->messages($output), static fn (string $m): bool => strpos($m, 'does not traverse') !== false));
+        $message = static fn (string $name): string => 'warning /api.yaml#/components/schemas/Pet/allOf/1/properties/' . $name . ': The parent skips "' . $name . '" or checks it in groups of its own, so the object it holds may go unvalidated in the groups of this class: Symfony allows no Valid inside Property.';
+        $warnings = array_values(array_filter($this->messages($output), static fn (string $m): bool => strpos($m, 'may go unvalidated') !== false));
         self::assertSame([$message('cfg'), $message('other')], $warnings);
     }
 

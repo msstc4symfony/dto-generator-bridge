@@ -323,7 +323,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
                         $added[$property->name()][] = $spec;
                     } elseif (($parents[$name] ?? []) !== []) {
                         $context->diagnostics()->warning(
-                            sprintf('The parent does not traverse "%s" in the groups of this class, and Symfony allows no Valid inside Property; the object it holds is not validated here.', $property->wireName()),
+                            sprintf('The parent skips "%s" or checks it in groups of its own, so the object it holds may go unvalidated in the groups of this class: Symfony allows no Valid inside Property.', $property->wireName()),
                             $schema->location(),
                         );
                     }
