@@ -25,7 +25,7 @@ final class RawSchema
 {
     /** What a reusable schema says about its document, its API or its storage, which holds for no value. */
     private const METADATA = [
-        'example', 'readOnly', 'writeOnly', 'nullable', 'xml', 'externalDocs', '$id', '$anchor', '$defs', '$schema',
+        'example', 'readOnly', 'writeOnly', 'xml', 'externalDocs', '$id', '$anchor', '$defs', '$schema',
         'contentMediaType', 'contentEncoding',
     ];
 

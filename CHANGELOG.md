@@ -21,7 +21,7 @@ All notable changes to this package are documented here. The format follows
   `propertyNames` too.
 - A class constraint (a condition, a `not`, a dependency, a pattern's `Property`) that an ancestor's class already
   writes, the same in the same groups, is left to the ancestor, which Symfony checks on the child too, so a violation
-  is reported once.
+  is reported once; one it checks in fewer groups than the class (Default included) stays on the class too.
 - The bridge requires `msstc4php/dto-generator` ^1.6.
 
 ## [1.4.0] - 2026-10-14

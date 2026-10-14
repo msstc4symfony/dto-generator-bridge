@@ -86,6 +86,16 @@ final class RawReferencesTest extends TestCase
         self::assertSame(['RuntimeAssert\\Contains(constraints: [new ' . self::ASSERT . 'Length(max: 4)])'], $this->attributesOf($this->code($output, 'Pet.php'), 'tags'));
     }
 
+    public function testLeavesUncheckedAReferenceToANullableOfOpenApi30(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['$ref' => '#/components/schemas/Tag']],
+        ]], ['Tag' => ['type' => 'string', 'nullable' => true, 'maxLength' => 4]]);
+
+        self::assertSame([], $this->attributesOf($this->code($output, 'Pet.php'), 'tags'));
+        self::assertContains('warning /api.yaml#/components/schemas/Pet/properties/tags: "contains" is checked only with a schema of "type", "format", "enum", "const" and the keywords of strings and numbers; with "nullable" it is not checked.', $this->messages($output));
+    }
+
     public function testLeavesUncheckedAReferenceItCannotMerge(): void
     {
         $output = $this->withRuntime(['type' => 'object', 'properties' => [

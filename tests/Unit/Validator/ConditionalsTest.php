@@ -267,7 +267,11 @@ final class ConditionalsTest extends TestCase
         self::assertSame($once, $this->classAttributesOf($this->code($output, 'Pet.php')));
         self::assertSame([], $this->messages($output));
         self::assertSame($twice, $this->classAttributesOf($this->code($this->withRuntime($child, ['Base' => $base + ['x-validator-skip' => true]]), 'Pet.php')));
-        self::assertSame($twice, $this->classAttributesOf($this->code($this->withRuntime($child, ['Base' => $base + ['x-validator-groups' => ['api']]]), 'Pet.php')));
+        self::assertSame($once, $this->classAttributesOf($this->code($this->withRuntime($child, ['Base' => $base + ['x-validator-groups' => ['api']]]), 'Pet.php')), 'the parent checks Default too');
+        self::assertSame($twice, $this->classAttributesOf($this->code($this->withRuntime($child, ['Base' => $base + ['x-validator-groups' => ['api'], 'x-validator-groups-exclusive' => true]]), 'Pet.php')), 'the parent leaves Default out');
+        $grouped = array_map(static fn (string $attribute): string => substr($attribute, 0, -1) . ", groups: ['api', 'Default'])", $twice);
+        self::assertSame($grouped, $this->classAttributesOf($this->code($this->withRuntime(['x-validator-groups' => ['api']] + $child, ['Base' => $base]), 'Pet.php')), 'the parent leaves api out');
+        self::assertSame(str_replace("['api', 'Default']", "['Default', 'api']", array_slice($grouped, 1)), $this->classAttributesOf($this->code($this->withRuntime(['x-validator-groups' => ['Default', 'api']] + $child, ['Base' => $base + ['x-validator-groups' => ['api']]]), 'Pet.php')), 'in any order');
     }
 
     public function testChecksARepeatedConditionTheParentCannotCheck(): void

@@ -81,7 +81,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         $inherited = [];
         $ancestors = $scope->ancestors();
         foreach ($ancestors as $index => $ancestor) {
-            array_push($inherited, ...$this->writtenBy($ancestor, array_slice($ancestors, $index + 1), $scope));
+            array_push($inherited, ...$this->writtenBy($ancestor, array_slice($ancestors, $index + 1), $scope, $groups));
         }
 
         $attributes = [];
@@ -114,14 +114,15 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
     }
 
     /**
-     * The class constraints an ancestor writes, each serialized, as its own enrichment would, whatever the order the
-     * generator enriches the classes in. The class passed the gate, so the ancestor does too.
+     * The class constraints an ancestor writes in every group of the class, each serialized as the class would write
+     * it, whatever the order the generator enriches the classes in. The class passed the gate, so the ancestor does too.
      *
      * @param list<ClassModel> $above the ancestor's own ancestors, nearest first
+     * @param list<non-empty-string> $groups the class's
      *
      * @return list<string>
      */
-    private function writtenBy(ClassModel $ancestor, array $above, ClassScope $context): array
+    private function writtenBy(ClassModel $ancestor, array $above, ClassScope $context, array $groups): array
     {
         $references = $context->references();
         $schema = $references->at($ancestor->source());
@@ -135,10 +136,16 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             return [];
         }
 
+        // Without groups a constraint is in Default; one the ancestor checks in fewer groups leaves the others unchecked.
+        $own = $this->groups($extensions);
+        if (array_diff($groups === [] ? ['Default'] : $groups, $own === [] ? ['Default'] : $own) !== []) {
+            return [];
+        }
+
         $keywords = $this->keywordsOf($quiet);
         $properties = new ClassProperties($ancestor, $above, $keywords, $references);
 
-        return array_map('serialize', $this->classSpecs($quiet, $keywords, $properties, $this->groups($extensions), $this->patterns($quiet, $keywords)));
+        return array_map(static fn (ConstraintSpec $constraint): string => serialize($constraint), $this->classSpecs($quiet, $keywords, $properties, $groups, $this->patterns($quiet, $keywords)));
     }
 
     private function keywordsOf(ClassScope $context): Keywords
