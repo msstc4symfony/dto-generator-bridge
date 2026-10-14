@@ -312,10 +312,20 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
 
             foreach ($schemas as $schema) {
                 foreach ($builder->build($schema, $property->type()) as $spec) {
-                    // Valid may not go inside Property; the parent's property, of the same type, traverses the value.
-                    if (!$spec->is('Valid') && !in_array(serialize($spec), $checked, true)) {
-                        $checked[] = serialize($spec);
+                    if (in_array(serialize($spec), $checked, true)) {
+                        continue;
+                    }
+
+                    $checked[] = serialize($spec);
+                    // Valid may not go inside Property; the parent's property, of the same type, traverses the value,
+                    // unless the parent declares it in groups of its own or skips it.
+                    if (!$spec->is('Valid')) {
                         $added[$property->name()][] = $spec;
+                    } elseif (($parents[$name] ?? []) !== []) {
+                        $context->diagnostics()->warning(
+                            sprintf('The parent does not traverse "%s" in the groups of this class, and Symfony allows no Valid inside Property; the object it holds is not validated here.', $property->wireName()),
+                            $schema->location(),
+                        );
                     }
                 }
             }

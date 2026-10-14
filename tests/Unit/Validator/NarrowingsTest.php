@@ -108,6 +108,38 @@ final class NarrowingsTest extends TestCase
         self::assertSame(["RuntimeAssert\\Present(properties: ['kind'])"], $this->classAttributesOf($this->code($output, 'Cat.php')));
         self::assertSame(['Assert\\Valid'], $this->attributesOf($this->code($output, 'Pet.php'), 'cfg'));
         self::assertSame(['Assert\\Valid'], $this->attributesOf($this->code($output, 'Pet.php'), 'tags'));
+        self::assertSame([], array_values(array_filter($this->messages($output), static fn (string $m): bool => strpos($m, 'does not traverse') !== false)));
+    }
+
+    public function testChecksWhatFollowsAConstraintTheParentHas(): void
+    {
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['type' => 'object', 'properties' => ['tag' => ['type' => 'string', 'maxLength' => 3, 'pattern' => '^t']]],
+        ]], ['Base' => ['type' => 'object', 'properties' => ['tag' => ['type' => 'string', 'maxLength' => 3]]]]);
+
+        self::assertSame(['RuntimeAssert\\Property(name: \'tag\', constraints: [new ' . self::ASSERT . "Regex(pattern: '/^t/uD')])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
+    public function testWarnsThatAnObjectTheParentDoesNotTraverseIsNotValidated(): void
+    {
+        $cfg = ['$ref' => '#/components/schemas/Cfg'];
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['type' => 'object', 'properties' => ['cfg' => $cfg, 'other' => $cfg, 'kept' => $cfg]],
+        ]], [
+            'Base' => ['type' => 'object', 'properties' => [
+                'cfg' => $cfg + ['x-validator-groups' => ['api']],
+                'other' => $cfg + ['x-validator-skip' => true],
+                'kept' => $cfg,
+            ]],
+            'Cfg' => ['type' => 'object', 'properties' => ['on' => ['type' => 'boolean']]],
+        ]);
+
+        self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
+        $message = static fn (string $name): string => 'warning /api.yaml#/components/schemas/Pet/allOf/1/properties/' . $name . ': The parent does not traverse "' . $name . '" in the groups of this class, and Symfony allows no Valid inside Property; the object it holds is not validated here.';
+        $warnings = array_values(array_filter($this->messages($output), static fn (string $m): bool => strpos($m, 'does not traverse') !== false));
+        self::assertSame([$message('cfg'), $message('other')], $warnings);
     }
 
     public function testSaysNothingOfTheRuntimeWhenTheChildAddsNothing(): void
