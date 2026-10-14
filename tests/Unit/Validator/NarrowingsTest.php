@@ -43,6 +43,47 @@ final class NarrowingsTest extends TestCase
         self::assertSame(['Assert\\Length(max: 8)'], $this->attributesOf($this->code($output, 'Base.php'), 'code'));
     }
 
+    public function testChecksThatAPropertyTheChildRequiresIsSet(): void
+    {
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['type' => 'object', 'required' => ['nick_name', 'id', 'opt'], 'properties' => [
+                'nick_name' => ['type' => 'string', 'minLength' => 1],
+                'opt' => ['type' => ['string', 'null']],
+            ]],
+            ['required' => ['nick_name']],
+        ]], ['Base' => ['type' => 'object', 'required' => ['id'], 'properties' => [
+            'nick_name' => ['type' => 'string'],
+            'id' => ['type' => 'string'],
+        ]]]);
+
+        self::assertSame([
+            'RuntimeAssert\\Property(name: \'nickName\', constraints: [new ' . self::ASSERT . 'Length(min: 1)])',
+            "RuntimeAssert\\Present(properties: ['nickName'])",
+        ], $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
+    public function testChecksEachConstraintOnceAndThoseOfAParentInGroupsOfItsOwn(): void
+    {
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['type' => 'object', 'properties' => ['code' => ['type' => 'string', 'maxLength' => 8], 'own' => ['type' => 'string']]],
+            ['properties' => ['code' => ['type' => 'string', 'maxLength' => 8]]],
+        ]], ['Base' => ['type' => 'object', 'properties' => ['code' => ['type' => 'string', 'maxLength' => 8, 'x-validator-groups' => ['api']]]]]);
+
+        self::assertSame(['RuntimeAssert\\Property(name: \'code\', constraints: [new ' . self::ASSERT . 'Length(max: 8)])'], $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
+    public function testSaysNothingOfTheRuntimeWhenTheChildAddsNothing(): void
+    {
+        $output = $this->generate(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['type' => 'object', 'properties' => ['code' => ['type' => 'string', 'maxLength' => 8], 'own' => ['type' => 'string']]],
+        ]], ['Base' => ['type' => 'object', 'properties' => ['code' => ['type' => 'string', 'maxLength' => 8]]]]);
+
+        self::assertSame([], array_values(array_filter($this->messages($output), static fn (string $message): bool => strpos($message, 'runtime') !== false)));
+    }
+
     public function testNeedsTheRuntime(): void
     {
         $output = $this->generate(['allOf' => [

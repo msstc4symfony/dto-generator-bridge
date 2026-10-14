@@ -278,7 +278,8 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
 
     /**
      * A property of the parent the class's own schema declares again stays the parent's (the generator lets no child
-     * narrow its type): the class checks, with Property, the constraints of its declaration the parent's lack.
+     * narrow its type): the class checks, with Property, the constraints of its declaration the parent's lack, and with
+     * Present that the property is set when its schema requires what the parent leaves optional.
      *
      * @return list<ConstraintSpec>
      */
@@ -297,35 +298,57 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             }
         }
 
-        if ($own === [] || !$runtime->available('properties', $context->schema()->location())) {
+        $added = [];
+        foreach ($own as $name => $schemas) {
+            $property = $properties->find((string) $name);
+            assert($property instanceof PropertyModel);
+            // A declaration of the parent in groups of its own checks in others than the class's.
+            $checked = [];
+            foreach ($parents[$name] ?? [] as $schema) {
+                if (!$schema->extensions()->has('x-validator-groups') && !$schema->extensions()->has('x-validator-skip')) {
+                    array_push($checked, ...array_map(static fn (ConstraintSpec $spec): string => serialize($spec), $builder->build($schema, $property->type())));
+                }
+            }
+
+            foreach ($schemas as $schema) {
+                foreach ($builder->build($schema, $property->type()) as $spec) {
+                    if (!in_array(serialize($spec), $checked, true)) {
+                        $checked[] = serialize($spec);
+                        $added[$property->name()][] = $spec;
+                    }
+                }
+            }
+        }
+
+        // The parent leaves a property optional that the class's schema requires: the class checks it is set.
+        $required = [];
+        foreach ($keywords->schemas() as $place) {
+            foreach ($properties->ofAncestor($place) ? [] : array_intersect($place->required(), $inherited) as $name) {
+                $property = $properties->find($name);
+                assert($property instanceof PropertyModel);
+                if (!$property->isRequired() && !in_array($property->name(), $required, true)) {
+                    $required[] = $property->name();
+                }
+            }
+        }
+
+        if (($added === [] && $required === []) || !$runtime->available('properties', $context->schema()->location())) {
             return [];
         }
 
         $constraints = [];
-        foreach ($own as $name => $schemas) {
-            $property = $properties->find((string) $name);
-            assert($property instanceof PropertyModel);
-            $checked = [];
-            foreach ($parents[$name] ?? [] as $schema) {
-                array_push($checked, ...array_map(static fn (ConstraintSpec $spec): string => serialize($spec), $builder->build($schema, $property->type())));
-            }
-
-            $added = [];
-            foreach ($schemas as $schema) {
-                foreach ($builder->build($schema, $property->type()) as $spec) {
-                    if (!in_array(serialize($spec), $checked, true)) {
-                        $added[] = $spec;
-                    }
-                }
-            }
-
-            $inner = $added === [] ? null : $builder->asNew('properties', $added, $context->schema()->location());
-            if ($inner !== null && $inner !== []) {
+        foreach ($added as $name => $specs) {
+            $inner = $builder->asNew('properties', $specs, $context->schema()->location());
+            if ($inner !== null) {
                 $constraints[] = ConstraintSpec::runtime('Property', [
-                    AttributeArgument::named('name', ArgumentValue::literal($property->name())),
+                    AttributeArgument::named('name', ArgumentValue::literal($name)),
                     AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner)),
                 ]);
             }
+        }
+
+        if ($required !== []) {
+            $constraints[] = ConstraintSpec::runtime('Present', [AttributeArgument::named('properties', ArgumentValue::listOf(...array_map(static fn (string $name): ArgumentValue => ArgumentValue::literal($name), $required)))]);
         }
 
         return $constraints;
@@ -345,7 +368,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         $targets = $this->targets($keywords, $context->references(), $context->class()->source()->toString());
         $matches = [];
         foreach ($keywords->schemas() as $place) {
-            // The class declares no property of its parent again, and no target reaches its own declarations.
+            // A target reaches no declaration of the class's own properties; one it inherits is the target's.
             foreach ($place->propertyNames() as $name) {
                 foreach ($patterns as $pattern) {
                     if ($pattern->matches($name) && !$this->checkedByOwner($targets, $pattern->place()->toString(), $place->location()->toString())) {
@@ -471,12 +494,44 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
                 $property->isRequired() && !$type instanceof MixedType ? [new ConstraintSpec('NotNull')] : [],
                 $builder->build($schema, $type),
             );
+            $constraints = array_merge($constraints, $this->otherDeclarations($context, $builder, $constraints));
         }
 
         return array_merge(
             array_map(static fn (ConstraintSpec $constraint): AttributeModel => $constraint->withGroups($groups)->toAttribute(), $constraints),
             $this->classConstraints($context, $builder),
         );
+    }
+
+    /**
+     * The constraints of the property's other declarations in the class's schema (members of an allOf): the generator
+     * takes one of them for the property, but a value must satisfy them all.
+     *
+     * @param list<ConstraintSpec> $own the constraints of the declaration the property has
+     *
+     * @return list<ConstraintSpec>
+     */
+    private function otherDeclarations(PropertyContext $context, ConstraintBuilder $builder, array $own): array
+    {
+        $class = $this->classes[$context->owner()->name()->fqcn()] ?? null;
+        $wireName = $context->property()->wireName();
+        $seen = array_map(static fn (ConstraintSpec $spec): string => serialize($spec), $own);
+        $added = [];
+        foreach ($class instanceof ClassKeywords ? $class->keywords()->schemas() : [] as $place) {
+            $declaration = in_array($wireName, $place->propertyNames(), true) ? $place->requireProperty($wireName) : null;
+            if (!$declaration instanceof Schema || $declaration->location()->equals($context->schema()->location())) {
+                continue;
+            }
+
+            foreach ($builder->build($declaration, $context->property()->type()) as $spec) {
+                if (!in_array(serialize($spec), $seen, true)) {
+                    $seen[] = serialize($spec);
+                    $added[] = $spec;
+                }
+            }
+        }
+
+        return $added;
     }
 
     /**

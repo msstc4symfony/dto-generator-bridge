@@ -15,7 +15,10 @@ All notable changes to this package are documented here. The format follows
 - A pattern of a child's schema that matches a property the class inherits is checked on the child with `Property`,
   instead of a warning.
 - A child's schema that declares a property of its parent again with a narrower schema (the generator 1.6 leaves the
-  property to the parent) gets `Property` with the constraints of that declaration the parent's lack.
+  property to the parent) gets `Property` with the constraints of that declaration the parent's lack, and `Present`
+  when it requires what the parent leaves optional.
+- A property several members of an `allOf` declare gets the constraints of every declaration, not only of the one the
+  generator types it by.
 
 ### Changed
 
