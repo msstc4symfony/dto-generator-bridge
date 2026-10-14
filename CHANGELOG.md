@@ -14,6 +14,8 @@ All notable changes to this package are documented here. The format follows
   way with `properties`, `items`, `allOf` or the like, or a keyword two of them hold still gives a warning.
 - A pattern of a child's schema that matches a property the class inherits is checked on the child with `Property`,
   instead of a warning.
+- A child's schema that declares a property of its parent again with a narrower schema (the generator 1.6 leaves the
+  property to the parent) gets `Property` with the constraints of that declaration the parent's lack.
 
 ### Changed
 

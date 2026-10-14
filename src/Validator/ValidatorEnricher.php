@@ -108,6 +108,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             $this->requirements($context, $keywords, $runtime, $properties),
             $this->conditions($context, $keywords, $builder, $runtime, $groups, $properties),
             $this->inheritedMatches($context, $keywords, $patterns, $properties, $builder, $runtime),
+            $this->narrowings($keywords, $properties, $builder, $runtime, $context),
         );
 
         return array_map(static fn (ConstraintSpec $constraint): ConstraintSpec => $constraint->withGroups($groups), $constraints);
@@ -273,6 +274,61 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         }
 
         return PatternSchema::allOf($keywords, $diagnostics);
+    }
+
+    /**
+     * A property of the parent the class's own schema declares again stays the parent's (the generator lets no child
+     * narrow its type): the class checks, with Property, the constraints of its declaration the parent's lack.
+     *
+     * @return list<ConstraintSpec>
+     */
+    private function narrowings(Keywords $keywords, ClassProperties $properties, ConstraintBuilder $builder, RuntimeConstraints $runtime, ClassScope $context): array
+    {
+        $inherited = array_diff($properties->names(true), $properties->names(false));
+        $parents = [];
+        $own = [];
+        foreach ($keywords->schemas() as $place) {
+            foreach (array_intersect($place->propertyNames(), $inherited) as $name) {
+                if ($properties->ofAncestor($place)) {
+                    $parents[$name][] = $place->requireProperty($name);
+                } else {
+                    $own[$name][] = $place->requireProperty($name);
+                }
+            }
+        }
+
+        if ($own === [] || !$runtime->available('properties', $context->schema()->location())) {
+            return [];
+        }
+
+        $constraints = [];
+        foreach ($own as $name => $schemas) {
+            $property = $properties->find((string) $name);
+            assert($property instanceof PropertyModel);
+            $checked = [];
+            foreach ($parents[$name] ?? [] as $schema) {
+                array_push($checked, ...array_map(static fn (ConstraintSpec $spec): string => serialize($spec), $builder->build($schema, $property->type())));
+            }
+
+            $added = [];
+            foreach ($schemas as $schema) {
+                foreach ($builder->build($schema, $property->type()) as $spec) {
+                    if (!in_array(serialize($spec), $checked, true)) {
+                        $added[] = $spec;
+                    }
+                }
+            }
+
+            $inner = $added === [] ? null : $builder->asNew('properties', $added, $context->schema()->location());
+            if ($inner !== null && $inner !== []) {
+                $constraints[] = ConstraintSpec::runtime('Property', [
+                    AttributeArgument::named('name', ArgumentValue::literal($property->name())),
+                    AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner)),
+                ]);
+            }
+        }
+
+        return $constraints;
     }
 
     /**

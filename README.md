@@ -184,6 +184,9 @@ They follow JSON Schema with these limits:
   `propertyNames` too. On a class without `$additionalProperties` it gives a warning (with
   `additionalProperties: false` nothing is left to check). A violation is reported at `labels[key]` with the key as
   its value, the same path as the violations of the value under that key.
+- **A property of the parent declared again** in a child's schema, with a type the parent's admits, stays the
+  parent's (the generator lets no child narrow it); the child checks the constraints of its declaration that the
+  parent's lack with `Property` (a missing value passes them).
 - **`dependentRequired`** reads a property as present when it is not `null`: like the rest of the DTO, it cannot tell
   a missing key from `null`, so a pair whose first property has a default is not checked (it is always present),
   with a warning. A name that is not a property of the class gives a warning and leaves its pair out. A class that
