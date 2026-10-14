@@ -21,7 +21,7 @@ final class RuntimeConstraints
     private const MINIMUM = '1.1';
 
     /** The keywords whose constraints came later. */
-    private const MINIMUM_OF = ['not' => '1.2', 'dependentSchemas' => '1.2'];
+    private const MINIMUM_OF = ['not' => '1.2', 'dependentSchemas' => '1.2', 'oneOf' => '1.3'];
 
     private InstalledPackages $packages;
 

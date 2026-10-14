@@ -8,6 +8,12 @@ All notable changes to this package are documented here. The format follows
 
 ### Added
 
+- The members of a `oneOf` or `anyOf` of scalars without a discriminator are checked: `AtLeastOneOf` for `anyOf`, the
+  runtime's `ExactlyOneOf` (runtime 1.3) for `oneOf`, each member its `Type` and its own constraints. Members of one
+  type need no `Type`; members the PHP type alone tells apart, with no keywords of their own, need nothing. A member
+  that is an object, an array, an `enum`, a nested union, or that has the bridge's own keywords still leaves the union
+  unchecked, with the warning as before.
+
 - A `$ref` in the schema of `contains`, `propertyNames`, `not`, `if`, `then`, `else`, `prefixItems`, `patternProperties`
   or `unevaluatedItems`, and in the `properties` of a condition on a class, is followed (the generator 1.6 loads it):
   the keywords of every schema on the way are checked together. A reference that does not resolve, a schema on the

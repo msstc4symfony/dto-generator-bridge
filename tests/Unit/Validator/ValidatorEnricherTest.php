@@ -517,7 +517,7 @@ final class ValidatorEnricherTest extends TestCase
         $code = $this->code($output, 'Pet.php');
 
         self::assertSame([], $this->attributesOf($code, 'code'));
-        self::assertSame([], $this->attributesOf($code, 'either'));
+        self::assertSame(["Assert\\AtLeastOneOf(constraints: [new \\Symfony\\Component\\Validator\\Constraints\\Sequentially(constraints: [new \\Symfony\\Component\\Validator\\Constraints\\Type(type: 'string'), new \\Symfony\\Component\\Validator\\Constraints\\Length(max: 3)]), new \\Symfony\\Component\\Validator\\Constraints\\Type(type: 'int')])"], $this->attributesOf($code, 'either'));
         self::assertSame([], $this->attributesOf($code, 'free'));
         self::assertSame([], $this->attributesOf($code, 'born'));
         self::assertSame([

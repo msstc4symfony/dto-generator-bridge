@@ -186,6 +186,17 @@ components:
       required: [method]
       properties:
         method: {type: string, const: cash}
+    Coupon:
+      type: object
+      properties:
+        code:
+          oneOf:
+            - {type: string, maxLength: 3}
+            - {type: string, pattern: '^[0-9]+$'}
+        amount:
+          anyOf:
+            - {type: string, pattern: '^[0-9]+%$'}
+            - {type: integer, minimum: 1}
     Checkout:
       type: object
       properties:

@@ -49,6 +49,8 @@ final class ConstraintBuilder
 
     private ClaimedConstraints $claimed;
 
+    private MemberConstraints $members;
+
     /** @var list<non-empty-string> */
     private array $groups;
 
@@ -71,6 +73,7 @@ final class ConstraintBuilder
         $this->kinds = new KindConstraints($diagnostics);
         $this->values = new ValueConstraints($target, $diagnostics);
         $this->claimed = new ClaimedConstraints($this, $references, $diagnostics, $runtime, $checks, $groups);
+        $this->members = new MemberConstraints($this, $references, $runtime);
         $this->groups = $groups;
     }
 
@@ -87,8 +90,12 @@ final class ConstraintBuilder
         $replaced = $keywords->resolved()->extensions()->has('x-php-type');
         $this->kinds->warnAboutFormatsOfOneKind($keywords, $value, $at);
 
+        $members = $replaced ? [] : $this->members->of($keywords, $at);
         if (!$replaced) {
-            $this->claimed->warnAboutUnreachedMembers($keywords, $at);
+            if ($members === null) {
+                $this->claimed->warnAboutUnreachedMembers($keywords, $at);
+            }
+
             $this->claimed->warnAboutDependencies($keywords, $at);
         }
 
@@ -104,6 +111,7 @@ final class ConstraintBuilder
             $this->nested($keywords, $value, $at),
             $replaced ? [] : $this->claimed->conditions($keywords, $value, $at),
             $replaced ? [] : $this->claimed->negations($keywords, $value, $at),
+            $members ?? [],
         );
     }
 

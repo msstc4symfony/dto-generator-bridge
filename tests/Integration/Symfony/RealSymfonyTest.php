@@ -444,6 +444,32 @@ final class RealSymfonyTest extends TestCase
     }
 
     /**
+     * The members of a oneOf or anyOf of scalars: PHP 8.0 attributes cannot hold the nested constraints.
+     *
+     * @dataProvider targets
+     */
+    public function testChecksTheMembersOfAUnionOfScalars(string $php): void
+    {
+        $this->runTarget($php, function (string $namespace, bool $annotations) use ($php): void {
+            $serializer = $this->serializer($annotations);
+            $paths = function (array $data) use ($serializer, $namespace, $annotations): array {
+                $coupon = $serializer->denormalize($data, $namespace . '\\Coupon');
+                self::assertIsObject($coupon);
+
+                return $this->violationPaths($coupon, $annotations);
+            };
+            $checked = $php === '8.0' ? [] : ['code'];
+
+            self::assertSame([], $paths(['code' => '1234', 'amount' => '10%']));
+            self::assertSame([], $paths(['code' => 'ab', 'amount' => 5]));
+            self::assertSame($checked, $paths(['code' => '12']));
+            self::assertSame($checked, $paths(['code' => 'abcd']));
+            self::assertSame($php === '8.0' ? [] : ['amount'], $paths(['amount' => 0]));
+            self::assertSame($php === '8.0' ? [] : ['amount'], $paths(['amount' => '10']));
+        });
+    }
+
+    /**
      * A union whose variant extends another class is an interface carrying the DiscriminatorMap.
      *
      * @dataProvider targets
@@ -683,7 +709,7 @@ final class RealSymfonyTest extends TestCase
         copy(__DIR__ . '/api.yaml', $dir . '/api.yaml');
         file_put_contents($dir . '/composer.json', '{}');
         // The bridge writes the runtime's constraints only for a project that has them.
-        file_put_contents($dir . '/composer.lock', (string) json_encode(['packages' => [['name' => 'msstc4symfony/dto-generator-bridge-runtime', 'version' => 'v1.2.0']]]));
+        file_put_contents($dir . '/composer.lock', (string) json_encode(['packages' => [['name' => 'msstc4symfony/dto-generator-bridge-runtime', 'version' => 'v1.3.0']]]));
         // Only the views name dto.readWriteModels, which a generator before 1.3 refuses.
         $dto = $variant === 'views' ? ['dto' => ['readWriteModels' => 'split']] : [];
         file_put_contents($dir . '/dto-generator.yaml', (string) json_encode($dto + [
