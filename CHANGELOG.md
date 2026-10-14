@@ -10,7 +10,8 @@ All notable changes to this package are documented here. The format follows
 
 - The members of a `oneOf` or `anyOf` that the generator types as PHP scalars, without a discriminator, are checked:
   `AtLeastOneOf` for `anyOf`, the runtime's `ExactlyOneOf` (runtime 1.3) for `oneOf`, each member its `Type` and its own
-  constraints, in the groups of the value. Members of one type need no `Type`; members the union type of the property
+  constraints, in the groups of the value; a member with a `const` and no `type` is of the const's type. Members of one
+  type need no `Type`; members the union type of the property
   tells apart, with no keywords of their own, need nothing. Other members (objects, arrays, dates and other classes,
   enums, nested unions, keywords beside a `$ref`, the bridge's own keywords, `integer` beside `number`) leave the
   union unchecked as before, with a warning only for the bridge's own keywords.

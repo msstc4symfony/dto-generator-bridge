@@ -180,7 +180,9 @@ final class MemberConstraints
      */
     private function scalarType(Schema $place): ?string
     {
-        $types = array_map(static fn (SchemaType $type): string => $type->value(), $place->types());
+        // A const without a type is of the const's type.
+        $types = $place->types() !== [] ? array_map(static fn (SchemaType $type): string => $type->value(), $place->types()) : ($place->hasKeyword('const') ? [$this->typeOf($place->keyword('const'))] : []);
+
         // The bridge's own keywords need a value of their own; they stay in the warning about members.
         $claimed = array_filter(ClaimedConstraints::KEYWORDS, static fn (string $keyword): bool => $place->hasKeyword($keyword));
         $composed = $place->oneOf() !== [] || $place->anyOf() !== [] || $place->propertyNames() !== [] || $claimed !== [];
@@ -189,6 +191,31 @@ final class MemberConstraints
         }
 
         return $types[0];
+    }
+
+    /**
+     * @param JsonValue $value
+     */
+    private function typeOf($value): string
+    {
+        if (is_string($value)) {
+            return SchemaType::STRING;
+        }
+
+        if (is_int($value)) {
+            return SchemaType::INTEGER;
+        }
+
+        if (is_float($value)) {
+            return SchemaType::NUMBER;
+        }
+
+        if (is_bool($value)) {
+            return SchemaType::BOOLEAN;
+        }
+
+        // An array or an object, which no scalar member holds.
+        return $value === null ? SchemaType::NULL : SchemaType::ARRAY;
     }
 
     /**

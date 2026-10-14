@@ -23,12 +23,6 @@ use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
  */
 final class RawSchema
 {
-    /** What a reusable schema says about its document, its API or its storage, which holds for no value. */
-    private const METADATA = [
-        'example', 'readOnly', 'writeOnly', 'xml', 'externalDocs', '$id', '$anchor', '$defs', '$schema',
-        'contentMediaType', 'contentEncoding',
-    ];
-
     private function __construct()
     {
     }
@@ -104,7 +98,7 @@ final class RawSchema
         }
 
         foreach ($schema->keywordNames() as $name) {
-            if (!Subschema::annotates($name) && !in_array($name, self::METADATA, true)) {
+            if (!Subschema::annotates($name)) {
                 $keywords[$name] = $schema->keyword($name);
             }
         }

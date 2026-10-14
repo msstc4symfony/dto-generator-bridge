@@ -155,6 +155,10 @@ final class UnionMembersTest extends TestCase
         yield 'a union behind $ref' => [['$ref' => '#/components/schemas/Union', 'description' => 'A code.'], $exactly("new {$a}Length(max: 3), new {$a}Regex(pattern: '/^[0-9]+\$/uD')")];
         yield 'an own union beside one behind $ref' => [['$ref' => '#/components/schemas/Union', 'oneOf' => [$short, $digits]], []];
         yield 'oneOf beside anyOf' => [['oneOf' => [$short, $digits], 'anyOf' => [$short, $digits]], []];
+        yield 'consts without a type' => [['oneOf' => [['const' => 'a'], ['const' => 7], ['const' => true]]], $exactly("new {$a}Sequentially(constraints: [new {$a}Type(type: 'string'), new {$a}IdenticalTo(value: 'a')]), new {$a}Sequentially(constraints: [new {$a}Type(type: 'int'), new {$a}IdenticalTo(value: 7)]), new {$a}Sequentially(constraints: [new {$a}Type(type: 'bool'), new {$a}IdenticalTo(value: true)])")];
+        yield 'a const of a number' => [['oneOf' => [['const' => 1.5], $short]], $exactly("new {$a}Sequentially(constraints: [new {$a}Type(type: ['int', 'float']), new {$a}IdenticalTo(value: 1.5)]), new {$a}Sequentially(constraints: [new {$a}Type(type: 'string'), new {$a}Length(max: 3)])")];
+        yield 'a whole number for a number, which PHP tells from a float' => [['oneOf' => [['type' => 'number', 'const' => 2], $short]], []];
+        yield 'a const that is a list' => [['oneOf' => [['const' => ['a']], $short]], []];
         yield 'two dates, one class' => [['oneOf' => [['type' => 'string', 'format' => 'date-time'], ['type' => 'string', 'format' => 'date']]], []];
         yield 'an enum member, a PHP enum' => [['oneOf' => [['type' => 'string', 'enum' => ['a', 'b']], $positive]], []];
         yield 'a member with allOf' => [['oneOf' => [['type' => 'string', 'allOf' => [['maxLength' => 3]]], $positive]], []];
