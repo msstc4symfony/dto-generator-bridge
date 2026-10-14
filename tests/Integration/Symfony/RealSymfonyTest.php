@@ -289,11 +289,11 @@ final class RealSymfonyTest extends TestCase
     public function testChecksNegationsDependenciesAndTuples(string $php): void
     {
         $this->runTarget($php, function (string $namespace, bool $annotations) use ($php): void {
-            $paths = function (array $data, array $groups = []) use ($namespace, $annotations): array {
+            $paths = function (array $data, ?string $group = null) use ($namespace, $annotations): array {
                 $ticket = $this->serializer($annotations)->denormalize($data, $namespace . '\Ticket');
                 self::assertIsObject($ticket);
 
-                return $this->violationPaths($ticket, $annotations, $groups);
+                return $this->violationPaths($ticket, $annotations, $group === null ? [] : [$group]);
             };
             $nested = $php !== '8.0';
 
@@ -307,7 +307,7 @@ final class RealSymfonyTest extends TestCase
             self::assertSame(['seat'], $paths(['seat' => ['B', 1, 'x']]));
             self::assertSame($nested ? [''] : [], $paths(['cash' => true]));
             self::assertSame([], $paths(['pair' => [1]]));
-            self::assertSame($nested ? ['pair[0]'] : [], $paths(['pair' => [1]], ['api']));
+            self::assertSame($nested ? ['pair[0]'] : [], $paths(['pair' => [1]], 'api'));
         });
     }
 
