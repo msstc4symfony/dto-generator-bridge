@@ -73,7 +73,7 @@ final class ConstraintBuilder
         $this->kinds = new KindConstraints($diagnostics);
         $this->values = new ValueConstraints($target, $diagnostics);
         $this->claimed = new ClaimedConstraints($this, $references, $diagnostics, $runtime, $checks, $groups);
-        $this->members = new MemberConstraints($this, $references, $runtime);
+        $this->members = new MemberConstraints($this, $references, $runtime, $target, $groups);
         $this->groups = $groups;
     }
 
@@ -90,7 +90,7 @@ final class ConstraintBuilder
         $replaced = $keywords->resolved()->extensions()->has('x-php-type');
         $this->kinds->warnAboutFormatsOfOneKind($keywords, $value, $at);
 
-        $members = $replaced ? [] : $this->members->of($keywords, $at);
+        $members = $replaced ? [] : $this->members->of($keywords, $value, $at);
         if (!$replaced) {
             if ($members === null) {
                 $this->claimed->warnAboutUnreachedMembers($keywords, $at);

@@ -19,6 +19,8 @@ final class UnionMembersTest extends TestCase
 
     private const ASSERT = '\\Symfony\\Component\\Validator\\Constraints\\';
 
+    private const RUNTIME_ASSERT = '\\Msstc4Symfony\\DtoGeneratorBridge\\Runtime\\Constraints\\';
+
     public function testChecksAnyOfWithAtLeastOneOfAndOneOfWithExactlyOneOf(): void
     {
         $members = [['type' => 'string', 'minLength' => 2], ['type' => 'integer', 'minimum' => 1]];
@@ -65,6 +67,73 @@ final class UnionMembersTest extends TestCase
         self::assertContains('warning /api.yaml#/components/schemas/Pet/properties/mixed: "not" in a member of "oneOf" or "anyOf" is not checked.', $this->messages($output));
     }
 
+    public function testGivesTheNestedConstraintsTheGroupsOfTheValue(): void
+    {
+        $members = [['type' => 'string', 'minLength' => 2], ['type' => 'integer', 'minimum' => 1]];
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'any' => ['anyOf' => $members, 'x-validator-groups' => ['api']],
+            'list' => ['type' => 'array', 'items' => ['oneOf' => $members], 'x-validator-groups' => ['api']],
+        ]]);
+        $code = $this->code($output, 'Pet.php');
+
+        $a = self::ASSERT;
+        $groups = "groups: ['api', 'Default']";
+        $inner = "[new {$a}Sequentially(constraints: [new {$a}Type(type: 'string'), new {$a}Length(min: 2)], {$groups}), new {$a}Sequentially(constraints: [new {$a}Type(type: 'int'), new {$a}GreaterThanOrEqual(value: 1)], {$groups})]";
+        self::assertSame(["Assert\\AtLeastOneOf(constraints: {$inner}, {$groups})"], $this->attributesOf($code, 'any'));
+        self::assertContains('Assert\\All(constraints: [new ' . self::RUNTIME_ASSERT . "ExactlyOneOf(constraints: {$inner}, {$groups})], {$groups})", $this->attributesOf($code, 'list'));
+    }
+
+    public function testLeavesMembersThatAreNoPhpScalarsUnchecked(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'date' => ['anyOf' => [['type' => 'string', 'format' => 'date-time'], ['type' => 'integer', 'minimum' => 1]]],
+            'typed' => ['anyOf' => [['type' => 'string', 'x-php-type' => '\\ArrayObject'], ['type' => 'integer', 'minimum' => 1]]],
+        ]]);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame([], $this->attributesOf($code, 'date'));
+        self::assertSame([], $this->attributesOf($code, 'typed'));
+    }
+
+    public function testChecksTheMembersOfAUnionThatANullBesideARefMakesNullable(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => ['code' => ['anyOf' => [['$ref' => '#/components/schemas/Union'], ['type' => 'null']]]]], [
+            'Union' => ['oneOf' => [['type' => 'string', 'maxLength' => 3], ['type' => 'string', 'pattern' => '^[0-9]+$']]],
+        ]);
+
+        self::assertSame(
+            ['RuntimeAssert\\ExactlyOneOf(constraints: [new ' . self::ASSERT . 'Length(max: 3), new ' . self::ASSERT . "Regex(pattern: '/^[0-9]+\$/uD')])"],
+            $this->attributesOf($this->code($output, 'Pet.php'), 'code'),
+        );
+    }
+
+    public function testIgnoresAnnotationsOfAMember(): void
+    {
+        $positive = ['type' => 'integer', 'minimum' => 1];
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'titled' => ['oneOf' => [['$ref' => '#/components/schemas/Short', 'title' => 'Short'], $positive]],
+            'shown' => ['oneOf' => [['type' => 'string', 'maxLength' => 3, 'example' => 'ab', 'readOnly' => true], $positive]],
+        ]], ['Short' => ['type' => 'string', 'maxLength' => 3]]);
+        $code = $this->code($output, 'Pet.php');
+
+        $a = self::ASSERT;
+        $expected = ["RuntimeAssert\\ExactlyOneOf(constraints: [new {$a}Sequentially(constraints: [new {$a}Type(type: 'string'), new {$a}Length(max: 3)]), new {$a}Sequentially(constraints: [new {$a}Type(type: 'int'), new {$a}GreaterThanOrEqual(value: 1)])])"];
+        self::assertSame($expected, $this->attributesOf($code, 'titled'));
+        self::assertSame($expected, $this->attributesOf($code, 'shown'));
+    }
+
+    public function testChecksTheTypesOfMembersOnAnUntypedProperty(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'one' => ['oneOf' => [['type' => 'string'], ['type' => 'integer']]],
+            'any' => ['anyOf' => [['type' => 'string'], ['type' => 'integer']]],
+        ]], [], '7.4', [], 'v6.4.0', self::RUNTIME + ['doctrine/annotations' => '1.14.0']);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertStringContainsString("@RuntimeAssert\\ExactlyOneOf(\n     *     constraints={\n     *         @\\Symfony\\Component\\Validator\\Constraints\\Type(type=\"string\"),", $code);
+        self::assertStringContainsString("@Assert\\AtLeastOneOf(\n     *     constraints={\n     *         @\\Symfony\\Component\\Validator\\Constraints\\Type(type=\"string\"),", $code);
+    }
+
     /**
      * @return iterable<string, array{array<string, mixed>, list<string>}>
      */
@@ -77,7 +146,7 @@ final class UnionMembersTest extends TestCase
         $exactly = static fn (string $inner): array => ['RuntimeAssert\\ExactlyOneOf(constraints: [' . $inner . '])'];
 
         yield 'a null member among them' => [['oneOf' => [['type' => 'null'], $short, $digits]], $exactly("new {$a}Length(max: 3), new {$a}Regex(pattern: '/^[0-9]+\$/uD')")];
-        yield 'integer and number, which overlap' => [['oneOf' => [['type' => 'integer'], ['type' => 'number']]], $exactly("new {$a}Type(type: 'int'), new {$a}Type(type: ['int', 'float'])")];
+        yield 'integer and number, which PHP tells apart otherwise than JSON Schema' => [['oneOf' => [['type' => 'integer', 'minimum' => 0], ['type' => 'number', 'maximum' => 0]]], []];
         yield 'integer or number' => [['anyOf' => [['type' => 'integer'], ['type' => 'number']]], []];
         yield 'one type twice, which never passes once' => [['oneOf' => [['type' => 'string'], ['type' => 'string']]], $exactly("new {$a}Type(type: 'string'), new {$a}Type(type: 'string')")];
         yield 'a member behind $ref' => [['oneOf' => [['$ref' => '#/components/schemas/Short'], $positive]], $exactly("new {$a}Sequentially(constraints: [new {$a}Type(type: 'string'), new {$a}Length(max: 3)]), new {$a}Sequentially(constraints: [new {$a}Type(type: 'int'), new {$a}GreaterThanOrEqual(value: 1)])")];
@@ -86,7 +155,8 @@ final class UnionMembersTest extends TestCase
         yield 'a union behind $ref' => [['$ref' => '#/components/schemas/Union', 'description' => 'A code.'], $exactly("new {$a}Length(max: 3), new {$a}Regex(pattern: '/^[0-9]+\$/uD')")];
         yield 'an own union beside one behind $ref' => [['$ref' => '#/components/schemas/Union', 'oneOf' => [$short, $digits]], []];
         yield 'oneOf beside anyOf' => [['oneOf' => [$short, $digits], 'anyOf' => [$short, $digits]], []];
-        yield 'an enum member' => [['oneOf' => [['type' => 'string', 'enum' => ['a', 'b']], $positive]], []];
+        yield 'two dates, one class' => [['oneOf' => [['type' => 'string', 'format' => 'date-time'], ['type' => 'string', 'format' => 'date']]], []];
+        yield 'an enum member, a PHP enum' => [['oneOf' => [['type' => 'string', 'enum' => ['a', 'b']], $positive]], []];
         yield 'a member with allOf' => [['oneOf' => [['type' => 'string', 'allOf' => [['maxLength' => 3]]], $positive]], []];
         yield 'a member with oneOf' => [['oneOf' => [['type' => 'string', 'oneOf' => [['maxLength' => 3], ['minLength' => 5]]], $positive]], []];
         yield 'a member with anyOf' => [['oneOf' => [['type' => 'string', 'anyOf' => [['maxLength' => 3], ['minLength' => 5]]], $positive]], []];
@@ -114,9 +184,10 @@ final class UnionMembersTest extends TestCase
 
     /**
      * @param array<string, mixed> $pet
+     * @param array<string, mixed> $others
      */
-    private function withRuntime(array $pet): Output
+    private function withRuntime(array $pet, array $others = []): Output
     {
-        return $this->generate($pet, [], '8.2', [], 'v7.1.0', self::RUNTIME);
+        return $this->generate($pet, $others, '8.2', [], 'v7.1.0', self::RUNTIME);
     }
 }

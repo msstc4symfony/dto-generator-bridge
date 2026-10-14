@@ -34,7 +34,10 @@ final class Subschema
 {
     private const KEYWORDS = ['const', 'pattern', 'minLength', 'maxLength', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf'];
 
-    private const ANNOTATIONS = ['title', 'description', 'examples', '$comment', 'default', 'deprecated'];
+    private const ANNOTATIONS = [
+        'title', 'description', 'examples', 'example', '$comment', 'default', 'deprecated', 'readOnly', 'writeOnly',
+        'contentMediaType', 'contentEncoding', 'externalDocs', 'xml',
+    ];
 
     /** The keywords that check a value of any kind alike; the others check one kind of value. */
     private const ANY_KIND = ['type', 'const', 'enum'];

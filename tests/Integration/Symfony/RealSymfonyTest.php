@@ -451,21 +451,33 @@ final class RealSymfonyTest extends TestCase
     public function testChecksTheMembersOfAUnionOfScalars(string $php): void
     {
         $this->runTarget($php, function (string $namespace, bool $annotations) use ($php): void {
-            $serializer = $this->serializer($annotations);
-            $paths = function (array $data) use ($serializer, $namespace, $annotations): array {
-                $coupon = $serializer->denormalize($data, $namespace . '\\Coupon');
-                self::assertIsObject($coupon);
-
-                return $this->violationPaths($coupon, $annotations);
-            };
             $checked = $php === '8.0' ? [] : ['code'];
 
-            self::assertSame([], $paths(['code' => '1234', 'amount' => '10%']));
-            self::assertSame([], $paths(['code' => 'ab', 'amount' => 5]));
-            self::assertSame($checked, $paths(['code' => '12']));
-            self::assertSame($checked, $paths(['code' => 'abcd']));
-            self::assertSame($php === '8.0' ? [] : ['amount'], $paths(['amount' => 0]));
-            self::assertSame($php === '8.0' ? [] : ['amount'], $paths(['amount' => '10']));
+            self::assertSame([], $this->couponViolations($namespace, $annotations, ['code' => '1234', 'amount' => '10%'], []));
+            self::assertSame([], $this->couponViolations($namespace, $annotations, ['code' => 'ab', 'amount' => 5], []));
+            self::assertSame($checked, $this->couponViolations($namespace, $annotations, ['code' => '12'], []));
+            self::assertSame($checked, $this->couponViolations($namespace, $annotations, ['code' => 'abcd'], []));
+            self::assertSame($php === '8.0' ? [] : ['amount'], $this->couponViolations($namespace, $annotations, ['amount' => 0], []));
+            self::assertSame($php === '8.0' ? [] : ['amount'], $this->couponViolations($namespace, $annotations, ['amount' => '10'], []));
+            self::assertSame([], $this->couponViolations($namespace, $annotations, ['code' => null, 'amount' => null], []));
+        });
+    }
+
+    /**
+     * The nested constraints of a union carry the groups of the value, at the property and in the items of a list.
+     *
+     * @dataProvider targets
+     */
+    public function testChecksTheMembersOfAUnionInItsGroups(string $php): void
+    {
+        $this->runTarget($php, function (string $namespace, bool $annotations) use ($php): void {
+            $valid = ['limit' => '5%', 'only' => '1234', 'codes' => ['ab', '1234']];
+            $invalid = ['limit' => 0, 'only' => '12', 'codes' => ['ab', '12']];
+
+            self::assertSame([], $this->couponViolations($namespace, $annotations, $valid, ['api']));
+            self::assertSame([], $this->couponViolations($namespace, $annotations, $valid, []));
+            self::assertSame($php === '8.0' ? [] : ['codes[1]', 'limit', 'only'], $this->couponViolations($namespace, $annotations, $invalid, ['api']));
+            self::assertSame($php === '8.0' ? [] : ['codes[1]', 'limit'], $this->couponViolations($namespace, $annotations, $invalid, []));
         });
     }
 
@@ -636,6 +648,22 @@ final class RealSymfonyTest extends TestCase
         foreach ($this->validator($annotations)->validate($value, null, $groups === [] ? null : $groups) as $violation) {
             $paths[] = $violation->getPropertyPath();
         }
+
+        return $paths;
+    }
+
+    /**
+     * @param array<string, JsonValue> $data
+     * @param list<string> $groups
+     *
+     * @return list<string> the paths of the violations, sorted
+     */
+    private function couponViolations(string $namespace, bool $annotations, array $data, array $groups): array
+    {
+        $coupon = $this->serializer($annotations)->denormalize($data, $namespace . '\\Coupon');
+        self::assertIsObject($coupon);
+        $paths = $this->violationPaths($coupon, $annotations, $groups);
+        sort($paths);
 
         return $paths;
     }
