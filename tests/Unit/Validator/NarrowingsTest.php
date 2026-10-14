@@ -63,6 +63,25 @@ final class NarrowingsTest extends TestCase
         ], $this->classAttributesOf($this->code($output, 'Pet.php')));
     }
 
+    public function testLeavesNullAndWhatTheParentRequiresAlone(): void
+    {
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['type' => 'object', 'required' => ['opt', 'req', 'any', 'ref', 'mine'], 'properties' => ['own' => ['type' => 'string'], 'mine' => ['type' => ['string', 'null']]]],
+        ]], [
+            'Base' => ['type' => 'object', 'required' => ['req'], 'properties' => [
+                'opt' => ['type' => ['string', 'null']],
+                'req' => ['type' => ['string', 'null']],
+                'any' => [],
+                'ref' => ['$ref' => '#/components/schemas/Maybe'],
+                'mine' => ['type' => 'string'],
+            ]],
+            'Maybe' => ['type' => ['integer', 'null']],
+        ]);
+
+        self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
     public function testChecksEachConstraintOnceAndThoseOfAParentInGroupsOfItsOwn(): void
     {
         $output = $this->withRuntime(['allOf' => [

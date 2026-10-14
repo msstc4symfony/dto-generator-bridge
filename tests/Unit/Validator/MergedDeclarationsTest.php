@@ -20,9 +20,12 @@ final class MergedDeclarationsTest extends TestCase
             ['type' => 'object', 'properties' => ['s' => ['type' => 'string', 'maxLength' => 3], 'n' => ['type' => 'number', 'minimum' => 1]]],
             ['type' => 'object', 'properties' => ['s' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 3], 'n' => ['type' => 'integer', 'minimum' => 1]]],
             ['properties' => ['s' => ['type' => 'string', 'pattern' => '^a', 'maxLength' => 3]]],
+            ['properties' => ['s' => ['type' => 'string', 'pattern' => '^b', 'x-validator-skip' => true], 'n' => ['type' => 'number', 'maximum' => 9, 'x-validator-groups' => ['api']]]],
         ]]);
         $code = $this->code($output, 'Pet.php');
 
+        // Each declaration keeps its own constraints; the second Length repeats a bound on purpose, merging bounds is not
+        // worth what it would take.
         self::assertSame(['Assert\\Length(min: 1, max: 3)', 'Assert\\Length(max: 3)', 'Assert\\Regex(pattern: \'/^a/uD\')'], $this->attributesOf($code, 's'));
         self::assertSame(['Assert\\GreaterThanOrEqual(value: 1)'], $this->attributesOf($code, 'n'));
     }
