@@ -122,7 +122,7 @@ final class DeclaredNamesTest extends TestCase
 
     public function testLeavesKeywordsItCannotRunAlone(): void
     {
-        $output = $this->generate(['type' => 'object', 'propertyNames' => ['pattern' => '(?<=a)\\p{Foo}', 'format' => 'email', 'minLength' => 'two', 'enum' => 'x'], 'properties' => [
+        $output = $this->generate(['type' => 'object', 'propertyNames' => ['pattern' => 'a(', 'format' => 'email', 'minLength' => 'two', 'enum' => 'x'], 'properties' => [
             'name' => ['type' => 'string'],
         ]]);
 
