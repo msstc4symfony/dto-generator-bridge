@@ -37,7 +37,7 @@ Symfony versions in your `composer.lock`.
 ## Requirements
 
 - PHP >= 7.4 (the bridge runs inside the generator, which supports PHP 7.4).
-- `msstc4php/dto-generator` ^1.6 and `msstc4symfony/dto-generator-bridge-runtime` ^1.2 (both installed with the
+- `msstc4php/dto-generator` ^1.6 and `msstc4symfony/dto-generator-bridge-runtime` ^1.3 (both installed with the
   bridge).
 - In the application that uses the DTOs: `symfony/validator` and/or `symfony/serializer` 5.4, 6.4, 7.x or 8.x. By
   default the bridge writes constraints and attributes only for the components it finds in `composer.lock`.
