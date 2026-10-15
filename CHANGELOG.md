@@ -21,6 +21,9 @@ All notable changes to this package are documented here. The format follows
   in groups of its own.
 - A property several members of an `allOf` declare gets the constraints of every declaration, not only of the one the
   generator types it by.
+- A discriminated union the generator 1.6 makes an interface gets its `DiscriminatorMap` on the interface, which
+  Symfony reads on 5.4–8. An interface carries no constraints: a warning names the object keywords of its schema
+  (`required`, `enum`, `minProperties`, `not`…), which are checked only where the variants' schemas repeat them.
 
 ### Changed
 

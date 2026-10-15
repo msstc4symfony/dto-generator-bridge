@@ -16,6 +16,24 @@ final class ValidatorEnricherTest extends TestCase
 {
     use GeneratesDtos;
 
+    public function testWarnsThatAnInterfaceChecksNothing(): void
+    {
+        $ref = static fn (string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $variant = static fn (string $method): array => ['type' => 'object', 'properties' => ['method' => ['type' => 'string', 'const' => $method]]];
+        $others = [
+            'Charge' => ['type' => 'object', 'properties' => ['amount' => ['type' => 'integer']]],
+            'Card' => ['allOf' => [$ref('Charge'), $variant('Card')]],
+            'Cash' => $variant('Cash'),
+        ];
+        $union = ['oneOf' => [$ref('Card'), $ref('Cash')], 'discriminator' => ['propertyName' => 'method']];
+        $output = $this->generate($union + ['required' => ['method'], 'additionalProperties' => false, 'enum' => [['method' => 'cash']], 'minProperties' => 1, 'not' => ['required' => ['secret']]], $others);
+        $quiet = $this->generate($union, $others);
+
+        self::assertSame(['warning /api.yaml#/components/schemas/Pet: App\\Dto\\Pet is an interface, which carries no constraints: the keywords "required", "additionalProperties", "enum", "minProperties", "not" of its schema are checked only where the variants\' schemas repeat them.'], $this->messages($output));
+        self::assertStringNotContainsString('#[', $this->code($output, 'Pet.php'));
+        self::assertSame([], array_values(array_filter($this->messages($quiet), static fn (string $m): bool => strpos($m, 'interface') !== false)));
+    }
+
     public function testConstrainsStringsByRequirementLengthAndPattern(): void
     {
         $code = $this->pet(['type' => 'object', 'required' => ['name'], 'properties' => [

@@ -160,6 +160,36 @@ components:
           fish: '#/components/schemas/Fish'
           bird: '#/components/schemas/Bird'
     CreatureKind: {type: string, enum: [fish, bird]}
+    Payment:
+      oneOf:
+        - {$ref: '#/components/schemas/CardPayment'}
+        - {$ref: '#/components/schemas/CashPayment'}
+      discriminator:
+        propertyName: method
+        mapping:
+          card: '#/components/schemas/CardPayment'
+          cash: '#/components/schemas/CashPayment'
+    Charge:
+      type: object
+      properties:
+        amount: {type: integer, minimum: 1}
+    CardPayment:
+      allOf:
+        - {$ref: '#/components/schemas/Charge'}
+        - type: object
+          required: [method]
+          properties:
+            method: {type: string, const: card}
+            last4: {type: string, pattern: '^[0-9]{4}$'}
+    CashPayment:
+      type: object
+      required: [method]
+      properties:
+        method: {type: string, const: cash}
+    Checkout:
+      type: object
+      properties:
+        payment: {$ref: '#/components/schemas/Payment'}
     Fish:
       type: object
       required: [kind]

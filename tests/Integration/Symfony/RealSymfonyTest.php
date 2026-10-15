@@ -444,6 +444,30 @@ final class RealSymfonyTest extends TestCase
     }
 
     /**
+     * A union whose variant extends another class is an interface carrying the DiscriminatorMap.
+     *
+     * @dataProvider targets
+     */
+    public function testBuildsTheVariantAnInterfaceSelects(string $php): void
+    {
+        $this->runTarget($php, function (string $namespace, bool $annotations): void {
+            $serializer = $this->serializer($annotations);
+            $checkout = $serializer->denormalize(['payment' => ['method' => 'card', 'amount' => 0, 'last4' => '12']], $namespace . '\Checkout');
+            $cash = $serializer->denormalize(['method' => 'cash'], $namespace . '\Payment');
+
+            self::assertIsObject($checkout);
+            self::assertIsObject($cash);
+            self::assertTrue(interface_exists($namespace . '\Payment'));
+            self::assertSame($namespace . '\CashPayment', get_class($cash));
+            self::assertSame(['payment' => ['method' => 'card', 'last4' => '12', 'amount' => 0]], $serializer->normalize($checkout));
+            self::assertSame(['method' => 'cash'], $serializer->normalize($cash));
+            $paths = $this->violationPaths($checkout, $annotations);
+            sort($paths);
+            self::assertSame(['payment.amount', 'payment.last4'], $paths);
+        });
+    }
+
+    /**
      * A variant selected by one value takes it as the default of its constructor.
      *
      * @dataProvider targets
