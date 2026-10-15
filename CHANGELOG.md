@@ -6,6 +6,8 @@ All notable changes to this package are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-15
+
 ### Added
 
 - The members of a `oneOf` or `anyOf` that the generator types as PHP scalars, without a discriminator, are checked:
@@ -216,7 +218,8 @@ First release.
   annotations for PHP 7.4 targets.
 - `DtoGeneratorBundle`: the `dto-generator:generate` console command and an optional check on cache warmup.
 
-[Unreleased]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.1.0...v1.2.0
