@@ -106,7 +106,7 @@ final class RuntimeConstraintsTest extends TestCase
             'pairs' => ['type' => 'array', 'items' => ['type' => 'array', 'items' => ['type' => 'string']], 'contains' => ['type' => 'array']],
             'listed' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['a']],
             'numbered' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => [1 => 'a']],
-            'marked' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['xml' => ['name' => 'a']]],
+            'marked' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['xmlish' => true]],
             'counted' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['type' => 'number']],
         ]]);
         $code = $this->code($output, 'Pet.php');
@@ -126,7 +126,7 @@ final class RuntimeConstraintsTest extends TestCase
             $at . 'pairs: "contains" is checked only on values of a string, number, boolean or enum type, or of any type; it is not checked.',
             $at . 'listed: "contains" is checked only with a schema object or true; it is not checked.',
             $at . 'numbered: "contains" is checked only with a schema of "type", "format", "enum", "const" and the keywords of strings and numbers; with "1" it is not checked.',
-            $at . 'marked: "contains" is checked only with a schema of "type", "format", "enum", "const" and the keywords of strings and numbers; with "xml" it is not checked.',
+            $at . 'marked: "contains" is checked only with a schema of "type", "format", "enum", "const" and the keywords of strings and numbers; with "xmlish" it is not checked.',
             $at . 'counted: "contains" is checked only when its "type" admits every element; it is not checked.',
         ], $this->messages($output));
     }

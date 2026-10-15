@@ -444,6 +444,44 @@ final class RealSymfonyTest extends TestCase
     }
 
     /**
+     * The members of a oneOf or anyOf of scalars: PHP 8.0 attributes cannot hold the nested constraints.
+     *
+     * @dataProvider targets
+     */
+    public function testChecksTheMembersOfAUnionOfScalars(string $php): void
+    {
+        $this->runTarget($php, function (string $namespace, bool $annotations) use ($php): void {
+            $checked = $php === '8.0' ? [] : ['code'];
+
+            self::assertSame([], $this->couponViolations($namespace, $annotations, ['code' => '1234', 'amount' => '10%'], []));
+            self::assertSame([], $this->couponViolations($namespace, $annotations, ['code' => 'ab', 'amount' => 5], []));
+            self::assertSame($checked, $this->couponViolations($namespace, $annotations, ['code' => '12'], []));
+            self::assertSame($checked, $this->couponViolations($namespace, $annotations, ['code' => 'abcd'], []));
+            self::assertSame($php === '8.0' ? [] : ['amount'], $this->couponViolations($namespace, $annotations, ['amount' => 0], []));
+            self::assertSame($php === '8.0' ? [] : ['amount'], $this->couponViolations($namespace, $annotations, ['amount' => '10'], []));
+            self::assertSame([], $this->couponViolations($namespace, $annotations, ['code' => null, 'amount' => null], []));
+        });
+    }
+
+    /**
+     * The nested constraints of a union carry the groups of the value, at the property and in the items of a list.
+     *
+     * @dataProvider targets
+     */
+    public function testChecksTheMembersOfAUnionInItsGroups(string $php): void
+    {
+        $this->runTarget($php, function (string $namespace, bool $annotations) use ($php): void {
+            $valid = ['limit' => '5%', 'only' => '1234', 'codes' => ['ab', '1234']];
+            $invalid = ['limit' => 0, 'only' => '12', 'codes' => ['ab', '12']];
+
+            self::assertSame([], $this->couponViolations($namespace, $annotations, $valid, ['api']));
+            self::assertSame([], $this->couponViolations($namespace, $annotations, $valid, []));
+            self::assertSame($php === '8.0' ? [] : ['codes[1]', 'limit', 'only'], $this->couponViolations($namespace, $annotations, $invalid, ['api']));
+            self::assertSame($php === '8.0' ? [] : ['codes[1]', 'limit'], $this->couponViolations($namespace, $annotations, $invalid, []));
+        });
+    }
+
+    /**
      * A union whose variant extends another class is an interface carrying the DiscriminatorMap.
      *
      * @dataProvider targets
@@ -615,6 +653,22 @@ final class RealSymfonyTest extends TestCase
     }
 
     /**
+     * @param array<string, JsonValue> $data
+     * @param list<string> $groups
+     *
+     * @return list<string> the paths of the violations, sorted
+     */
+    private function couponViolations(string $namespace, bool $annotations, array $data, array $groups): array
+    {
+        $coupon = $this->serializer($annotations)->denormalize($data, $namespace . '\\Coupon');
+        self::assertIsObject($coupon);
+        $paths = $this->violationPaths($coupon, $annotations, $groups);
+        sort($paths);
+
+        return $paths;
+    }
+
+    /**
      * @param callable(string, bool): void $check
      * @param ''|'spread'|'views' $variant see generate()
      */
@@ -683,7 +737,7 @@ final class RealSymfonyTest extends TestCase
         copy(__DIR__ . '/api.yaml', $dir . '/api.yaml');
         file_put_contents($dir . '/composer.json', '{}');
         // The bridge writes the runtime's constraints only for a project that has them.
-        file_put_contents($dir . '/composer.lock', (string) json_encode(['packages' => [['name' => 'msstc4symfony/dto-generator-bridge-runtime', 'version' => 'v1.2.0']]]));
+        file_put_contents($dir . '/composer.lock', (string) json_encode(['packages' => [['name' => 'msstc4symfony/dto-generator-bridge-runtime', 'version' => 'v1.3.0']]]));
         // Only the views name dto.readWriteModels, which a generator before 1.3 refuses.
         $dto = $variant === 'views' ? ['dto' => ['readWriteModels' => 'split']] : [];
         file_put_contents($dir . '/dto-generator.yaml', (string) json_encode($dto + [

@@ -19,7 +19,8 @@ Symfony versions in your `composer.lock`.
 
 - **Validator constraints** from `required`, string, number and array keywords, `enum`, `const`, formats, nested
   objects and collection items, `prefixItems` and `unevaluatedItems`, and `dependentRequired`, `propertyNames`,
-  `contains`, `patternProperties`, `if`/`then`/`else`, `not` and `dependentSchemas` through the runtime's own
+  `contains`, `patternProperties`, `if`/`then`/`else`, `not`, `dependentSchemas` and the members of a `oneOf` of
+  scalars through the runtime's own
   constraints — [the full table](#validator-constraints).
 - **Serializer attributes** for wire names, discriminator maps, date formats, groups and ignored properties —
   [the full table](#serializer-attributes).
@@ -109,6 +110,8 @@ nullable `oneOf`/`anyOf` (all apply, as in JSON Schema 2020-12):
 | `not` on a property or the items of a collection | `RuntimeAssert\Not` (its nested constraints not on PHP 8.0) |
 | `not` on a class | `RuntimeAssert\Not` of `Property` and `Present`, on the class (its nested constraints not on PHP 8.0) |
 | `dependentSchemas` on a class | `RuntimeAssert\IfThenElse` with `Present` of the property in `if`, or `Not` of it for `false`, on the class (not on PHP 8.0) |
+| `anyOf` of members the generator types as PHP scalars, without a discriminator | `AtLeastOneOf`, each member its `Type` and its constraints (in `Sequentially`), when a member has keywords or the property has no union type (PHP 7.4); not on PHP 8.0 |
+| `oneOf` of such members | `RuntimeAssert\ExactlyOneOf` (runtime 1.3), the same members, also when two members share a type; not on PHP 8.0 |
 | `prefixItems` on a list | `Collection` of the elements by index, extra and missing ones allowed (not on PHP 8.0) |
 | `unevaluatedItems: false` on a list | `Count(max: …)`, the length of the longest `prefixItems` of its schema |
 | an `unevaluatedItems` schema on a list without `prefixItems` | `All`, as `items` (not on PHP 8.0) |
@@ -145,7 +148,12 @@ pass where JSON Schema's test suite expects a failure.
 [`msstc4symfony/dto-generator-bridge-runtime`](https://github.com/msstc4symfony/dto-generator-bridge-runtime#constraints),
 which the application needs in production then; without it in `composer.lock` the bridge warns and writes none of
 them. The bridge claims these keywords (unless `validator: false`) and marks each occurrence it checks or warns
-about, such as one in a member of a `oneOf`/`anyOf` with several members, which is not checked. The generator still
+about, such as one in a member of a `oneOf`/`anyOf` with several members that is not checked. A union's members go
+unchecked, with that warning only for the bridge's own keywords in them, when one is no PHP scalar (an object, an
+array, a `format` the generator maps to a class, `x-php-type`, an `enum`), says something in more than one schema (a
+keyword beside its `$ref`, an `allOf`), holds a union or the bridge's own keywords, when `integer` and `number`
+members meet (JSON Schema counts `5.0` as an integer, PHP's `Type` does not), or when the union is written in more
+than one place. Annotations (`title`, `example`, `readOnly`…) do not count. The generator still
 calls the others unsupported: those written beside a `$ref` to a class (write them in the class's schema), those of
 a property or a class with `x-validator-skip`, and all of them when the bridge writes no Validator constraints (no
 `symfony/validator`, `target.metadata: none`). In a schema with `x-php-type` they are not checked, without a

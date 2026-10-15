@@ -186,6 +186,35 @@ components:
       required: [method]
       properties:
         method: {type: string, const: cash}
+    Coupon:
+      type: object
+      properties:
+        code:
+          oneOf:
+            - {type: string, maxLength: 3}
+            - {type: string, pattern: '^[0-9]+$'}
+        amount:
+          anyOf:
+            - {type: string, pattern: '^[0-9]+%$'}
+            - {type: integer, minimum: 1}
+        limit:
+          x-validator-groups: [api]
+          anyOf:
+            - {type: string, pattern: '^[0-9]+%$'}
+            - {type: integer, minimum: 1}
+        only:
+          x-validator-groups: [api]
+          x-validator-groups-exclusive: true
+          oneOf:
+            - {type: string, maxLength: 3}
+            - {type: string, pattern: '^[0-9]+$'}
+        codes:
+          type: array
+          x-validator-groups: [api]
+          items:
+            oneOf:
+              - {type: string, maxLength: 3}
+              - {type: string, pattern: '^[0-9]+$'}
     Checkout:
       type: object
       properties:
