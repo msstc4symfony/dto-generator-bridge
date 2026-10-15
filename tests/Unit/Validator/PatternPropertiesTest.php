@@ -148,7 +148,7 @@ final class PatternPropertiesTest extends TestCase
         self::assertSame([self::AT . '/properties/labels/allOf/0: "patternProperties" must map patterns to schemas; it is not checked.'], $this->messages($output));
     }
 
-    public function testWarnsAboutAnInheritedPropertyAPatternOfTheChildMatches(): void
+    public function testChecksAnInheritedPropertyAPatternOfTheChildMatchesOnTheChild(): void
     {
         $output = $this->withRuntimeAnd(['allOf' => [
             ['$ref' => '#/components/schemas/Base'],
@@ -157,9 +157,9 @@ final class PatternPropertiesTest extends TestCase
 
         self::assertSame(['Assert\\Length(min: 1)', 'Assert\\Length(max: 3)'], $this->attributesOf($this->code($output, 'Pet.php'), 'xOwn'));
         self::assertSame(['Assert\\Length(min: 1)'], $this->attributesOf($this->code($output, 'Base.php'), 'xA'));
+        self::assertSame(['RuntimeAssert\\Property(name: \'xA\', constraints: [new ' . self::ASSERT . 'Length(max: 3)])'], $this->classAttributesOf($this->code($output, 'Pet.php')));
         self::assertSame([
             self::AT . ': "patternProperties" is checked on the undeclared properties a class keeps in its own $additionalProperties, which this class does not declare; they are not checked.',
-            self::AT . '/allOf/1: "patternProperties" matches "x-a", which this class inherits; it is not checked on it: write the pattern in the schema that declares the property.',
             'warning /api.yaml#/components/schemas/Base: "patternProperties" is checked on the undeclared properties a class keeps in its own $additionalProperties, which this class does not declare; they are not checked.',
         ], $this->messages($output));
     }
@@ -185,17 +185,64 @@ final class PatternPropertiesTest extends TestCase
         );
     }
 
-    public function testWarnsAboutAPatternBesideTheReferenceToTheParent(): void
+    public function testChecksEachInheritedMatchOnTheClassAndAnOwnOneOnItsProperty(): void
+    {
+        $output = $this->withRuntimeAnd(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['type' => 'object', 'properties' => ['x-own' => ['type' => 'string'], 'z' => ['type' => 'string', 'x-php-skip' => true]]],
+            ['patternProperties' => ['^x-' => ['type' => 'string', 'maxLength' => 3], '^y-' => ['description' => 'Y'], '^z' => ['maxLength' => 1]]],
+        ]], ['Base' => ['type' => 'object', 'properties' => ['x-b' => ['type' => 'string'], 'x-c' => ['type' => 'string'], 'y-a' => ['type' => 'string']]]]);
+        $code = $this->code($output, 'Pet.php');
+
+        $length = 'constraints: [new ' . self::ASSERT . 'Length(max: 3)])';
+        self::assertSame(["RuntimeAssert\\Property(name: 'xB', " . $length, "RuntimeAssert\\Property(name: 'xC', " . $length], $this->classAttributesOf($code));
+        self::assertSame(['Assert\\Length(max: 3)'], $this->attributesOf($code, 'xOwn'));
+        self::assertSame([], array_values(array_filter($this->messages($output), static fn (string $message): bool => strpos($message, 'does not have') !== false)));
+    }
+
+    public function testGroupsAnInheritedMatchAsTheClass(): void
+    {
+        $output = $this->withRuntimeAnd(['x-validator-groups' => ['api'], 'allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['type' => 'object', 'properties' => ['b' => ['type' => 'string']], 'patternProperties' => ['^x-' => ['maxLength' => 3]]],
+        ]], ['Base' => ['type' => 'object', 'properties' => ['x-a' => ['type' => 'string']]]]);
+
+        self::assertSame(["RuntimeAssert\\Property(name: 'xA', constraints: [new " . self::ASSERT . "Length(max: 3)], groups: ['api', 'Default'])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
+    public function testWarnsAboutAMatchOfAPropertyTheParentLeavesOut(): void
+    {
+        $output = $this->withRuntimeAnd(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['type' => 'object', 'properties' => ['b' => ['type' => 'string']], 'patternProperties' => ['^x-' => ['maxLength' => 3]]],
+        ]], ['Base' => ['type' => 'object', 'properties' => ['x-a' => ['type' => 'string', 'x-php-skip' => true], 'x-b' => ['type' => 'string']]]]);
+
+        self::assertSame(['RuntimeAssert\\Property(name: \'xB\', constraints: [new ' . self::ASSERT . 'Length(max: 3)])'], $this->classAttributesOf($this->code($output, 'Pet.php')));
+        self::assertContains(self::AT . '/allOf/1: "patternProperties" matches "x-a", which the schema of a parent declares and this class does not have; it is not checked on it.', $this->messages($output));
+    }
+
+    public function testNeedsTheRuntimeForAnInheritedMatch(): void
+    {
+        $output = $this->generate(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['type' => 'object', 'properties' => ['b' => ['type' => 'string']], 'patternProperties' => ['^x-' => ['maxLength' => 3]]],
+        ]], ['Base' => ['type' => 'object', 'properties' => ['x-a' => ['type' => 'string']]]]);
+
+        self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
+        self::assertContains(self::AT . ': "patternProperties" is checked by msstc4symfony/dto-generator-bridge-runtime 1.1 or newer, which the project does not install; it is not checked.', $this->messages($output));
+    }
+
+    public function testChecksAPatternBesideTheReferenceToTheParent(): void
     {
         $output = $this->withRuntimeAnd(['allOf' => [
             ['$ref' => '#/components/schemas/Base', 'patternProperties' => ['^x-' => ['maxLength' => 3]]],
             ['type' => 'object', 'properties' => ['b' => ['type' => 'string']]],
         ]], ['Base' => ['type' => 'object', 'properties' => ['x-a' => ['type' => 'string']]]]);
 
-        self::assertContains(self::AT . '/allOf/0: "patternProperties" matches "x-a", which this class inherits; it is not checked on it: write the pattern in the schema that declares the property.', $this->messages($output));
+        self::assertSame(['RuntimeAssert\\Property(name: \'xA\', constraints: [new ' . self::ASSERT . 'Length(max: 3)])'], $this->classAttributesOf($this->code($output, 'Pet.php')));
     }
 
-    public function testWarnsAboutAPatternOfASchemaBetweenTheClassAndItsParent(): void
+    public function testChecksAPatternOfASchemaBetweenTheClassAndItsParent(): void
     {
         $output = $this->withRuntimeAnd(['allOf' => [
             ['$ref' => '#/components/schemas/Mid'],
@@ -205,7 +252,7 @@ final class PatternPropertiesTest extends TestCase
             'Base' => ['type' => 'object', 'properties' => ['x-a' => ['type' => 'string']]],
         ]);
 
-        self::assertContains('warning /api.yaml#/components/schemas/Mid/allOf/1: "patternProperties" matches "x-a", which this class inherits; it is not checked on it: write the pattern in the schema that declares the property.', $this->messages($output));
+        self::assertSame(['RuntimeAssert\\Property(name: \'xA\', constraints: [new ' . self::ASSERT . 'Length(max: 3)])'], $this->classAttributesOf($this->code($output, 'Pet.php')));
     }
 
     public function testChecksThePropertiesOfMergedReferences(): void
@@ -245,7 +292,21 @@ final class PatternPropertiesTest extends TestCase
         self::assertContains('Assert\\Length(min: 2)', $this->attributesOf($this->code($output, 'Pet.php'), 'kind'));
     }
 
-    public function testWarnsAboutAnInheritedMatchOfTheOnlyVariantOfItsParent(): void
+    public function testLeavesAnInheritedMatchToTheClassBetweenThatChecksIt(): void
+    {
+        $output = $this->withRuntimeAnd(['allOf' => [
+            ['$ref' => '#/components/schemas/Mid'],
+            ['type' => 'object', 'properties' => ['p' => ['type' => 'string']]],
+        ]], [
+            'Mid' => ['allOf' => [['$ref' => '#/components/schemas/Base'], ['type' => 'object', 'properties' => ['m' => ['type' => 'string']], 'patternProperties' => ['^x-' => ['maxLength' => 3]]]]],
+            'Base' => ['type' => 'object', 'properties' => ['x-a' => ['type' => 'string']]],
+        ]);
+
+        self::assertSame(['RuntimeAssert\\Property(name: \'xA\', constraints: [new ' . self::ASSERT . 'Length(max: 3)])'], $this->classAttributesOf($this->code($output, 'Mid.php')));
+        self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
+    public function testChecksAnInheritedMatchOfTheOnlyVariantOfItsParent(): void
     {
         $output = $this->withRuntimeAnd(['allOf' => [
             ['$ref' => '#/components/schemas/Base'],
@@ -258,7 +319,7 @@ final class PatternPropertiesTest extends TestCase
             'oneOf' => [['$ref' => '#/components/schemas/Pet']],
         ]]);
 
-        self::assertContains(self::AT . '/allOf/1: "patternProperties" matches "kind", which this class inherits; it is not checked on it: write the pattern in the schema that declares the property.', $this->messages($output));
+        self::assertSame(['RuntimeAssert\\Property(name: \'kind\', constraints: [new ' . self::ASSERT . 'Length(max: 3)])'], $this->classAttributesOf($this->code($output, 'Pet.php')));
     }
 
     /**

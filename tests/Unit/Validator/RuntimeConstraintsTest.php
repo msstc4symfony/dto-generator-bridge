@@ -97,7 +97,6 @@ final class RuntimeConstraintsTest extends TestCase
     public function testWarnsAboutAContainsSchemaItCannotCheck(): void
     {
         $output = $this->withRuntime(['type' => 'object', 'properties' => [
-            'roles' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['$ref' => '#/components/schemas/Role']],
             'pets' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['properties' => ['a' => ['type' => 'string']]]],
             'never' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => false],
             'enums' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['enum' => []]],
@@ -109,16 +108,15 @@ final class RuntimeConstraintsTest extends TestCase
             'numbered' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => [1 => 'a']],
             'marked' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['xml' => ['name' => 'a']]],
             'counted' => ['type' => 'array', 'items' => ['type' => 'string'], 'contains' => ['type' => 'number']],
-        ]], ['Role' => ['type' => 'string']]);
+        ]]);
         $code = $this->code($output, 'Pet.php');
 
-        foreach (['roles', 'pets', 'never', 'enums', 'kinds', 'names', 'mixed', 'pairs', 'listed', 'numbered', 'marked', 'counted'] as $property) {
+        foreach (['pets', 'never', 'enums', 'kinds', 'names', 'mixed', 'pairs', 'listed', 'numbered', 'marked', 'counted'] as $property) {
             self::assertSame([], $this->attributesOf($code, $property), $property);
         }
 
         $at = 'warning /api.yaml#/components/schemas/Pet/properties/';
         self::assertSame([
-            $at . 'roles: "contains" is checked only with a schema of "type", "format", "enum", "const" and the keywords of strings and numbers; with "$ref" it is not checked.',
             $at . 'pets: "contains" is checked only with a schema of "type", "format", "enum", "const" and the keywords of strings and numbers; with "properties" it is not checked.',
             $at . 'never: "contains" is checked only with a schema object or true; it is not checked.',
             $at . 'enums: "contains" is checked only with a non-empty list in "enum"; it is not checked.',

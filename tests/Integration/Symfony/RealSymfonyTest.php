@@ -313,7 +313,7 @@ final class RealSymfonyTest extends TestCase
 
     /**
      * A child inherits the class constraints of its parent, which checks what its own schema says, once; the child's
-     * condition reads the parent's property.
+     * condition reads the parent's property, and its pattern checks it.
      *
      * @dataProvider targets
      */
@@ -330,6 +330,7 @@ final class RealSymfonyTest extends TestCase
             self::assertSame([], $paths(['card' => '4242', 'holder' => 'Ann', 'iban' => 'DE00']));
             self::assertSame(['holder'], $paths(['card' => '4242']));
             self::assertSame($php !== '8.0' ? ['holder'] : [], $paths(['iban' => 'DE00']));
+            self::assertSame($php !== '8.0' ? ['holder'] : [], $paths(['card' => '4242', 'holder' => 'Annabelle']));
         });
     }
 

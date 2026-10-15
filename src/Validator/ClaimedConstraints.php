@@ -248,7 +248,7 @@ final class ClaimedConstraints
     {
         $constraints = [];
         foreach ($patterns as $pattern) {
-            $specs = $this->builder->subschema('patternProperties', $pattern->schema(), $pattern->place(), $value, false);
+            $specs = $this->builder->subschema('patternProperties', $pattern->schema(), $pattern->place(), $value, false, $pattern->written());
             $inner = $specs === null ? null : $this->builder->asNew('patternProperties', $specs, $pattern->place());
             // A schema of annotations only accepts every value.
             if ($inner !== null && $inner !== []) {
@@ -312,7 +312,7 @@ final class ClaimedConstraints
                 continue;
             }
 
-            $specs = $this->builder->subschema('not', $place->keyword('not'), $place->location(), $value, true);
+            $specs = $this->builder->subschema('not', $place->keyword('not'), $place->location(), $value, true, $place->location()->child('not'));
             if ($specs !== null && $specs !== [] && $specs[0]->is('IsNull')) {
                 $this->diagnostics->warning('"not" of null is not checked: null stands for a missing value.', $place->location());
 
@@ -423,7 +423,7 @@ final class ClaimedConstraints
      */
     private function branch(string $branch, Schema $place, TypeModel $value): ?array
     {
-        return $place->hasKeyword($branch) ? $this->builder->subschema($branch, $place->keyword($branch), $place->location(), $value, true) : [];
+        return $place->hasKeyword($branch) ? $this->builder->subschema($branch, $place->keyword($branch), $place->location(), $value, true, $place->location()->child($branch)) : [];
     }
 
     /**
@@ -457,7 +457,7 @@ final class ClaimedConstraints
      */
     private function newSubschema(string $keyword, Schema $place, TypeModel $type): ?array
     {
-        $constraints = $this->builder->subschema($keyword, $place->keyword($keyword), $place->location(), $type, false);
+        $constraints = $this->builder->subschema($keyword, $place->keyword($keyword), $place->location(), $type, false, $place->location()->child($keyword));
 
         return $constraints === null ? null : $this->builder->asNew($keyword, $constraints, $place->location());
     }

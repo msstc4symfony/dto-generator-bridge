@@ -6,6 +6,31 @@ All notable changes to this package are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A `$ref` in the schema of `contains`, `propertyNames`, `not`, `if`, `then`, `else`, `prefixItems`, `patternProperties`
+  or `unevaluatedItems`, and in the `properties` of a condition on a class, is followed (the generator 1.6 loads it):
+  the keywords of every schema on the way are checked together. A reference that does not resolve, a schema on the
+  way with `properties`, `items`, `allOf` or the like, or a keyword two of them hold still gives a warning.
+- A pattern of a child's schema that matches a property the class inherits is checked on the child with `Property`,
+  instead of a warning.
+- A child's schema that declares a property of its parent again with a narrower schema (the generator 1.6 leaves the
+  property to the parent) gets `Property` with the constraints of that declaration the parent's lack, and `Present`
+  when it requires what the parent leaves optional. An object it declares is traversed by the parent's `Valid`, as
+  Symfony refuses `Valid` inside `Property`; a warning says it may go unchecked when the parent skips it or checks it
+  in groups of its own.
+- A property several members of an `allOf` declare gets the constraints of every declaration, not only of the one the
+  generator types it by.
+
+### Changed
+
+- A variant the base lists without a `$ref` back to it checks the names of its properties against the base's
+  `propertyNames` too.
+- A class constraint (a condition, a `not`, a dependency, a pattern's `Property`) that an ancestor's class already
+  writes, the same in the same groups, is left to the ancestor, which Symfony checks on the child too, so a violation
+  is reported once; one it checks in fewer groups than the class (Default included) stays on the class too.
+- The bridge requires `msstc4php/dto-generator` ^1.6.
+
 ## [1.4.0] - 2026-10-14
 
 ### Added

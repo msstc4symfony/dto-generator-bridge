@@ -65,6 +65,22 @@ final class DeclaredNamesTest extends TestCase
         ], $this->namesMessages($output->diagnostics()->all()));
     }
 
+    public function testChecksTheNamesOfAnAdoptedVariantAgainstItsBase(): void
+    {
+        $output = $this->generate(['type' => 'object', 'propertyNames' => ['maxLength' => 4], 'discriminator' => ['propertyName' => 'kind'], 'properties' => [
+            'kind' => ['type' => 'string'],
+        ], 'oneOf' => [['$ref' => '#/components/schemas/Cat'], ['$ref' => '#/components/schemas/Dog']]], [
+            'Cat' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string'], 'whiskers' => ['type' => 'integer']]],
+            'Dog' => ['type' => 'object', 'propertyNames' => ['maxLength' => 3], 'properties' => ['kind' => ['type' => 'string'], 'bark' => ['type' => 'boolean']]],
+        ]);
+
+        self::assertSame([
+            self::AT . ': "propertyNames" rejects "whiskers", the name of a declared property, which can never be set.',
+            'warning /api.yaml#/components/schemas/Dog: "propertyNames" rejects "bark", the name of a declared property, which can never be set.',
+            'warning /api.yaml#/components/schemas/Dog: "propertyNames" rejects "kind", the name of a declared property, which can never be set.',
+        ], $this->namesMessages($output->diagnostics()->all()));
+    }
+
     public function testRejectsEveryNameByASchemaFalse(): void
     {
         $output = $this->generate(['type' => 'object', 'allOf' => [['propertyNames' => false], ['propertyNames' => true]], 'properties' => [

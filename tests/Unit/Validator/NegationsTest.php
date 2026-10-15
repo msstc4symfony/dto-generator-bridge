@@ -174,7 +174,20 @@ final class NegationsTest extends TestCase
         self::assertSame([], $this->messages($output));
     }
 
-    public function testChecksTheNotOfAChildThatNamesNoProperty(): void
+    public function testLeavesToTheParentANotTheChildRepeats(): void
+    {
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['type' => 'object', 'properties' => ['b' => ['type' => 'string']]],
+            ['not' => ['required' => ['a']]],
+            ['not' => ['required' => ['b']]],
+        ]], ['Base' => ['type' => 'object', 'properties' => ['a' => ['type' => 'string']], 'not' => ['required' => ['a']]]]);
+
+        self::assertSame(['RuntimeAssert\\Not(constraints: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['b'])])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
+        self::assertSame([], $this->messages($output));
+    }
+
+    public function testLeavesToTheParentANotOfTheChildThatRejectsAlike(): void
     {
         $output = $this->withRuntime(['allOf' => [
             ['$ref' => '#/components/schemas/Base'],
@@ -182,7 +195,7 @@ final class NegationsTest extends TestCase
         ]], ['Base' => ['allOf' => [['type' => 'object', 'properties' => ['a' => ['type' => 'string']]], ['not' => ['type' => 'object']]]]]);
 
         self::assertSame(['RuntimeAssert\\Not'], $this->classAttributesOf($this->code($output, 'Base.php')));
-        self::assertSame(['RuntimeAssert\\Not'], $this->classAttributesOf($this->code($output, 'Pet.php')));
+        self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
         self::assertSame([], $this->messages($output));
     }
 

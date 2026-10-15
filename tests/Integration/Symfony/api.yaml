@@ -102,6 +102,9 @@ components:
             iban: {type: string}
           if: {required: [iban]}
           then: {required: [holder]}
+          patternProperties:
+            '^ho': {$ref: '#/components/schemas/Short'}
+    Short: {type: string, maxLength: 5}
     Animal:
       oneOf:
         - {$ref: '#/components/schemas/Cat'}
