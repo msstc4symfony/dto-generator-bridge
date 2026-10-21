@@ -20,6 +20,7 @@ use Msstc4Symfony\DtoGeneratorBridge\SymfonyExtension;
 use PHPUnit\Framework\TestCase;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
+use ReflectionParameter;
 use ReflectionProperty;
 use SplFileInfo;
 use Symfony\Component\PropertyInfo\Extractor\PhpDocExtractor;
@@ -387,6 +388,30 @@ final class RealSymfonyTest extends TestCase
             self::assertSame($expected, $written);
             self::assertNull((new ReflectionProperty($pet, 'secret'))->getValue($pet), 'Ignore keeps the property out of reading too');
             self::assertSame(['nick' => 'rx'], $serializer->normalize($pet, null, ['groups' => ['public']]));
+        });
+    }
+
+    /**
+     * An object default is `new Owner()` from PHP 8.1 (a generator before 1.9 gives null there too); a missing key takes
+     * it, and the validator checks it as any other owner.
+     *
+     * @dataProvider targets
+     */
+    public function testTakesAnObjectDefaultWhereTheTargetCanCreateIt(string $php): void
+    {
+        $this->runTarget($php, function (string $namespace, bool $annotations) use ($php): void {
+            $den = $this->serializer($annotations)->denormalize([], $namespace . '\Den');
+            self::assertIsObject($den);
+            $owner = (new ReflectionProperty($den, 'owner'))->getValue($den);
+            $created = (new ReflectionParameter([$namespace . '\Den', '__construct'], 'owner'))->getDefaultValue() !== null;
+
+            self::assertSame($created, $owner !== null);
+            self::assertTrue($php === '8.2' || !$created, 'Only PHP 8.1 creates an object in a default');
+            if ($owner !== null) {
+                self::assertInstanceOf($namespace . '\Owner', $owner);
+            }
+
+            self::assertCount(0, $this->validator($annotations)->validate($den));
         });
     }
 
