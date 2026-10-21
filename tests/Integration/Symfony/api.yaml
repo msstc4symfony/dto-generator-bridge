@@ -50,6 +50,10 @@ components:
       type: object
       properties:
         name: {type: string, maxLength: 5}
+    Den:
+      type: object
+      properties:
+        owner: {$ref: '#/components/schemas/Owner', default: {}}
     Roster:
       type: object
       dependentRequired: {card: [holder]}
