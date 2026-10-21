@@ -12,6 +12,7 @@ use InvalidArgumentException;
 use MSSTC4PHP\DtoGenerator\Application\Config\ViewSuffixes;
 use MSSTC4PHP\DtoGenerator\Application\Service\Generate\Input;
 use MSSTC4PHP\DtoGenerator\Application\Service\Generate\Mode;
+use MSSTC4PHP\DtoGenerator\Domain\Builder\ObjectDefaults;
 use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostic;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use MSSTC4PHP\DtoGenerator\DtoGenerator;
@@ -392,26 +393,36 @@ final class RealSymfonyTest extends TestCase
     }
 
     /**
-     * An object default is `new Owner()` from PHP 8.1 (a generator before 1.9 gives null there too); a missing key takes
-     * it, and the validator checks it as any other owner.
+     * An object default is `new Owner()` on a PHP 8.1+ target (a generator before 1.9 gives null there too); a missing
+     * key takes it, and the owner is validated in place as one read from the payload is. The generated classes are
+     * immutable, so an invalid owner comes from the payload.
      *
      * @dataProvider targets
      */
     public function testTakesAnObjectDefaultWhereTheTargetCanCreateIt(string $php): void
     {
         $this->runTarget($php, function (string $namespace, bool $annotations) use ($php): void {
-            $den = $this->serializer($annotations)->denormalize([], $namespace . '\Den');
+            $serializer = $this->serializer($annotations);
+            $den = $serializer->denormalize([], $namespace . '\Den');
             self::assertIsObject($den);
             $owner = (new ReflectionProperty($den, 'owner'))->getValue($den);
-            $created = (new ReflectionParameter([$namespace . '\Den', '__construct'], 'owner'))->getDefaultValue() !== null;
+            $default = (new ReflectionParameter([$namespace . '\Den', '__construct'], 'owner'))->getDefaultValue();
 
-            self::assertSame($created, $owner !== null);
-            self::assertTrue($php === '8.2' || !$created, 'Only PHP 8.1 creates an object in a default');
-            if ($owner !== null) {
+            // ObjectDefaults came with `new` in defaults: a core that has it must create the owner on this target.
+            if ($php === '8.2' && class_exists(ObjectDefaults::class)) {
+                self::assertIsObject($default, 'A PHP 8.1+ target creates the object of an empty object default');
+            }
+
+            if ($default === null) {
+                self::assertNull($owner, 'A target before PHP 8.1 has no object in a default');
+            } else {
                 self::assertInstanceOf($namespace . '\Owner', $owner);
             }
 
-            self::assertCount(0, $this->validator($annotations)->validate($den));
+            self::assertSame([], $this->violationPaths($den, $annotations));
+            $invalid = $serializer->denormalize(['owner' => ['name' => 'toolong']], $namespace . '\Den');
+            self::assertIsObject($invalid);
+            self::assertSame(['owner.name'], $this->violationPaths($invalid, $annotations));
         });
     }
 
