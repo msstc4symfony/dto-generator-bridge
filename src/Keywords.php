@@ -11,7 +11,8 @@ use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 /**
  * The keywords a value must satisfy (JSON Schema 2020-12): those of its schema, of every schema its `$ref` chain passes
  * through, of its `allOf` branches, and of the one member of a `oneOf`/`anyOf` that leaves only null aside (a value
- * other than null has to satisfy it). Values compare as JSON does: 1 and 1.0 are the same number.
+ * other than null has to satisfy it). Values compare as JSON does, numbers by their exact value: 1 and 1.0 are the same
+ * number, 2^53 + 1 and the float nearest to it are not.
  *
  * @phpstan-import-type JsonValue from Json
  *
@@ -19,6 +20,11 @@ use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
  */
 final class Keywords
 {
+    /** The floats that bound the range of int: PHP_INT_MAX itself rounds up to the upper one, which int lacks. */
+    private const MIN_INT_FLOAT = -9.2233720368547758E18;
+
+    private const MAX_INT_FLOAT = 9.2233720368547758E18;
+
     /** @var list<Schema> nearest first */
     private array $schemas = [];
 
@@ -95,12 +101,13 @@ final class Keywords
     {
         $values = [];
         foreach ($this->schemas as $schema) {
-            if ($schema->hasKeyword($name) && !$this->contains($values, $schema->keyword($name))) {
-                $values[] = $schema->keyword($name);
+            $key = $schema->hasKeyword($name) ? $this->key($schema->keyword($name)) : null;
+            if ($key !== null && !array_key_exists($key, $values)) {
+                $values[$key] = $schema->keyword($name);
             }
         }
 
-        return $values;
+        return array_values($values);
     }
 
     /**
@@ -261,43 +268,56 @@ final class Keywords
      */
     private function common(array $allowed, array $enum): array
     {
+        // Large enums (countries, currencies) meet each other, so they are matched by key rather than pairwise.
+        $listed = [];
+        foreach ($enum as $value) {
+            $key = $this->key($value);
+            $listed[$key] = $key;
+        }
+
         $common = [];
         foreach ($allowed as $value) {
-            if ($this->contains($enum, $value) && !$this->contains($common, $value)) {
-                $common[] = $value;
+            $key = $this->key($value);
+            if (isset($listed[$key]) && !array_key_exists($key, $common)) {
+                $common[$key] = $value;
             }
         }
 
-        return $common;
+        return array_values($common);
     }
 
     /**
-     * @param list<JsonValue> $values
+     * A key two values share when JSON holds them equal: numbers by their exact value, a whole one as an integer and
+     * any other by its bits, as serialize() would round it to serialize_precision; anything else serialized.
+     *
      * @param JsonValue $value
      */
-    private function contains(array $values, $value): bool
+    private function key($value): string
     {
-        foreach ($values as $listed) {
-            if ($this->same($listed, $value)) {
-                return true;
-            }
-        }
+        $value = $this->exact($value);
 
-        return false;
+        return is_float($value) ? bin2hex(pack('E', $value)) : serialize($value);
     }
 
     /**
-     * @param JsonValue $a
-     * @param JsonValue $b
+     * The value with a whole float within the range of int as that int, -0.0 among them; in arrays only -0.0 becomes
+     * 0.0, as serialize() would tell them apart although === does not.
+     *
+     * @param JsonValue $value
+     *
+     * @return JsonValue
      */
-    private function same($a, $b): bool
+    private function exact($value)
     {
-        $numbers = (is_int($a) || is_float($a)) && (is_int($b) || is_float($b));
-        if (!$numbers || (is_int($a) && is_int($b))) {
-            return $a === $b;
+        if (is_array($value)) {
+            return array_map(fn ($member) => is_array($member) ? $this->exact($member) : ($member === 0.0 ? abs($member) : $member), $value);
         }
 
-        return (float) $a === (float) $b;
+        if (is_float($value) && $value >= self::MIN_INT_FLOAT && $value < self::MAX_INT_FLOAT && floor($value) === $value) {
+            return (int) $value;
+        }
+
+        return $value;
     }
 
     private function isObject(Schema $schema): bool

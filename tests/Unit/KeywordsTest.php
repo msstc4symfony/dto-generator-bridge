@@ -83,12 +83,65 @@ final class KeywordsTest extends TestCase
             [1, true, [1, true]],
             ['a', 'a', ['a']],
             [9007199254740993, 9007199254740992, [9007199254740993, 9007199254740992]],
+            [9007199254740994, 9007199254740994.0, [9007199254740994]],
+            [9007199254740993, 9007199254740992.0, [9007199254740993, 9007199254740992.0]],
             [2.5, 2.5, [2.5]],
+            [0.1 + 0.2, 0.3, [0.1 + 0.2, 0.3]],
+            [-0.0, 0, [-0.0]],
         ];
         foreach ($pairs as [$own, $branch, $expected]) {
             $schema = $this->schema(['const' => $own], null, null, [], ['allOf' => [$this->schema(['const' => $branch])]]);
 
-            self::assertSame($expected, (new Keywords($schema, SchemaReferences::none()))->values('const'), var_export([$own, $branch], true));
+            self::assertSame(var_export($expected, true), var_export((new Keywords($schema, SchemaReferences::none()))->values('const'), true), var_export([$own, $branch], true));
+        }
+    }
+
+    public function testMeetsEnumsAsJsonComparesTheirValues(): void
+    {
+        $pairs = [
+            [[1], [1.0], [1]],
+            [[1.0], [1], [1.0]],
+            [['1'], [1], []],
+            [[1], [true], []],
+            [[0.0], [-0.0], [0.0]],
+            [[0], [0.0], [0]],
+            [[-0.0], [0], [-0.0]],
+            [[9007199254740993], [9007199254740992], []],
+            [[-9007199254740993], [-9007199254740992], []],
+            [[9007199254740992], [9007199254740992.0], [9007199254740992]],
+            [[[1, 2]], [[1, 2]], [[1, 2]]],
+            [[[1, 2]], [[2, 1]], []],
+            [[['a' => 1]], [['a' => 1.0]], []],
+            [[[-0.0]], [[0.0]], [[-0.0]]],
+            [[[[1, -0.0]]], [[[1, 0.0]]], [[[1, -0.0]]]],
+            [[9007199254740994], [9007199254740994.0], [9007199254740994]],
+            [[10000000000000000], [1e16], [10000000000000000]],
+            [[PHP_INT_MAX], [9.2233720368547758E18], []],
+            [[-9.2233720368547758E18], [PHP_INT_MIN], [-9.2233720368547758E18]],
+            [[PHP_INT_MIN], [9.2233720368547758E18], []],
+            [[2.5], [2], []],
+            [[0.1 + 0.2], [0.3], []],
+            [[2.5], [2.5], [2.5]],
+            [[null, 'a'], [null], [null]],
+            [['b', 'a', 'b'], ['a', 'b'], ['b', 'a']],
+        ];
+        foreach ($pairs as [$own, $branch, $expected]) {
+            $schema = $this->schema([], $own, null, [], ['allOf' => [$this->schema([], $branch)]]);
+
+            self::assertSame(var_export($expected, true), var_export((new Keywords($schema, SchemaReferences::none()))->enum(), true), var_export([$own, $branch], true));
+        }
+    }
+
+    public function testMeetsFractionsByTheirBitsWhateverTheSerializePrecision(): void
+    {
+        $precision = ini_get('serialize_precision');
+        ini_set('serialize_precision', '14');
+        try {
+            $schema = $this->schema([], [0.1 + 0.2], null, [], ['allOf' => [$this->schema([], [0.3])]]);
+
+            self::assertSame([], (new Keywords($schema, SchemaReferences::none()))->enum());
+        } finally {
+            ini_set('serialize_precision', (string) $precision);
         }
     }
 
@@ -268,7 +321,7 @@ final class KeywordsTest extends TestCase
 
     /**
      * @param array<string, JsonValue> $keywords
-     * @param list<string>|null $enum
+     * @param non-empty-list<JsonValue>|null $enum
      * @param array<string, Schema> $properties
      * @param array{allOf?: list<Schema>, oneOf?: list<Schema>, anyOf?: list<Schema>} $compositions
      */

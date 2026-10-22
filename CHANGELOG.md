@@ -14,6 +14,17 @@ All notable changes to this package are documented here. The format follows
   A member the bridge cannot check (a `$ref`, a nested union, keywords beyond `properties` and `required`) is warned
   about. With a runtime older than these, such a class gets one more warning, that the union is not checked.
 
+### Fixed
+
+- Numbers in `enum` and `const` compare by their exact value: an integer beyond 2^53 and the float nearest to it are
+  no longer taken for the same number, while `1e16` and `10000000000000000` are, and `-0.0` meets `0.0` inside arrays
+  too.
+
+### Changed
+
+- Enums are met by key rather than pairwise: specs with large enums (countries, currencies) generate much faster
+  (Stripe 3.0 s instead of 5.3 s, GitHub 15 s instead of 18.7 s).
+
 ## [1.6.0] - 2026-10-22
 
 ### Changed

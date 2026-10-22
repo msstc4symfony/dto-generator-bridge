@@ -12,7 +12,13 @@
         "github": true
     },
     "mutators": {
-        "@default": true
+        "@default": true,
+        "RoundingFamily": {
+            "ignore": [
+                // ceil() tells a whole float as floor() does.
+                "Msstc4Symfony\\DtoGeneratorBridge\\Keywords::exact"
+            ]
+        }
     },
     "testFramework": "phpunit",
     "testFrameworkOptions": "--testsuite=unit"
