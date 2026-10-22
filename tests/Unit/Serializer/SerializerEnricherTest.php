@@ -14,6 +14,16 @@ final class SerializerEnricherTest extends TestCase
 
     private const SERIALIZER = ['symfony/serializer' => 'v7.1.0'];
 
+    private const DEFAULTED = [
+        'oneOf' => [['$ref' => '#/components/schemas/Cat'], ['$ref' => '#/components/schemas/Other']],
+        'discriminator' => ['propertyName' => 'kind', 'mapping' => ['cat' => 'Cat'], 'defaultMapping' => 'Other'],
+    ];
+
+    private const VARIANTS = [
+        'Cat' => ['type' => 'object', 'required' => ['kind'], 'properties' => ['kind' => ['type' => 'string']]],
+        'Other' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string']]],
+    ];
+
     private const ONLY_SERIALIZER = ['validator' => false];
 
     private const SPREAD = ['validator' => false, 'additionalProperties' => 'spread'];
@@ -179,6 +189,52 @@ final class SerializerEnricherTest extends TestCase
         ], ['Cat' => ['type' => 'object', 'required' => ['kind'], 'properties' => ['kind' => ['type' => 'string']]]], '8.2', self::ONLY_SERIALIZER, null, self::SERIALIZER);
 
         self::assertSame(["Serializer\\DiscriminatorMap(typeProperty: 'kind', mapping: [1 => Cat::class])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
+    public function testNamesTheDefaultVariantFromSymfony73(): void
+    {
+        $output = $this->generate(self::DEFAULTED, self::VARIANTS, '8.2', self::ONLY_SERIALIZER, null, ['symfony/serializer' => 'v7.3.0']);
+
+        self::assertSame([], $this->messages($output));
+        self::assertSame(
+            ["Serializer\\DiscriminatorMap(typeProperty: 'kind', mapping: ['cat' => Cat::class, 'Other' => Other::class], defaultType: 'Other')"],
+            $this->classAttributesOf($this->code($output, 'Pet.php')),
+        );
+    }
+
+    public function testWarnsThatAnOlderSerializerTakesNoDefaultVariant(): void
+    {
+        $output = $this->generate(self::DEFAULTED, self::VARIANTS, '8.2', self::ONLY_SERIALIZER, null, ['symfony/serializer' => 'v7.2.9']);
+
+        self::assertSame(
+            ['warning /api.yaml#/components/schemas/Pet/discriminator/defaultMapping: The Serializer of Symfony 7.2 has no default type in DiscriminatorMap (7.3 adds it): a payload without "kind" does not select App\Dto\Other.'],
+            $this->messages($output),
+        );
+        self::assertSame(
+            ["Serializer\\DiscriminatorMap(typeProperty: 'kind', mapping: ['cat' => Cat::class, 'Other' => Other::class])"],
+            $this->classAttributesOf($this->code($output, 'Pet.php')),
+        );
+    }
+
+    public function testWarnsAboutADefaultVariantWithoutAValue(): void
+    {
+        $output = $this->generate(
+            ['discriminator' => ['propertyName' => 'kind', 'mapping' => ['cat' => 'Cat', 'Other' => 'Cat'], 'defaultMapping' => 'Other']] + self::DEFAULTED,
+            self::VARIANTS,
+            '8.2',
+            self::ONLY_SERIALIZER,
+            null,
+            ['symfony/serializer' => 'v7.3.0'],
+        );
+
+        self::assertContains(
+            'warning /api.yaml#/components/schemas/Pet/discriminator/defaultMapping: App\Dto\Other has no discriminator value, which DiscriminatorMap needs to name it its default type: a payload without "kind" does not select it.',
+            $this->messages($output),
+        );
+        self::assertSame(
+            ["Serializer\\DiscriminatorMap(typeProperty: 'kind', mapping: ['cat' => Cat::class, 'Other' => Cat::class])"],
+            $this->classAttributesOf($this->code($output, 'Pet.php')),
+        );
     }
 
     public function testWritesEveryAttributeAsAnAnnotationForPhp74(): void

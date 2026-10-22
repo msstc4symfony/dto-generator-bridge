@@ -164,6 +164,25 @@ components:
           fish: '#/components/schemas/Fish'
           bird: '#/components/schemas/Bird'
     CreatureKind: {type: string, enum: [fish, bird]}
+    Signal:
+      oneOf:
+        - {$ref: '#/components/schemas/Ping'}
+        - {$ref: '#/components/schemas/Note'}
+      discriminator:
+        propertyName: kind
+        mapping:
+          ping: '#/components/schemas/Ping'
+        defaultMapping: Note
+    Ping:
+      type: object
+      required: [kind]
+      properties:
+        kind: {type: string}
+    Note:
+      type: object
+      properties:
+        kind: {type: string}
+        text: {type: string, maxLength: 5}
     Payment:
       oneOf:
         - {$ref: '#/components/schemas/CardPayment'}
