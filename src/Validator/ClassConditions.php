@@ -8,8 +8,10 @@ use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostics;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ArgumentValue;
 use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeArgument;
 use MSSTC4PHP\DtoGenerator\Domain\Model\PropertyModel;
+use MSSTC4PHP\DtoGenerator\Domain\Schema\Discriminator;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\Schema;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaLocation;
+use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaType;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\DefaultValue;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use Msstc4Symfony\DtoGeneratorBridge\Keywords;
@@ -69,6 +71,33 @@ final class ClassConditions
         }
 
         return $conditions;
+    }
+
+    /**
+     * ExactlyOneOf for a `oneOf` beside the properties of a class, which the generator does not type, and for an `anyOf`
+     * Not of the Not of each member, as Symfony's AtLeastOneOf takes no class: each member a branch of `properties` and
+     * `required`, as a condition's.
+     *
+     * @param 'oneOf'|'anyOf' $keyword
+     *
+     * @return list<ConstraintSpec>
+     */
+    public function alternatives(Keywords $keywords, string $keyword): array
+    {
+        $alternatives = [];
+        foreach ($keywords->schemas() as $place) {
+            $members = $keyword === 'oneOf' ? $place->oneOf() : $place->anyOf();
+            if ($members === [] || $place->propertyNames() === [] || $place->discriminator() instanceof Discriminator || $this->properties->ofAncestor($place)) {
+                continue;
+            }
+
+            $alternative = $this->alternative($keyword, $members, $place);
+            if ($alternative instanceof ConstraintSpec) {
+                $alternatives[] = $alternative;
+            }
+        }
+
+        return $alternatives;
     }
 
     /**
@@ -174,6 +203,98 @@ final class ClassConditions
         }
 
         return ConstraintSpec::runtime('Not', $inner === [] ? [] : [AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner))]);
+    }
+
+    /**
+     * @param 'oneOf'|'anyOf' $keyword
+     * @param non-empty-list<Schema> $members
+     */
+    private function alternative(string $keyword, array $members, Schema $place): ?ConstraintSpec
+    {
+        $reads = [];
+        foreach ($members as $member) {
+            $read = $this->member($keyword, $member);
+            if ($read === null) {
+                return null;
+            }
+
+            $reads[] = $read;
+        }
+
+        $branches = array_map(static fn (array $read): array => [$keyword, $read, true], $reads);
+        if (!$this->namesOwnProperties($branches, $place, 'it') || $this->namesAlwaysSet($branches, $place, 'it')) {
+            return null;
+        }
+
+        $at = $place->location()->child($keyword);
+        $inner = [];
+        foreach ($reads as $read) {
+            $checks = $this->checks($keyword, $read, $place);
+            if ($checks === null) {
+                return null;
+            }
+
+            if ($checks === []) {
+                $this->diagnostics->warning(sprintf('A member of "%s" checks nothing a class holds; "%s" is not checked.', $keyword, $keyword), $at);
+
+                return null;
+            }
+
+            $whole = $keyword === 'anyOf' || count($checks) > 1;
+            $nested = $whole ? $this->builder->asNew($keyword, $checks, $at) : [];
+            if ($nested === null) {
+                return null;
+            }
+
+            $composite = $keyword === 'anyOf' ? ConstraintSpec::runtime('Not', [AttributeArgument::named('constraints', ArgumentValue::listOf(...$nested))]) : new ConstraintSpec('Sequentially', [AttributeArgument::named('constraints', ArgumentValue::listOf(...$nested))]);
+            // Symfony fixes the groups of a nested composite when it is built; the outer one does not pass its own on.
+            $inner[] = $whole ? $composite->withGroups($this->groups) : $checks[0];
+        }
+
+        $arguments = $this->builder->asNew($keyword, $inner, $at);
+        if ($arguments === null) {
+            return null;
+        }
+
+        $constraints = [AttributeArgument::named('constraints', ArgumentValue::listOf(...$arguments))];
+
+        return ConstraintSpec::runtime($keyword === 'anyOf' ? 'Not' : 'ExactlyOneOf', $constraints);
+    }
+
+    /**
+     * A member as a branch: an inline object of `properties`, each a schema of one value, and `required`.
+     *
+     * @param 'oneOf'|'anyOf' $keyword
+     *
+     * @return BranchShape|null
+     */
+    private function member(string $keyword, Schema $member): ?array
+    {
+        $types = array_map(static fn (SchemaType $type): string => $type->value(), $member->types());
+        $plain = $member->ref() === null && $member->enum() === null && array_diff($types, ['object']) === []
+            && $member->allOf() === [] && $member->oneOf() === [] && $member->anyOf() === [] && !$member->discriminator() instanceof Discriminator
+            && !$member->items() instanceof Schema && !$member->additionalProperties() instanceof Schema
+            && array_filter($member->keywordNames(), static fn (string $name): bool => !Subschema::annotates($name)) === [];
+        $properties = [];
+        foreach ($plain ? $member->propertyNames() : [] as $name) {
+            $schema = $member->requireProperty($name);
+            $flat = RawSchema::flat($schema);
+            if ($flat === null) {
+                $plain = false;
+
+                break;
+            }
+
+            $properties[] = [$name, $flat, $schema->location()];
+        }
+
+        if (!$plain) {
+            $this->diagnostics->warning(sprintf('"%s" is checked on a class only with members of "properties" that check one value each and "required"; it is not checked.', $keyword), $member->location());
+
+            return null;
+        }
+
+        return [$properties, $member->required()];
     }
 
     private function condition(Schema $place): ?ConstraintSpec

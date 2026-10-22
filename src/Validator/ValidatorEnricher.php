@@ -16,6 +16,7 @@ use MSSTC4PHP\DtoGenerator\Domain\Model\ClassModel;
 use MSSTC4PHP\DtoGenerator\Domain\Model\MapType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\MixedType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\PropertyModel;
+use MSSTC4PHP\DtoGenerator\Domain\Schema\Discriminator;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\Schema;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use Msstc4Symfony\DtoGeneratorBridge\ComponentGate;
@@ -323,7 +324,25 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             ClaimedConstraints::conditionPlaces($keywords) !== [] && $runtime->available('if', $at) ? $class->of($keywords) : [],
             ClaimedConstraints::forbids($keywords->values('not')) && $runtime->available('not', $at) ? $class->negations($keywords) : [],
             $keywords->has('dependentSchemas') && $runtime->available('dependentSchemas', $at) ? $class->dependencies($keywords) : [],
+            $this->alternated($keywords, 'oneOf') && $runtime->available('oneOf', $at) ? $class->alternatives($keywords, 'oneOf') : [],
+            $this->alternated($keywords, 'anyOf') && $runtime->available('anyOf', $at) ? $class->alternatives($keywords, 'anyOf') : [],
         );
+    }
+
+    /**
+     * Whether a schema of the class has the union beside its properties, undiscriminated, as the generator leaves it.
+     *
+     * @param 'oneOf'|'anyOf' $keyword
+     */
+    private function alternated(Keywords $keywords, string $keyword): bool
+    {
+        foreach ($keywords->schemas() as $place) {
+            if (($keyword === 'oneOf' ? $place->oneOf() : $place->anyOf()) !== [] && $place->propertyNames() !== [] && !$place->discriminator() instanceof Discriminator) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

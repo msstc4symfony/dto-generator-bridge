@@ -315,6 +315,33 @@ final class RealSymfonyTest extends TestCase
     }
 
     /**
+     * A oneOf and an anyOf beside the properties of a class: exactly one, or at least one, member holds.
+     *
+     * @dataProvider targets
+     */
+    public function testChecksTheMembersOfAUnionBesideTheProperties(string $php): void
+    {
+        $this->runTarget($php, function (string $namespace, bool $annotations) use ($php): void {
+            $paths = function (string $class, array $data) use ($namespace, $annotations): array {
+                $object = $this->serializer($annotations)->denormalize($data, $namespace . '\\' . $class);
+                self::assertIsObject($object);
+
+                return $this->violationPaths($object, $annotations);
+            };
+            $nested = $php !== '8.0';
+
+            self::assertSame([], $paths('CheckRun', ['status' => 'completed', 'conclusion' => 'success']));
+            self::assertSame([], $paths('CheckRun', ['status' => 'queued']));
+            self::assertSame($nested ? [''] : [], $paths('CheckRun', ['status' => 'completed']));
+            // Without a status the second member holds: properties check only the keys a payload has.
+            self::assertSame([], $paths('CheckRun', []));
+            self::assertSame([], $paths('Contact', ['email' => 'a@b.c']));
+            self::assertSame([], $paths('Contact', ['phone' => '1', 'email' => 'a@b.c']));
+            self::assertSame($nested ? [''] : [], $paths('Contact', []));
+        });
+    }
+
+    /**
      * A child inherits the class constraints of its parent, which checks what its own schema says, once; the child's
      * condition reads the parent's property, and its pattern checks it.
      *
