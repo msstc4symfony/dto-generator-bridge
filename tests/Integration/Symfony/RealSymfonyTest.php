@@ -416,7 +416,8 @@ final class RealSymfonyTest extends TestCase
             if ($default === null) {
                 self::assertNull($owner, 'A target before PHP 8.1 has no object in a default');
             } else {
-                self::assertInstanceOf($namespace . '\Owner', $owner);
+                self::assertIsObject($owner);
+                self::assertSame($namespace . '\Owner', get_class($owner));
             }
 
             self::assertSame([], $this->violationPaths($den, $annotations));
