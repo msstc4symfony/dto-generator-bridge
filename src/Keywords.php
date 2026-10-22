@@ -267,7 +267,8 @@ final class Keywords
         // Large enums (countries, currencies) meet each other, so they are matched by key rather than pairwise.
         $listed = [];
         foreach ($enum as $value) {
-            $listed[$this->key($value)] = true;
+            $key = $this->key($value);
+            $listed[$key] = $key;
         }
 
         $common = [];
@@ -283,22 +284,22 @@ final class Keywords
 
     /**
      * A key two values share when same() holds for them: a number by its value, whether int or float, an integer
-     * beyond a float's precision by itself, anything else as it is.
+     * beyond a float's precision by itself, anything else serialized; their forms never meet.
      *
      * @param JsonValue $value
      */
     private function key($value): string
     {
         if (is_int($value) && abs($value) > self::FLOAT_INTEGERS) {
-            return 'i:' . $value;
+            return (string) $value;
         }
 
         if (is_int($value) || is_float($value)) {
             // -0.0 is 0.0, which var_export() would tell apart.
-            return (float) $value === 0.0 ? 'n:0' : 'n:' . var_export((float) $value, true);
+            return (float) $value === 0.0 ? '0.0' : var_export((float) $value, true);
         }
 
-        return 'v:' . serialize($value);
+        return serialize($value);
     }
 
     /**

@@ -100,6 +100,8 @@ final class KeywordsTest extends TestCase
             [['1'], [1], []],
             [[1], [true], []],
             [[0.0], [-0.0], [0.0]],
+            [[0], [0.0], [0]],
+            [[-0.0], [0], [-0.0]],
             [[9007199254740993], [9007199254740992], []],
             [[-9007199254740993], [-9007199254740992], []],
             [[9007199254740992], [9007199254740992.0], [9007199254740992]],
@@ -292,7 +294,7 @@ final class KeywordsTest extends TestCase
 
     /**
      * @param array<string, JsonValue> $keywords
-     * @param list<string>|null $enum
+     * @param non-empty-list<JsonValue>|null $enum
      * @param array<string, Schema> $properties
      * @param array{allOf?: list<Schema>, oneOf?: list<Schema>, anyOf?: list<Schema>} $compositions
      */
