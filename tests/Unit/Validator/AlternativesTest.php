@@ -9,8 +9,8 @@ use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\GeneratesDtos;
 use PHPUnit\Framework\TestCase;
 
 /**
- * oneOf and anyOf beside the properties of a class, which the generator does not type: ExactlyOneOf and AtLeastOneOf of
- * their members' properties and requirements.
+ * oneOf and anyOf beside the properties of a class, which the generator does not type: ExactlyOneOf, and Not of a Not per
+ * member, of their members' properties and requirements.
  */
 final class AlternativesTest extends TestCase
 {
@@ -50,7 +50,7 @@ final class AlternativesTest extends TestCase
         $output = $this->withRuntime(['type' => 'object', 'properties' => self::PROPERTIES, 'anyOf' => [['required' => ['name']], ['required' => ['conclusion']]]]);
 
         self::assertSame(
-            ['RuntimeAssert\\Not(constraints: [new ' . self::RUNTIME_ASSERT . 'Not(constraints: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['name'])]), new " . self::RUNTIME_ASSERT . 'Not(constraints: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['outcome'])])])"],
+            ['RuntimeAssert\\Not(constraints: [new ' . self::RUNTIME_ASSERT . 'Not(constraints: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['name'])]), new " . self::RUNTIME_ASSERT . 'Not(constraints: [new ' . self::RUNTIME_ASSERT . "Present(properties: ['outcome'])])], message: 'This value should satisfy at least one of the given constraints.')"],
             $this->classAttributesOf($this->code($output, 'Pet.php')),
         );
         self::assertSame([self::UNTYPED], $this->messages($output));
@@ -75,6 +75,7 @@ final class AlternativesTest extends TestCase
     public static function unchecked(): iterable
     {
         yield 'a $ref' => [['$ref' => '#/components/schemas/Other'], '/oneOf/1'];
+        yield 'no other properties' => [['required' => ['status'], 'additionalProperties' => false], '/oneOf/1'];
         yield 'items beside a requirement' => [['required' => ['status'], 'items' => ['type' => 'string']], '/oneOf/1'];
         yield 'an allOf' => [['allOf' => [['required' => ['name']]]], '/oneOf/1'];
         yield 'a nested union' => [['anyOf' => [['required' => ['name']]]], '/oneOf/1'];
@@ -100,12 +101,27 @@ final class AlternativesTest extends TestCase
         self::assertSame([self::UNTYPED, self::AT . '/oneOf/1: "oneOf" is checked on a class only with members of "properties" that check one value each and "required"; it is not checked.'], $this->messages($output));
     }
 
-    public function testWarnsAboutAMemberThatChecksNothing(): void
+    public function testWarnsAboutAMemberOfAOneOfThatChecksNothing(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => self::PROPERTIES, 'oneOf' => [['required' => ['name']], ['title' => 'Anything']]]);
+
+        self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
+        self::assertSame([self::UNTYPED, self::AT . '/oneOf/1: A member of "oneOf" checks nothing a class holds; "oneOf" is not checked.'], $this->messages($output));
+    }
+
+    public function testChecksNothingForAnAnyOfOneOfWhoseMembersHoldsAlways(): void
     {
         $output = $this->withRuntime(['type' => 'object', 'properties' => self::PROPERTIES, 'anyOf' => [['required' => ['name']], ['title' => 'Anything']]]);
 
         self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
-        self::assertSame([self::UNTYPED, self::AT . '/anyOf: A member of "anyOf" checks nothing a class holds; "anyOf" is not checked.'], $this->messages($output));
+        self::assertSame([self::UNTYPED], $this->messages($output));
+    }
+
+    public function testGivesTheNestedCompositesTheGroupsOfTheClass(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'x-validator-groups' => ['api'], 'properties' => self::PROPERTIES, 'anyOf' => [['required' => ['name']], ['required' => ['status']]]]);
+
+        self::assertSame(3, substr_count($this->code($output, 'Pet.php'), "groups: ['api', 'Default']"));
     }
 
     public function testLeavesTheMembersOfADiscriminatedUnionToTheirClasses(): void

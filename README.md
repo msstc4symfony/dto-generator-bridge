@@ -242,6 +242,12 @@ They follow JSON Schema with these limits:
   `required`, as in a condition) applies when the property is set; a `false` schema forbids the property. A name or a
   property of its schema that is no property of the class, a named property with a default (always set), and a value
   that is not a class give a warning; a dependency of a parent's schema is left to the parent.
+- **`oneOf` and `anyOf` beside a class's properties** check their members as conditions do: a property that is `null`
+  counts as missing, as the DTO cannot tell them apart, so `properties` lets it through and `required` fails on it. A
+  `oneOf` whose member restricts a nullable property can thus reject a payload with `null` there that another member
+  accepts. A member naming a property the class lacks or one with a default, or one that checks nothing in a `oneOf`,
+  gives a warning; an `anyOf` with such an empty member always holds and gets no check. A union of a parent's schema is
+  left to the parent.
 - **`prefixItems`** checks each element of the prefix by its index with Symfony's `Collection`, which lets shorter and
   longer lists through; under `x-validator-groups` each element's constraints go into an `Optional` of those groups, as
   `Collection` would put them in `Default` only. The generated type gives `items` to every element, the prefix's too, so
@@ -255,7 +261,7 @@ They follow JSON Schema with these limits:
   `prefixItems`, and gives a warning beside one. `unevaluatedProperties` is not checked: a DTO drops the undeclared
   properties it would judge, so the generator's warning stays.
 - `x-validator-skip` and `x-validator-groups` on a class's schema apply to `DependentRequired`, to the conditions of the
-  class, its `not` and `dependentSchemas`, to the `Keys` and `PatternProperty` of `$additionalProperties` and to the
+  class, its `not`, its `dependentSchemas` and the `oneOf`/`anyOf` beside its properties, to the `Keys` and `PatternProperty` of `$additionalProperties` and to the
   constraints the patterns give declared properties; those on the schema of a property or of `additionalProperties`
   apply to its own constraints only.
 

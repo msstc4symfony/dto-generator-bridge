@@ -12,7 +12,7 @@ All notable changes to this package are documented here. The format follows
   is checked when its members are objects of `properties` and `required`: `ExactlyOneOf` of the runtime 1.3 for a
   `oneOf`, and for an `anyOf` `Not` of a `Not` per member (runtime 1.2), as Symfony's `AtLeastOneOf` takes no class.
   A member the bridge cannot check (a `$ref`, a nested union, keywords beyond `properties` and `required`) is warned
-  about.
+  about. With a runtime older than these, such a class gets one more warning, that the union is not checked.
 
 ## [1.6.0] - 2026-10-22
 
