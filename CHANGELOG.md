@@ -6,6 +6,12 @@ All notable changes to this package are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- The variant an OpenAPI 3.2 `discriminator.defaultMapping` names (generator 1.11) is the `defaultType` of the
+  `DiscriminatorMap` from Symfony 7.3, so a payload without the discriminator builds it; an earlier Serializer gets a
+  warning. Symfony still selects no class for an unmapped value.
+
 ## [1.5.0] - 2026-10-15
 
 ### Added
