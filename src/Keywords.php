@@ -296,7 +296,9 @@ final class Keywords
 
         if (is_int($value) || is_float($value)) {
             // -0.0 is 0.0, which var_export() would tell apart.
-            return (float) $value === 0.0 ? '0.0' : var_export((float) $value, true);
+            $number = (float) $value;
+
+            return $number === 0.0 ? '0.0' : var_export($number, true);
         }
 
         return serialize($value);
