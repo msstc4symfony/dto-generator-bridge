@@ -6,6 +6,12 @@ All notable changes to this package are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-22
+
+### Changed
+
+- Requires `msstc4php/dto-generator` ^1.11.
+
 ### Added
 
 - The variant an OpenAPI 3.2 `discriminator.defaultMapping` names (generator 1.11) is the `defaultType` of the
@@ -224,7 +230,8 @@ First release.
   annotations for PHP 7.4 targets.
 - `DtoGeneratorBundle`: the `dto-generator:generate` console command and an optional check on cache warmup.
 
-[Unreleased]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.2.0...v1.3.0
