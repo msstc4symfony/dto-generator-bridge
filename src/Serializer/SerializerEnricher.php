@@ -146,8 +146,7 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
     }
 
     /**
-     * The value of the default variant, which Symfony takes when the payload lacks the property; an unmapped value still
-     * fails.
+     * The value of the default variant, which Symfony takes only when the payload lacks the property.
      */
     private function defaultType(ClassContext $context, DiscriminatorModel $discriminator, SymfonyVersion $version): ?string
     {
@@ -169,7 +168,7 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
         $value = $discriminator->defaultValue();
         if ($value === null) {
             $context->diagnostics()->warning(
-                sprintf('%s has no discriminator value, which DiscriminatorMap needs to name it its default type: a payload without "%s" does not select it.', $default->fqcn(), $discriminator->propertyName()),
+                sprintf('%s has no discriminator value, so DiscriminatorMap cannot name it its default type: a payload without "%s" does not select it.', $default->fqcn(), $discriminator->propertyName()),
                 $at,
             );
         }

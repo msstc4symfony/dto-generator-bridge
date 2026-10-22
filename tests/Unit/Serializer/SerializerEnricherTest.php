@@ -227,8 +227,11 @@ final class SerializerEnricherTest extends TestCase
             ['symfony/serializer' => 'v7.3.0'],
         );
 
-        self::assertContains(
-            'warning /api.yaml#/components/schemas/Pet/discriminator/defaultMapping: App\Dto\Other has no discriminator value, which DiscriminatorMap needs to name it its default type: a payload without "kind" does not select it.',
+        self::assertSame(
+            [
+                'warning /api.yaml#/components/schemas/Pet/discriminator: Variant App\Dto\Other gets no discriminator value: the mapping gives "Other" to another schema.',
+                'warning /api.yaml#/components/schemas/Pet/discriminator/defaultMapping: App\Dto\Other has no discriminator value, so DiscriminatorMap cannot name it its default type: a payload without "kind" does not select it.',
+            ],
             $this->messages($output),
         );
         self::assertSame(

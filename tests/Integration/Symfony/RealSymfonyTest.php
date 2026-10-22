@@ -562,14 +562,18 @@ final class RealSymfonyTest extends TestCase
             // The map writes the class's own value over the one the object holds.
             self::assertSame(['kind' => 'Note', 'text' => 'toolong'], $serializer->normalize($note));
             self::assertSame(['text'], $this->violationPaths($note, $annotations));
-            if ($this->symfony() >= 7.3) {
+            if (version_compare((string) InstalledVersions::getVersion('symfony/serializer'), '7.3', '>=')) {
                 $default = $serializer->denormalize(['text' => 'hi'], $namespace . '\Signal');
                 self::assertIsObject($default);
                 self::assertSame($namespace . '\Note', get_class($default));
             }
 
-            $this->expectException(SerializerException::class);
-            $serializer->denormalize(['kind' => 'memo'], $namespace . '\Signal');
+            try {
+                $serializer->denormalize(['kind' => 'memo'], $namespace . '\Signal');
+                self::fail('An unmapped value selects no class.');
+            } catch (SerializerException $exception) {
+                self::addToAssertionCount(1);
+            }
         });
     }
 
