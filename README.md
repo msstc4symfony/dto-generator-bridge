@@ -267,7 +267,7 @@ failed match as a violation; the pattern used is linear and possessive, so it ho
 | Schema | Attribute |
 |---|---|
 | a wire name the PHP property does not have (`first_name` → `$firstName`) | `SerializedName('first_name')` |
-| a discriminated base | `DiscriminatorMap(typeProperty: …, mapping: […])` on the class |
+| a discriminated base | `DiscriminatorMap(typeProperty: …, mapping: […])` on the class; with an OpenAPI 3.2 `defaultMapping`, also `defaultType: …` from Symfony 7.3 |
 | `format: date` (also of list or map items, or behind a nullable union) | `Context` with the `Y-m-d` date format |
 | `x-serializer-groups: [api]` | `Groups(['api'])` |
 | `x-serializer-ignore: true` | `Ignore` |
@@ -288,6 +288,10 @@ Notes:
   value throws `\InvalidArgumentException` from the constructor, which Symfony does not turn into a validation error;
   from Symfony 6.3, `#[MapRequestPayload] Cat $cat` with `"petType": "dog"` answers 500. Map the payload to the base
   (`Pet $pet`) instead.
+- `discriminator.defaultMapping` (OpenAPI 3.2, generator 1.11) names a variant whose constructor checks no
+  discriminator. From Symfony 7.3 `DiscriminatorMap` takes it as `defaultType`, by the variant's first value, so a
+  payload without the key builds it; an earlier Serializer gets no default, with a warning. Symfony selects no class
+  for an unmapped value, and normalizing the default variant writes its own value over the one it holds.
 - Symfony Serializer cannot spread a map over the keys of its object: it would carry `$additionalProperties`, the
   properties a schema does not declare, as one key `"additionalProperties"`. By default the bridge ignores that
   property, with a warning, so undeclared keys are dropped when reading and not written;

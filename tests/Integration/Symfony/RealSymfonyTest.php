@@ -27,6 +27,7 @@ use SplFileInfo;
 use Symfony\Component\PropertyInfo\Extractor\PhpDocExtractor;
 use Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
 use Symfony\Component\PropertyInfo\PropertyInfoExtractor;
+use Symfony\Component\Serializer\Exception\ExceptionInterface as SerializerException;
 use Symfony\Component\Serializer\Exception\NotNormalizableValueException;
 use Symfony\Component\Serializer\Mapping\ClassDiscriminatorFromClassMetadata;
 use Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactory;
@@ -539,6 +540,40 @@ final class RealSymfonyTest extends TestCase
             $paths = $this->violationPaths($checkout, $annotations);
             sort($paths);
             self::assertSame(['payment.amount', 'payment.last4'], $paths);
+        });
+    }
+
+    /**
+     * The default variant of an OpenAPI 3.2 defaultMapping checks no discriminator; Symfony 7.3+ selects it for a payload
+     * without one, and no Serializer selects it for an unmapped value or keeps such a value when normalizing.
+     *
+     * @dataProvider targets
+     */
+    public function testSelectsTheDefaultVariantOfAPayloadWithoutTheDiscriminator(string $php): void
+    {
+        $this->runTarget($php, function (string $namespace, bool $annotations): void {
+            $serializer = $this->serializer($annotations);
+            $ping = $serializer->denormalize(['kind' => 'ping'], $namespace . '\Signal');
+            $note = $serializer->denormalize(['kind' => 'memo', 'text' => 'toolong'], $namespace . '\Note');
+
+            self::assertIsObject($ping);
+            self::assertIsObject($note);
+            self::assertSame($namespace . '\Ping', get_class($ping));
+            // The map writes the class's own value over the one the object holds.
+            self::assertSame(['kind' => 'Note', 'text' => 'toolong'], $serializer->normalize($note));
+            self::assertSame(['text'], $this->violationPaths($note, $annotations));
+            if (version_compare((string) InstalledVersions::getVersion('symfony/serializer'), '7.3', '>=')) {
+                $default = $serializer->denormalize(['text' => 'hi'], $namespace . '\Signal');
+                self::assertIsObject($default);
+                self::assertSame($namespace . '\Note', get_class($default));
+            }
+
+            try {
+                $serializer->denormalize(['kind' => 'memo'], $namespace . '\Signal');
+                self::fail('An unmapped value selects no class.');
+            } catch (SerializerException $exception) {
+                self::addToAssertionCount(1);
+            }
         });
     }
 

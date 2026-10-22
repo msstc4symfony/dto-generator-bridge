@@ -41,6 +41,9 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
     /** The Serializer that deprecates reading a date-time off its default format without a context saying so. */
     private const LOOSE_DATE_TIME_SINCE = '8.1';
 
+    /** The Serializer whose DiscriminatorMap takes a default type. */
+    private const DEFAULT_TYPE_SINCE = '7.3';
+
     private ComponentGate $gate;
 
     private Settings $settings;
@@ -63,11 +66,16 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
         }
 
         $mapping = array_map(static fn (ClassName $subclass): ArgumentValue => ArgumentValue::classReference($subclass), $discriminator->mapping());
-
-        return [$this->attribute($version, 'DiscriminatorMap', [
+        $arguments = [
             AttributeArgument::named('typeProperty', ArgumentValue::literal($discriminator->propertyName())),
             AttributeArgument::named('mapping', ArgumentValue::mapOf($mapping)),
-        ])];
+        ];
+        $defaultType = $this->defaultType($context, $discriminator, $version);
+        if ($defaultType !== null) {
+            $arguments[] = AttributeArgument::named('defaultType', ArgumentValue::literal($defaultType));
+        }
+
+        return [$this->attribute($version, 'DiscriminatorMap', $arguments)];
     }
 
     public function enrichProperty(PropertyContext $context): array
@@ -135,6 +143,47 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
         }
 
         return $attributes;
+    }
+
+    /**
+     * The value of the default variant, which Symfony takes only when the payload lacks the property.
+     */
+    private function defaultType(ClassContext $context, DiscriminatorModel $discriminator, SymfonyVersion $version): ?string
+    {
+        $default = $this->defaultClass($discriminator);
+        if (!$default instanceof ClassName) {
+            return null;
+        }
+
+        $at = $context->schema()->location()->child('discriminator', 'defaultMapping');
+        if (!$version->isAtLeast(SymfonyVersion::fromString(self::DEFAULT_TYPE_SINCE))) {
+            $context->diagnostics()->warning(
+                sprintf('The Serializer of Symfony %s has no default type in DiscriminatorMap (7.3 adds it): a payload without "%s" does not select %s.', $version->toString(), $discriminator->propertyName(), $default->fqcn()),
+                $at,
+            );
+
+            return null;
+        }
+
+        $value = $discriminator->defaultValue();
+        if ($value === null) {
+            $context->diagnostics()->warning(
+                sprintf('%s has no discriminator value, so DiscriminatorMap cannot name it its default type: a payload without "%s" does not select it.', $default->fqcn(), $discriminator->propertyName()),
+                $at,
+            );
+        }
+
+        return $value;
+    }
+
+    /**
+     * Typed as any object, as the model of a core before 1.11 has no default mapping; PHPStan sees only the newest.
+     */
+    private function defaultClass(object $discriminator): ?ClassName
+    {
+        $default = method_exists($discriminator, 'defaultClass') ? $discriminator->defaultClass() : null;
+
+        return $default instanceof ClassName ? $default : null;
     }
 
     /**
