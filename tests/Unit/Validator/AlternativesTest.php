@@ -145,6 +145,7 @@ final class AlternativesTest extends TestCase
 
         self::assertCount(1, $this->classAttributesOf($this->code($output, 'Pet.php')));
         self::assertSame([], $this->classAttributesOf($this->code($output, 'Cat.php')));
+        self::assertSame([self::UNTYPED], $this->messages($output));
     }
 
     public function testLeavesADiscriminatedBaseWithPropertiesToItsVariants(): void

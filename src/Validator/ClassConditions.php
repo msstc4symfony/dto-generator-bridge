@@ -280,23 +280,29 @@ final class ClassConditions
             $schema = $member->requireProperty($name);
             $flat = RawSchema::flat($schema);
             if ($flat === null) {
-                return $this->unchecked($keyword, $member);
+                $this->warnUnchecked($keyword, $member);
+
+                return null;
             }
 
             $properties[] = [$name, $flat, $schema->location()];
         }
 
-        return $plain ? [$properties, $member->required()] : $this->unchecked($keyword, $member);
+        if (!$plain) {
+            $this->warnUnchecked($keyword, $member);
+
+            return null;
+        }
+
+        return [$properties, $member->required()];
     }
 
     /**
      * @param 'oneOf'|'anyOf' $keyword
      */
-    private function unchecked(string $keyword, Schema $member): ?array
+    private function warnUnchecked(string $keyword, Schema $member): void
     {
         $this->diagnostics->warning(sprintf('"%s" is checked on a class only with members of "properties" that check one value each and "required"; it is not checked.', $keyword), $member->location());
-
-        return null;
     }
 
     private function condition(Schema $place): ?ConstraintSpec
