@@ -330,14 +330,14 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
     }
 
     /**
-     * Whether a schema of the class has the union beside its properties, undiscriminated, as the generator leaves it.
+     * Whether a schema of the class has the union, undiscriminated, which the generator leaves beside its properties.
      *
      * @param 'oneOf'|'anyOf' $keyword
      */
     private function alternated(Keywords $keywords, string $keyword): bool
     {
         foreach ($keywords->schemas() as $place) {
-            if (($keyword === 'oneOf' ? $place->oneOf() : $place->anyOf()) !== [] && $place->propertyNames() !== [] && !$place->discriminator() instanceof Discriminator) {
+            if (($keyword === 'oneOf' ? $place->oneOf() : $place->anyOf()) !== [] && !$place->discriminator() instanceof Discriminator) {
                 return true;
             }
         }

@@ -75,6 +75,8 @@ final class AlternativesTest extends TestCase
     public static function unchecked(): iterable
     {
         yield 'a $ref' => [['$ref' => '#/components/schemas/Other'], '/oneOf/1'];
+        yield 'items beside a requirement' => [['required' => ['status'], 'items' => ['type' => 'string']], '/oneOf/1'];
+        yield 'an object property beside a requirement' => [['required' => ['status'], 'properties' => ['name' => ['type' => 'string', 'properties' => ['a' => ['type' => 'string']]]]], '/oneOf/1'];
         yield 'an allOf' => [['allOf' => [['required' => ['name']]]], '/oneOf/1'];
         yield 'a nested union' => [['anyOf' => [['required' => ['name']]]], '/oneOf/1'];
         yield 'a nested oneOf' => [['oneOf' => [['required' => ['name']]]], '/oneOf/1'];
@@ -111,6 +113,48 @@ final class AlternativesTest extends TestCase
         $output = $this->withRuntime(['type' => 'object', 'properties' => ['v' => ['oneOf' => [['type' => 'string'], ['type' => 'integer']]]]]);
 
         self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
+    public function testWarnsAboutAMemberThatNamesWhatTheClassCannotCheck(): void
+    {
+        $properties = self::PROPERTIES + ['kind' => ['type' => 'string', 'default' => 'pet']];
+        $unknown = $this->withRuntime(['type' => 'object', 'properties' => $properties, 'anyOf' => [['required' => ['name']], ['required' => ['owner']]]]);
+        $defaulted = $this->withRuntime(['type' => 'object', 'properties' => $properties, 'anyOf' => [['required' => ['name']], ['required' => ['kind']]]]);
+
+        self::assertSame([], $this->classAttributesOf($this->code($unknown, 'Pet.php')));
+        self::assertSame([self::UNTYPED, self::AT . ': "anyOf" names "owner", which is not a property of this class; it is not checked.'], $this->messages($unknown));
+        self::assertSame([], $this->classAttributesOf($this->code($defaulted, 'Pet.php')));
+        self::assertSame([self::UNTYPED, self::AT . ': "anyOf" names "kind", which has a default and is always set; it is not checked.'], $this->messages($defaulted));
+    }
+
+    public function testChecksTheUnionOfEverySchemaOfTheClassOnce(): void
+    {
+        $output = $this->withRuntime(['x-php-all-of' => 'merge', 'allOf' => [
+            ['type' => 'object', 'properties' => ['a' => ['type' => 'string']], 'anyOf' => [['required' => ['a']], ['required' => ['b']]]],
+            ['type' => 'object', 'properties' => ['b' => ['type' => 'string']], 'anyOf' => [['required' => ['b']], ['required' => ['a']]]],
+        ]]);
+
+        self::assertCount(2, $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
+    public function testLeavesTheUnionOfAParentToItsClass(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => self::PROPERTIES, 'anyOf' => [['required' => ['name']], ['required' => ['status']]]], [
+            'Cat' => ['allOf' => [['$ref' => '#/components/schemas/Pet'], ['properties' => ['lives' => ['type' => 'integer']]]]],
+        ]);
+
+        self::assertCount(1, $this->classAttributesOf($this->code($output, 'Pet.php')));
+        self::assertSame([], $this->classAttributesOf($this->code($output, 'Cat.php')));
+    }
+
+    public function testLeavesADiscriminatedBaseWithPropertiesToItsVariants(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => ['kind' => ['type' => 'string']], 'oneOf' => [['$ref' => '#/components/schemas/Cat']], 'discriminator' => ['propertyName' => 'kind']], [
+            'Cat' => ['type' => 'object', 'required' => ['kind'], 'properties' => ['kind' => ['type' => 'string']]],
+        ]);
+
+        self::assertStringNotContainsString('ExactlyOneOf', $this->code($output, 'Pet.php'));
+        self::assertSame([], array_filter($this->messages($output), static fn (string $message): bool => strpos($message, 'is checked on a class only') !== false));
     }
 
     public function testNeedsTheRuntimeOfNotForAnAnyOf(): void

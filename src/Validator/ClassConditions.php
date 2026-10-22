@@ -87,7 +87,7 @@ final class ClassConditions
         $alternatives = [];
         foreach ($keywords->schemas() as $place) {
             $members = $keyword === 'oneOf' ? $place->oneOf() : $place->anyOf();
-            if ($members === [] || $place->propertyNames() === [] || $place->discriminator() instanceof Discriminator || $this->properties->ofAncestor($place)) {
+            if ($members === [] || $place->discriminator() instanceof Discriminator || $this->properties->ofAncestor($place)) {
                 continue;
             }
 
@@ -280,21 +280,23 @@ final class ClassConditions
             $schema = $member->requireProperty($name);
             $flat = RawSchema::flat($schema);
             if ($flat === null) {
-                $plain = false;
-
-                break;
+                return $this->unchecked($keyword, $member);
             }
 
             $properties[] = [$name, $flat, $schema->location()];
         }
 
-        if (!$plain) {
-            $this->diagnostics->warning(sprintf('"%s" is checked on a class only with members of "properties" that check one value each and "required"; it is not checked.', $keyword), $member->location());
+        return $plain ? [$properties, $member->required()] : $this->unchecked($keyword, $member);
+    }
 
-            return null;
-        }
+    /**
+     * @param 'oneOf'|'anyOf' $keyword
+     */
+    private function unchecked(string $keyword, Schema $member): ?array
+    {
+        $this->diagnostics->warning(sprintf('"%s" is checked on a class only with members of "properties" that check one value each and "required"; it is not checked.', $keyword), $member->location());
 
-        return [$properties, $member->required()];
+        return null;
     }
 
     private function condition(Schema $place): ?ConstraintSpec
