@@ -92,6 +92,30 @@ final class KeywordsTest extends TestCase
         }
     }
 
+    public function testMeetsEnumsAsJsonComparesTheirValues(): void
+    {
+        $pairs = [
+            [[1], [1.0], [1]],
+            [[1.0], [1], [1.0]],
+            [['1'], [1], []],
+            [[1], [true], []],
+            [[0.0], [-0.0], [0.0]],
+            [[9007199254740993], [9007199254740992], []],
+            [[-9007199254740993], [-9007199254740992], []],
+            [[9007199254740992], [9007199254740992.0], [9007199254740992]],
+            [[[1, 2]], [[1, 2]], [[1, 2]]],
+            [[[1, 2]], [[2, 1]], []],
+            [[['a' => 1]], [['a' => 1.0]], []],
+            [[null, 'a'], [null], [null]],
+            [['b', 'a', 'b'], ['a', 'b'], ['b', 'a']],
+        ];
+        foreach ($pairs as [$own, $branch, $expected]) {
+            $schema = $this->schema([], $own, null, [], ['allOf' => [$this->schema([], $branch)]]);
+
+            self::assertSame($expected, (new Keywords($schema, SchemaReferences::none()))->enum(), var_export([$own, $branch], true));
+        }
+    }
+
     public function testTypesTheValueThroughTheOneTypedAllOfBranch(): void
     {
         $list = $this->schema();

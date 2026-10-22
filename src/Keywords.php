@@ -19,6 +19,9 @@ use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
  */
 final class Keywords
 {
+    /** The integers a float holds exactly. */
+    private const FLOAT_INTEGERS = 2 ** 53;
+
     /** @var list<Schema> nearest first */
     private array $schemas = [];
 
@@ -261,14 +264,41 @@ final class Keywords
      */
     private function common(array $allowed, array $enum): array
     {
+        // Large enums (countries, currencies) meet each other, so they are matched by key rather than pairwise.
+        $listed = [];
+        foreach ($enum as $value) {
+            $listed[$this->key($value)] = true;
+        }
+
         $common = [];
         foreach ($allowed as $value) {
-            if ($this->contains($enum, $value) && !$this->contains($common, $value)) {
-                $common[] = $value;
+            $key = $this->key($value);
+            if (isset($listed[$key]) && !array_key_exists($key, $common)) {
+                $common[$key] = $value;
             }
         }
 
-        return $common;
+        return array_values($common);
+    }
+
+    /**
+     * A key two values share when same() holds for them: a number by its value, whether int or float, an integer
+     * beyond a float's precision by itself, anything else as it is.
+     *
+     * @param JsonValue $value
+     */
+    private function key($value): string
+    {
+        if (is_int($value) && abs($value) > self::FLOAT_INTEGERS) {
+            return 'i:' . $value;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            // -0.0 is 0.0, which var_export() would tell apart.
+            return (float) $value === 0.0 ? 'n:0' : 'n:' . var_export((float) $value, true);
+        }
+
+        return 'v:' . serialize($value);
     }
 
     /**
