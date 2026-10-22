@@ -11,7 +11,8 @@ use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 /**
  * The keywords a value must satisfy (JSON Schema 2020-12): those of its schema, of every schema its `$ref` chain passes
  * through, of its `allOf` branches, and of the one member of a `oneOf`/`anyOf` that leaves only null aside (a value
- * other than null has to satisfy it). Values compare as JSON does: 1 and 1.0 are the same number.
+ * other than null has to satisfy it). Values compare as JSON does, numbers by their exact value: 1 and 1.0 are the same
+ * number, 2^53 + 1 and the float nearest to it are not.
  *
  * @phpstan-import-type JsonValue from Json
  *
@@ -19,8 +20,10 @@ use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
  */
 final class Keywords
 {
-    /** The integers a float holds exactly. */
-    private const FLOAT_INTEGERS = 2 ** 53;
+    /** The floats that bound the range of int: PHP_INT_MAX itself rounds up to the upper one, which int lacks. */
+    private const MIN_INT_FLOAT = -9.2233720368547758E18;
+
+    private const MAX_INT_FLOAT = 9.2233720368547758E18;
 
     /** @var list<Schema> nearest first */
     private array $schemas = [];
@@ -98,12 +101,13 @@ final class Keywords
     {
         $values = [];
         foreach ($this->schemas as $schema) {
-            if ($schema->hasKeyword($name) && !$this->contains($values, $schema->keyword($name))) {
-                $values[] = $schema->keyword($name);
+            $key = $schema->hasKeyword($name) ? $this->key($schema->keyword($name)) : null;
+            if ($key !== null && !array_key_exists($key, $values)) {
+                $values[$key] = $schema->keyword($name);
             }
         }
 
-        return $values;
+        return array_values($values);
     }
 
     /**
@@ -283,54 +287,44 @@ final class Keywords
     }
 
     /**
-     * A key two values share when same() holds for them: a number by its value, whether int or float, an integer
-     * beyond a float's precision by itself, anything else serialized; their forms never meet.
+     * A key two values share when JSON holds them equal: numbers by their exact value, a whole one as an integer and
+     * any other by its bits, as a string of digits would depend on serialize_precision; anything else serialized.
      *
      * @param JsonValue $value
      */
     private function key($value): string
     {
-        if (is_int($value) && abs($value) > self::FLOAT_INTEGERS) {
+        $value = $this->exact($value);
+        if (is_int($value)) {
             return (string) $value;
         }
 
-        if (is_int($value) || is_float($value)) {
-            // -0.0 is 0.0, which var_export() would tell apart.
-            $number = (float) $value;
-
-            return $number === 0.0 ? '0.0' : var_export($number, true);
+        if (is_float($value)) {
+            return 'd' . bin2hex(pack('E', $value));
         }
 
         return serialize($value);
     }
 
     /**
-     * @param list<JsonValue> $values
+     * The value with a whole float within the range of int as that int, -0.0 among them; in arrays only -0.0 becomes
+     * 0.0, as serialize() would tell them apart although === does not.
+     *
      * @param JsonValue $value
+     *
+     * @return JsonValue
      */
-    private function contains(array $values, $value): bool
+    private function exact($value)
     {
-        foreach ($values as $listed) {
-            if ($this->same($listed, $value)) {
-                return true;
-            }
+        if (is_array($value)) {
+            return array_map(fn ($member) => is_array($member) ? $this->exact($member) : ($member === 0.0 ? abs($member) : $member), $value);
         }
 
-        return false;
-    }
-
-    /**
-     * @param JsonValue $a
-     * @param JsonValue $b
-     */
-    private function same($a, $b): bool
-    {
-        $numbers = (is_int($a) || is_float($a)) && (is_int($b) || is_float($b));
-        if (!$numbers || (is_int($a) && is_int($b))) {
-            return $a === $b;
+        if (is_float($value) && floor($value) === $value && $value >= self::MIN_INT_FLOAT && $value < self::MAX_INT_FLOAT) {
+            return (int) $value;
         }
 
-        return (float) $a === (float) $b;
+        return $value;
     }
 
     private function isObject(Schema $schema): bool
