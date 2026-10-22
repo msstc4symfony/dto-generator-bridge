@@ -118,6 +118,8 @@ final class KeywordsTest extends TestCase
             [[10000000000000000], [1e16], [10000000000000000]],
             [[PHP_INT_MAX], [9.2233720368547758E18], []],
             [[-9.2233720368547758E18], [PHP_INT_MIN], [-9.2233720368547758E18]],
+            [[PHP_INT_MIN], [9.2233720368547758E18], []],
+            [[2.5], [2], []],
             [[0.1 + 0.2], [0.3], []],
             [[2.5], [2.5], [2.5]],
             [[null, 'a'], [null], [null]],
@@ -127,6 +129,19 @@ final class KeywordsTest extends TestCase
             $schema = $this->schema([], $own, null, [], ['allOf' => [$this->schema([], $branch)]]);
 
             self::assertSame(var_export($expected, true), var_export((new Keywords($schema, SchemaReferences::none()))->enum(), true), var_export([$own, $branch], true));
+        }
+    }
+
+    public function testMeetsFractionsByTheirBitsWhateverTheSerializePrecision(): void
+    {
+        $precision = ini_get('serialize_precision');
+        ini_set('serialize_precision', '14');
+        try {
+            $schema = $this->schema([], [0.1 + 0.2], null, [], ['allOf' => [$this->schema([], [0.3])]]);
+
+            self::assertSame([], (new Keywords($schema, SchemaReferences::none()))->enum());
+        } finally {
+            ini_set('serialize_precision', (string) $precision);
         }
     }
 

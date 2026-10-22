@@ -288,22 +288,15 @@ final class Keywords
 
     /**
      * A key two values share when JSON holds them equal: numbers by their exact value, a whole one as an integer and
-     * any other by its bits, as a string of digits would depend on serialize_precision; anything else serialized.
+     * any other by its bits, as serialize() would round it to serialize_precision; anything else serialized.
      *
      * @param JsonValue $value
      */
     private function key($value): string
     {
         $value = $this->exact($value);
-        if (is_int($value)) {
-            return (string) $value;
-        }
 
-        if (is_float($value)) {
-            return 'd' . bin2hex(pack('E', $value));
-        }
-
-        return serialize($value);
+        return is_float($value) ? bin2hex(pack('E', $value)) : serialize($value);
     }
 
     /**
@@ -320,7 +313,7 @@ final class Keywords
             return array_map(fn ($member) => is_array($member) ? $this->exact($member) : ($member === 0.0 ? abs($member) : $member), $value);
         }
 
-        if (is_float($value) && floor($value) === $value && $value >= self::MIN_INT_FLOAT && $value < self::MAX_INT_FLOAT) {
+        if (is_float($value) && $value >= self::MIN_INT_FLOAT && $value < self::MAX_INT_FLOAT && floor($value) === $value) {
             return (int) $value;
         }
 
