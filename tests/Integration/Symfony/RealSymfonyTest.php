@@ -14,7 +14,6 @@ use MSSTC4PHP\DtoGenerator\Application\Service\Generate\Input;
 use MSSTC4PHP\DtoGenerator\Application\Service\Generate\Mode;
 use MSSTC4PHP\DtoGenerator\Domain\Builder\ObjectDefaults;
 use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostic;
-use MSSTC4PHP\DtoGenerator\Domain\Model\DiscriminatorModel;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use MSSTC4PHP\DtoGenerator\DtoGenerator;
 use Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalPropertiesNormalizer;
@@ -22,7 +21,6 @@ use Msstc4Symfony\DtoGeneratorBridge\SymfonyExtension;
 use PHPUnit\Framework\TestCase;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
-use ReflectionClass;
 use ReflectionParameter;
 use ReflectionProperty;
 use SplFileInfo;
@@ -553,10 +551,6 @@ final class RealSymfonyTest extends TestCase
      */
     public function testSelectsTheDefaultVariantOfAPayloadWithoutTheDiscriminator(string $php): void
     {
-        if (!(new ReflectionClass(DiscriminatorModel::class))->hasMethod('defaultClass')) {
-            self::markTestSkipped('The core before 1.11 reads no default mapping.');
-        }
-
         $this->runTarget($php, function (string $namespace, bool $annotations): void {
             $serializer = $this->serializer($annotations);
             $ping = $serializer->denormalize(['kind' => 'ping'], $namespace . '\Signal');

@@ -150,7 +150,7 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
      */
     private function defaultType(ClassContext $context, DiscriminatorModel $discriminator, SymfonyVersion $version): ?string
     {
-        $default = $this->defaultClass($discriminator);
+        $default = $discriminator->defaultClass();
         if (!$default instanceof ClassName) {
             return null;
         }
@@ -174,16 +174,6 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
         }
 
         return $value;
-    }
-
-    /**
-     * Typed as any object, as the model of a core before 1.11 has no default mapping; PHPStan sees only the newest.
-     */
-    private function defaultClass(object $discriminator): ?ClassName
-    {
-        $default = method_exists($discriminator, 'defaultClass') ? $discriminator->defaultClass() : null;
-
-        return $default instanceof ClassName ? $default : null;
     }
 
     /**
