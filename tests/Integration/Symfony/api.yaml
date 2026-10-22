@@ -164,6 +164,23 @@ components:
           fish: '#/components/schemas/Fish'
           bird: '#/components/schemas/Bird'
     CreatureKind: {type: string, enum: [fish, bird]}
+    CheckRun:
+      type: object
+      properties:
+        status: {type: string, enum: [queued, completed]}
+        conclusion: {type: string}
+      oneOf:
+        - properties: {status: {const: completed}}
+          required: [status, conclusion]
+        - properties: {status: {const: queued}}
+    Contact:
+      type: object
+      properties:
+        email: {type: string}
+        phone: {type: string}
+      anyOf:
+        - required: [email]
+        - required: [phone]
     Signal:
       oneOf:
         - {$ref: '#/components/schemas/Ping'}

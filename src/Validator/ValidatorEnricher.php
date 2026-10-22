@@ -323,6 +323,8 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             ClaimedConstraints::conditionPlaces($keywords) !== [] && $runtime->available('if', $at) ? $class->of($keywords) : [],
             ClaimedConstraints::forbids($keywords->values('not')) && $runtime->available('not', $at) ? $class->negations($keywords) : [],
             $keywords->has('dependentSchemas') && $runtime->available('dependentSchemas', $at) ? $class->dependencies($keywords) : [],
+            ClassConditions::alternated($keywords, 'oneOf') !== [] && $runtime->available('oneOf', $at) ? $class->alternatives($keywords, 'oneOf') : [],
+            ClassConditions::alternated($keywords, 'anyOf') !== [] && $runtime->available('anyOf', $at) ? $class->alternatives($keywords, 'anyOf') : [],
         );
     }
 

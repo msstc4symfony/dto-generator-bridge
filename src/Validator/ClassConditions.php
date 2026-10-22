@@ -8,14 +8,17 @@ use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostics;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ArgumentValue;
 use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeArgument;
 use MSSTC4PHP\DtoGenerator\Domain\Model\PropertyModel;
+use MSSTC4PHP\DtoGenerator\Domain\Schema\Discriminator;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\Schema;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaLocation;
+use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaType;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\DefaultValue;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use Msstc4Symfony\DtoGeneratorBridge\Keywords;
 
 /**
- * The conditions (`if`, `then`, `else`), negations (`not`) and dependencies (`dependentSchemas`) a class can check:
+ * The conditions (`if`, `then`, `else`), negations (`not`), dependencies (`dependentSchemas`) and the `oneOf` and
+ * `anyOf` beside its properties that a class can check:
  * schemas of `properties` and `required`, by the PHP names of its own properties. As with `dependentRequired`, one the
  * schema declaring its properties holds is left to the class of that schema, and any other one with an inherited
  * property is not checked.
@@ -31,10 +34,15 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
  * the schema of `dependentSchemas`, where a property with a default meets it anyway).
  * @phpstan-type NamedBranch array{non-empty-string, BranchShape, bool}
  *
+ * A schema of the class with a `oneOf` or `anyOf` the class checks, and its members.
+ * @phpstan-type AlternatedPlace array{Schema, non-empty-list<Schema>}
+ *
  * @internal
  */
 final class ClassConditions
 {
+    private const NONE_HOLDS = 'This value should satisfy at least one of the given constraints.';
+
     private ConstraintBuilder $builder;
 
     private Diagnostics $diagnostics;
@@ -69,6 +77,48 @@ final class ClassConditions
         }
 
         return $conditions;
+    }
+
+    /**
+     * ExactlyOneOf for a `oneOf` beside the properties of a class, which the generator does not type, and for an `anyOf`
+     * Not of the Not of each member, as Symfony's AtLeastOneOf takes no class: each member a branch of `properties` and
+     * `required`, as a condition's.
+     *
+     * @param 'oneOf'|'anyOf' $keyword
+     *
+     * @return list<ConstraintSpec>
+     */
+    public function alternatives(Keywords $keywords, string $keyword): array
+    {
+        $alternatives = [];
+        foreach (self::alternated($keywords, $keyword) as [$place, $members]) {
+            $alternative = $this->alternative($keyword, $members, $place);
+            if ($alternative instanceof ConstraintSpec) {
+                $alternatives[] = $alternative;
+            }
+        }
+
+        return $alternatives;
+    }
+
+    /**
+     * The schemas of the class with the union, undiscriminated, which the generator leaves beside its properties.
+     *
+     * @param 'oneOf'|'anyOf' $keyword
+     *
+     * @return list<AlternatedPlace>
+     */
+    public static function alternated(Keywords $keywords, string $keyword): array
+    {
+        $places = [];
+        foreach ($keywords->schemas() as $place) {
+            $members = $keyword === 'oneOf' ? $place->oneOf() : $place->anyOf();
+            if ($members !== [] && !$place->discriminator() instanceof Discriminator) {
+                $places[] = [$place, $members];
+            }
+        }
+
+        return $places;
     }
 
     /**
@@ -174,6 +224,144 @@ final class ClassConditions
         }
 
         return ConstraintSpec::runtime('Not', $inner === [] ? [] : [AttributeArgument::named('constraints', ArgumentValue::listOf(...$inner))]);
+    }
+
+    /**
+     * @param 'oneOf'|'anyOf' $keyword
+     * @param non-empty-list<Schema> $members
+     */
+    private function alternative(string $keyword, array $members, Schema $place): ?ConstraintSpec
+    {
+        $reads = [];
+        foreach ($members as $member) {
+            $read = $this->member($keyword, $member);
+            if ($read === null) {
+                return null;
+            }
+
+            $reads[] = $read;
+        }
+
+        $branches = array_map(static fn (array $read): array => [$keyword, $read, true], $reads);
+        if (!$this->namesOwnProperties($branches, $place, 'it') || $this->namesAlwaysSet($branches, $place, 'it')) {
+            return null;
+        }
+
+        $at = $place->location()->child($keyword);
+        $inner = [];
+        foreach ($reads as $index => $read) {
+            $checks = $this->checks($keyword, $read, $place);
+            if ($checks === null) {
+                return null;
+            }
+
+            // Such a member holds for every class: an anyOf holds, and a oneOf would need the others to fail.
+            if ($checks === []) {
+                if ($keyword === 'oneOf') {
+                    $this->diagnostics->warning('A member of "oneOf" checks nothing a class holds; "oneOf" is not checked.', $members[$index]->location());
+                }
+
+                return null;
+            }
+
+            $constraint = $this->memberConstraint($keyword, $checks, $at);
+            if (!$constraint instanceof ConstraintSpec) {
+                return null;
+            }
+
+            $inner[] = $constraint;
+        }
+
+        $arguments = $this->builder->asNew($keyword, $inner, $at);
+        if ($arguments === null) {
+            return null;
+        }
+
+        $constraints = [AttributeArgument::named('constraints', ArgumentValue::listOf(...$arguments))];
+        if ($keyword === 'oneOf') {
+            return ConstraintSpec::runtime('ExactlyOneOf', $constraints);
+        }
+
+        $constraints[] = AttributeArgument::named('message', ArgumentValue::literal(self::NONE_HOLDS));
+
+        return ConstraintSpec::runtime('Not', $constraints);
+    }
+
+    /**
+     * The constraint of a member: its checks in Sequentially for a oneOf, in Not for an anyOf, which Not negates again.
+     *
+     * @param 'oneOf'|'anyOf' $keyword
+     * @param non-empty-list<ConstraintSpec> $checks
+     */
+    private function memberConstraint(string $keyword, array $checks, SchemaLocation $at): ?ConstraintSpec
+    {
+        if ($keyword === 'oneOf' && count($checks) === 1) {
+            return $checks[0];
+        }
+
+        $nested = $this->builder->asNew($keyword, $checks, $at);
+        if ($nested === null) {
+            return null;
+        }
+
+        $constraints = [AttributeArgument::named('constraints', ArgumentValue::listOf(...$nested))];
+        $composite = $keyword === 'anyOf' ? ConstraintSpec::runtime('Not', $constraints) : new ConstraintSpec('Sequentially', $constraints);
+
+        // Symfony fixes the groups of a nested composite when it is built; the outer one does not pass its own on.
+        return $composite->withGroups($this->groups);
+    }
+
+    /**
+     * A member as a branch: an inline object of `properties`, each a schema of one value, and `required`.
+     *
+     * @param 'oneOf'|'anyOf' $keyword
+     *
+     * @return BranchShape|null
+     */
+    private function member(string $keyword, Schema $member): ?array
+    {
+        if (!self::isPlain($member)) {
+            $this->warnUnchecked($keyword, $member);
+
+            return null;
+        }
+
+        $properties = [];
+        foreach ($member->propertyNames() as $name) {
+            $schema = $member->requireProperty($name);
+            $flat = RawSchema::flat($schema);
+            if ($flat === null) {
+                $this->warnUnchecked($keyword, $member);
+
+                return null;
+            }
+
+            $properties[] = [$name, $flat, $schema->location()];
+        }
+
+        return [$properties, $member->required()];
+    }
+
+    /**
+     * An inline object that says nothing but its properties and which of them it requires.
+     */
+    private static function isPlain(Schema $member): bool
+    {
+        $types = array_map(static fn (SchemaType $type): string => $type->value(), $member->types());
+        $additional = $member->additionalProperties();
+
+        return $member->ref() === null && $member->enum() === null && array_diff($types, ['object']) === []
+            && $member->allOf() === [] && $member->oneOf() === [] && $member->anyOf() === [] && !$member->discriminator() instanceof Discriminator
+            && !$member->items() instanceof Schema && ($additional === null || $additional === true)
+            && array_filter($member->keywordNames(), static fn (string $name): bool => !Subschema::annotates($name)) === [];
+    }
+
+    /**
+     * @param 'oneOf'|'anyOf' $keyword
+     */
+    private function warnUnchecked(string $keyword, Schema $member): void
+    {
+        $this->diagnostics->warning(sprintf('"%s" is checked on a class only with members of "properties" that check one value each and "required"; it is not checked.', $keyword), $member->location());
     }
 
     private function condition(Schema $place): ?ConstraintSpec

@@ -21,7 +21,8 @@ final class RuntimeConstraints
     private const MINIMUM = '1.1';
 
     /** The keywords whose constraints came later. */
-    private const MINIMUM_OF = ['not' => '1.2', 'dependentSchemas' => '1.2', 'oneOf' => '1.3'];
+    /** An anyOf here is one beside a class's properties, which Not checks; one of values takes Symfony's AtLeastOneOf. */
+    private const MINIMUM_OF = ['not' => '1.2', 'dependentSchemas' => '1.2', 'anyOf' => '1.2', 'oneOf' => '1.3'];
 
     private InstalledPackages $packages;
 

@@ -61,6 +61,16 @@ final class RawSchema
     }
 
     /**
+     * The keywords of a schema that checks one value alone, as JSON; null for one that shapes more, or names another.
+     *
+     * @return array<string, JsonValue>|null
+     */
+    public static function flat(Schema $schema): ?array
+    {
+        return $schema->ref() === null && self::isFlat($schema) ? self::keywords($schema) : null;
+    }
+
+    /**
      * Whether the schema holds no keyword with an accessor of its own but those that check a value alone; the others
      * (`properties`, `allOf`…) shape the value in ways a raw schema of one value does not hold.
      */
