@@ -260,6 +260,7 @@ final class RuntimeConstraintsTest extends TestCase
             ],
             [
                 'warning ' . $at . 'B: "oneOf" and "anyOf" beside "properties" are not represented; the class keeps only its properties.',
+                'warning ' . $at . 'B: "oneOf" is checked by msstc4symfony/dto-generator-bridge-runtime 1.3 or newer, which the project does not install; it is not checked.',
                 'warning ' . $at . 'B/oneOf/1/contains: "contains" is not supported and has no effect on the generated type.',
                 'warning ' . $at . 'B/contains: "contains" is not supported and has no effect on the generated type.',
             ],
