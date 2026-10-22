@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Serializer;
 
+use MSSTC4PHP\DtoGenerator\Domain\Model\DiscriminatorModel;
 use Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalProperties;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\GeneratesDtos;
 use PHPUnit\Framework\TestCase;
+use ReflectionClass;
 
 final class SerializerEnricherTest extends TestCase
 {
@@ -193,6 +195,7 @@ final class SerializerEnricherTest extends TestCase
 
     public function testNamesTheDefaultVariantFromSymfony73(): void
     {
+        $this->needsDefaultMapping();
         $output = $this->generate(self::DEFAULTED, self::VARIANTS, '8.2', self::ONLY_SERIALIZER, null, ['symfony/serializer' => 'v7.3.0']);
 
         self::assertSame([], $this->messages($output));
@@ -204,6 +207,7 @@ final class SerializerEnricherTest extends TestCase
 
     public function testWarnsThatAnOlderSerializerTakesNoDefaultVariant(): void
     {
+        $this->needsDefaultMapping();
         $output = $this->generate(self::DEFAULTED, self::VARIANTS, '8.2', self::ONLY_SERIALIZER, null, ['symfony/serializer' => 'v7.2.9']);
 
         self::assertSame(
@@ -218,6 +222,7 @@ final class SerializerEnricherTest extends TestCase
 
     public function testWarnsAboutADefaultVariantWithoutAValue(): void
     {
+        $this->needsDefaultMapping();
         $output = $this->generate(
             ['discriminator' => ['propertyName' => 'kind', 'mapping' => ['cat' => 'Cat', 'Other' => 'Cat'], 'defaultMapping' => 'Other']] + self::DEFAULTED,
             self::VARIANTS,
@@ -344,5 +349,15 @@ final class SerializerEnricherTest extends TestCase
         self::assertSame([], $this->messages($output));
 
         return $this->code($output, 'Pet.php');
+    }
+
+    /**
+     * The default mapping came with core 1.11; the bridge accepts cores from 1.6.
+     */
+    private function needsDefaultMapping(): void
+    {
+        if (!(new ReflectionClass(DiscriminatorModel::class))->hasMethod('defaultClass')) {
+            self::markTestSkipped('The core before 1.11 reads no default mapping.');
+        }
     }
 }
