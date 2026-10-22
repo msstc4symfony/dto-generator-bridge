@@ -6,6 +6,14 @@ All notable changes to this package are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A `oneOf` or `anyOf` beside the properties of a class, without a discriminator, which the generator leaves untyped,
+  is checked when its members are objects of `properties` and `required`: `ExactlyOneOf` of the runtime 1.3 for a
+  `oneOf`, and for an `anyOf` `Not` of a `Not` per member (runtime 1.2), as Symfony's `AtLeastOneOf` takes no class.
+  A member the bridge cannot check (a `$ref`, a nested union, keywords beyond `properties` and `required`) is warned
+  about.
+
 ## [1.6.0] - 2026-10-22
 
 ### Changed

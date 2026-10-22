@@ -112,6 +112,8 @@ nullable `oneOf`/`anyOf` (all apply, as in JSON Schema 2020-12):
 | `dependentSchemas` on a class | `RuntimeAssert\IfThenElse` with `Present` of the property in `if`, or `Not` of it for `false`, on the class (not on PHP 8.0) |
 | `anyOf` of members the generator types as PHP scalars, without a discriminator | `AtLeastOneOf`, each member its `Type` and its constraints (in `Sequentially`), when a member has keywords or the property has no union type (PHP 7.4); not on PHP 8.0 |
 | `oneOf` of such members | `RuntimeAssert\ExactlyOneOf` (runtime 1.3), the same members, also when two members share a type; not on PHP 8.0 |
+| `oneOf` beside the properties of a class, without a discriminator, whose members are objects of `properties` and `required` | `RuntimeAssert\ExactlyOneOf` (runtime 1.3) of each member's `Property` and `Present`, on the class; not on PHP 8.0 |
+| `anyOf` of such members | `RuntimeAssert\Not` of a `Not` per member (runtime 1.2), as Symfony's `AtLeastOneOf` takes no class: valid when a member holds; not on PHP 8.0 |
 | `prefixItems` on a list | `Collection` of the elements by index, extra and missing ones allowed (not on PHP 8.0) |
 | `unevaluatedItems: false` on a list | `Count(max: …)`, the length of the longest `prefixItems` of its schema |
 | an `unevaluatedItems` schema on a list without `prefixItems` | `All`, as `items` (not on PHP 8.0) |
@@ -162,7 +164,8 @@ JSON Schema ignores it there.
 They follow JSON Schema with these limits:
 
 - **Subschemas** (of `contains`, `propertyNames`, `patternProperties`, `if`, `then`, `else`, `not`, `prefixItems`,
-  `unevaluatedItems`, and of the properties in a class's branches, its `not` and its `dependentSchemas`) must be flat: `type`, `format`, `enum`, `const`, the string and number keywords,
+  `unevaluatedItems`, and of the properties in a class's branches, its `not`, its `dependentSchemas` and the members
+  of a `oneOf`/`anyOf` beside its properties) must be flat: `type`, `format`, `enum`, `const`, the string and number keywords,
   annotations and `x-` keys. A `$ref` is followed (with the generator 1.6): the keywords of every schema on the way are
   checked together, their annotations and metadata (`example`, `readOnly`, `xml`…) aside, as long as each schema is
   flat and no two of them hold the same keyword; otherwise, or when it does not resolve (the generator warns about
