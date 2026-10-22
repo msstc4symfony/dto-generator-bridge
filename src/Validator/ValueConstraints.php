@@ -78,6 +78,32 @@ final class ValueConstraints
     }
 
     /**
+     * @return list<ConstraintSpec>
+     */
+    public function constants(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
+    {
+        $constants = $keywords->values('const');
+        if ($constants === []) {
+            return [];
+        }
+
+        if (count($constants) > 1) {
+            $this->diagnostics->warning('The "const" values differ, so no value is valid; they are not checked.', $at);
+
+            return [];
+        }
+
+        // IsNull checks an object as well as a scalar.
+        if ($constants[0] !== null && $this->heldByClass($value, 'const', $at)) {
+            return [];
+        }
+
+        $constraint = $this->constant($constants[0], $value, $at);
+
+        return $constraint instanceof ConstraintSpec ? [$constraint] : [];
+    }
+
+    /**
      * The property holds a case of the generated enum, which allows every value of it: a narrower `enum` (one beside a
      * `$ref`, or a branch's) needs Choice of the cases it allows.
      *
@@ -122,32 +148,6 @@ final class ValueConstraints
         }
 
         return true;
-    }
-
-    /**
-     * @return list<ConstraintSpec>
-     */
-    public function constants(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
-    {
-        $constants = $keywords->values('const');
-        if ($constants === []) {
-            return [];
-        }
-
-        if (count($constants) > 1) {
-            $this->diagnostics->warning('The "const" values differ, so no value is valid; they are not checked.', $at);
-
-            return [];
-        }
-
-        // IsNull checks an object as well as a scalar.
-        if ($constants[0] !== null && $this->heldByClass($value, 'const', $at)) {
-            return [];
-        }
-
-        $constraint = $this->constant($constants[0], $value, $at);
-
-        return $constraint instanceof ConstraintSpec ? [$constraint] : [];
     }
 
     /**

@@ -85,24 +85,6 @@ final class KindConstraints
     }
 
     /**
-     * @return Kind
-     */
-    private function kindOf(TypeModel $value): ?string
-    {
-        if ($value instanceof ScalarType) {
-            $kinds = ['string' => 'string', 'int' => 'integer', 'float' => 'number', 'bool' => null];
-
-            return $kinds[$value->kind()];
-        }
-
-        if ($value instanceof ListType || $value instanceof MapType) {
-            return 'collection';
-        }
-
-        return $value instanceof UnionType || $value instanceof MixedType ? 'several' : null;
-    }
-
-    /**
      * The constraints of the keywords of strings, numbers and collections the value is checked for.
      *
      * @return list<ConstraintSpec>
@@ -157,6 +139,24 @@ final class KindConstraints
         }
 
         return $constraints;
+    }
+
+    /**
+     * @return Kind
+     */
+    private function kindOf(TypeModel $value): ?string
+    {
+        if ($value instanceof ScalarType) {
+            $kinds = ['string' => 'string', 'int' => 'integer', 'float' => 'number', 'bool' => null];
+
+            return $kinds[$value->kind()];
+        }
+
+        if ($value instanceof ListType || $value instanceof MapType) {
+            return 'collection';
+        }
+
+        return $value instanceof UnionType || $value instanceof MixedType ? 'several' : null;
     }
 
     /**

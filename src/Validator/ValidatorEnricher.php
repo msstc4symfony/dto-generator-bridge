@@ -105,6 +105,43 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         return $attributes;
     }
 
+    public function enrichProperty(PropertyContext $context): array
+    {
+        $schema = $context->schema();
+        $diagnostics = $context->diagnostics();
+        $version = $this->gate->version($context->packages(), $context->target(), $diagnostics, $schema->location());
+        if (!$version instanceof SymfonyVersion) {
+            return [];
+        }
+
+        $property = $context->property();
+        $extensions = new ExtensionReader($schema, $diagnostics);
+        $skipped = $extensions->flag('x-validator-skip');
+        $groups = $this->groups($extensions);
+        $builder = new ConstraintBuilder($context->references(), $context->target(), $diagnostics, new RuntimeConstraints($context->packages(), $diagnostics), $context->keywordChecks(), $groups);
+        $type = $property->type();
+        if ($skipped) {
+            $constraints = [];
+        } elseif ($property->isAdditionalProperties()) {
+            // Its schema is that of each undeclared property, not of the map.
+            assert($type instanceof MapType);
+            $constraints = $builder->elements($schema, $type->value(), $schema->location());
+        } else {
+            // A required property is non-nullable, except a mixed one (null among its values): the generator makes a
+            // nullable property optional otherwise.
+            $constraints = array_merge(
+                $property->isRequired() && !$type instanceof MixedType ? [new ConstraintSpec('NotNull')] : [],
+                $builder->build($schema, $type),
+            );
+            $constraints = array_merge($constraints, $this->otherDeclarations($context, $builder, $constraints));
+        }
+
+        return array_merge(
+            array_map(static fn (ConstraintSpec $constraint): AttributeModel => $constraint->withGroups($groups)->toAttribute(), $constraints),
+            $this->classConstraints($context, $builder),
+        );
+    }
+
     /**
      * An interface has no property to check, and Symfony would merge its class constraints into the variants under a
      * group of its own, so what its schema asserts of the object is left to the variants.
@@ -535,43 +572,6 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         }
 
         return true;
-    }
-
-    public function enrichProperty(PropertyContext $context): array
-    {
-        $schema = $context->schema();
-        $diagnostics = $context->diagnostics();
-        $version = $this->gate->version($context->packages(), $context->target(), $diagnostics, $schema->location());
-        if (!$version instanceof SymfonyVersion) {
-            return [];
-        }
-
-        $property = $context->property();
-        $extensions = new ExtensionReader($schema, $diagnostics);
-        $skipped = $extensions->flag('x-validator-skip');
-        $groups = $this->groups($extensions);
-        $builder = new ConstraintBuilder($context->references(), $context->target(), $diagnostics, new RuntimeConstraints($context->packages(), $diagnostics), $context->keywordChecks(), $groups);
-        $type = $property->type();
-        if ($skipped) {
-            $constraints = [];
-        } elseif ($property->isAdditionalProperties()) {
-            // Its schema is that of each undeclared property, not of the map.
-            assert($type instanceof MapType);
-            $constraints = $builder->elements($schema, $type->value(), $schema->location());
-        } else {
-            // A required property is non-nullable, except a mixed one (null among its values): the generator makes a
-            // nullable property optional otherwise.
-            $constraints = array_merge(
-                $property->isRequired() && !$type instanceof MixedType ? [new ConstraintSpec('NotNull')] : [],
-                $builder->build($schema, $type),
-            );
-            $constraints = array_merge($constraints, $this->otherDeclarations($context, $builder, $constraints));
-        }
-
-        return array_merge(
-            array_map(static fn (ConstraintSpec $constraint): AttributeModel => $constraint->withGroups($groups)->toAttribute(), $constraints),
-            $this->classConstraints($context, $builder),
-        );
     }
 
     /**

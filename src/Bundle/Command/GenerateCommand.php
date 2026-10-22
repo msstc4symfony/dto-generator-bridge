@@ -40,6 +40,13 @@ final class GenerateCommand extends Command
         parent::__construct(self::NAME);
     }
 
+    public function run(InputInterface $input, OutputInterface $output): int
+    {
+        DtoGenerator::prepareProcess($output);
+
+        return DtoGenerator::guard($input, $output, fn (): int => parent::run($input, $output));
+    }
+
     protected function configure(): void
     {
         $core = $this->core();
@@ -51,13 +58,6 @@ final class GenerateCommand extends Command
         }
 
         $this->setDescription($core->getDescription())->setDefinition($definition);
-    }
-
-    public function run(InputInterface $input, OutputInterface $output): int
-    {
-        DtoGenerator::prepareProcess($output);
-
-        return DtoGenerator::guard($input, $output, fn (): int => parent::run($input, $output));
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int

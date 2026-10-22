@@ -106,15 +106,6 @@ final class RealSymfonyTest extends TestCase
 
     private static ?string $root = null;
 
-    protected function setUp(): void
-    {
-        foreach ([Validation::class, Serializer::class, PropertyInfoExtractor::class, PhpDocExtractor::class] as $class) {
-            if (!class_exists($class)) {
-                self::markTestSkipped(sprintf('%s is not installed; the CI matrix installs it.', $class));
-            }
-        }
-    }
-
     public static function tearDownAfterClass(): void
     {
         foreach (self::$autoloaders as $autoloader) {
@@ -135,6 +126,15 @@ final class RealSymfonyTest extends TestCase
 
         rmdir(self::$root);
         self::$root = null;
+    }
+
+    protected function setUp(): void
+    {
+        foreach ([Validation::class, Serializer::class, PropertyInfoExtractor::class, PhpDocExtractor::class] as $class) {
+            if (!class_exists($class)) {
+                self::markTestSkipped(sprintf('%s is not installed; the CI matrix installs it.', $class));
+            }
+        }
     }
 
     /**

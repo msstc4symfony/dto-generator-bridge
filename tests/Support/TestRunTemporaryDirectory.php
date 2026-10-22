@@ -80,14 +80,6 @@ final class TestRunTemporaryDirectory
         return $run;
     }
 
-    /**
-     * Sticky and world-writable like /tmp, so whichever user creates it first, every user can keep a directory in it.
-     */
-    private static function createShared(string $directory): void
-    {
-        self::quietly(static fn (): bool => is_dir($directory) || (mkdir($directory, 0777, true) && chmod($directory, 01777)));
-    }
-
     public static function remove(string $path): void
     {
         if (is_dir($path) && !is_link($path)) {
@@ -108,6 +100,14 @@ final class TestRunTemporaryDirectory
         if (file_exists($path) || is_link($path)) {
             unlink($path);
         }
+    }
+
+    /**
+     * Sticky and world-writable like /tmp, so whichever user creates it first, every user can keep a directory in it.
+     */
+    private static function createShared(string $directory): void
+    {
+        self::quietly(static fn (): bool => is_dir($directory) || (mkdir($directory, 0777, true) && chmod($directory, 01777)));
     }
 
     /**

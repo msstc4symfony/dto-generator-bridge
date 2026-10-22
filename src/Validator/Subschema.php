@@ -229,6 +229,14 @@ final class Subschema
     }
 
     /**
+     * Whether a keyword only describes, so a schema of nothing else accepts every value.
+     */
+    public static function annotates(string $name): bool
+    {
+        return in_array($name, self::ANNOTATIONS, true) || strncmp($name, 'x-', 2) === 0;
+    }
+
+    /**
      * A value of any type is checked for the types `type` names; the keywords of one kind of value need exactly one,
      * as Symfony checks them on other kinds too (Length counts the digits of a number).
      *
@@ -299,14 +307,6 @@ final class Subschema
             default:
                 return ScalarType::bool();
         }
-    }
-
-    /**
-     * Whether a keyword only describes, so a schema of nothing else accepts every value.
-     */
-    public static function annotates(string $name): bool
-    {
-        return in_array($name, self::ANNOTATIONS, true) || strncmp($name, 'x-', 2) === 0;
     }
 
     /**

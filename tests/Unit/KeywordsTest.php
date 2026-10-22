@@ -165,6 +165,43 @@ final class KeywordsTest extends TestCase
         return array_combine($means, array_map(static fn (string $one): array => [$one], $means));
     }
 
+    public function testReadsTheKeywordsOfTheOneUnionMemberBesideNull(): void
+    {
+        $member = $this->schema(['maxLength' => 3]);
+        $nullable = new Schema(new SchemaLocation('api.yaml', '/nullable'), [SchemaType::from(SchemaType::STRING), SchemaType::from(SchemaType::NULL)], null, null, null, false, null, null, [], [], null, null, [], [], [], null, ['minLength' => 1], new Extensions());
+        $composed = new Schema(new SchemaLocation('api.yaml', '/composed'), [SchemaType::from(SchemaType::NULL)], null, null, null, false, null, null, [], [], null, null, [$member], [], [], null, ['minLength' => 2], new Extensions());
+        $referenced = new Schema(new SchemaLocation('api.yaml', '/referenced'), [SchemaType::from(SchemaType::NULL)], '#/x', null, null, false, null, null, [], [], null, null, [], [], [], null, ['minLength' => 4], new Extensions());
+
+        self::assertSame([3], $this->valuesOf(['anyOf' => [$this->nullSchema(), $member]], 'maxLength'));
+        self::assertSame([], $this->valuesOf(['anyOf' => [$member, $this->schema(['maxLength' => 5])]], 'maxLength'));
+        self::assertSame([1], $this->valuesOf(['oneOf' => [$nullable, $this->nullSchema()]], 'minLength'));
+        self::assertSame([2], $this->valuesOf(['oneOf' => [$composed, $this->nullSchema()]], 'minLength'));
+        self::assertSame([4], $this->valuesOf(['oneOf' => [$referenced, $this->nullSchema()]], 'minLength'));
+    }
+
+    public function testReadsNoSchemaTwiceOnAnAllOfCycle(): void
+    {
+        $again = new Schema(new SchemaLocation('api.yaml', '/loop'), [], null, null, null, false, null, null, [], [], null, null, [], [], [], null, ['maxLength' => 9], new Extensions());
+        $loop = new Schema(new SchemaLocation('api.yaml', '/loop'), [], null, null, null, false, null, null, [], [], null, null, [$again], [], [], null, [], new Extensions());
+
+        self::assertSame([], (new Keywords($loop, SchemaReferences::none()))->values('maxLength'));
+    }
+
+    public function testKeepsTheLinksOfAnAllOfBranchUpToTheSchemaItLeadsBackTo(): void
+    {
+        $branch = $this->linked('/A/allOf/0', '#/C', ['maxLength' => 5]);
+        $c = $this->linked('/C', '#/A', ['minLength' => 2]);
+        $a = new Schema(new SchemaLocation('api.yaml', '/A'), [], null, null, null, false, null, null, [], [], null, null, [$branch], [], [], null, [], new Extensions());
+        $graph = new SchemaGraph(
+            [new ResolvedSchema($a, 0, 'A', true), new ResolvedSchema($c, 0, 'C', true)],
+            [(new ReferenceUse('#/C', $branch->location()))->key() => $c->location()->toString(), (new ReferenceUse('#/A', $c->location()))->key() => $a->location()->toString()],
+        );
+        $keywords = new Keywords($a, new SchemaReferences($graph));
+
+        self::assertSame([5], $keywords->values('maxLength'));
+        self::assertSame([2], $keywords->values('minLength'));
+    }
+
     /**
      * A nullable schema that only the named means turns into a typed one.
      *
@@ -206,20 +243,6 @@ final class KeywordsTest extends TestCase
         return (new Keywords($schema, SchemaReferences::none()))->resolved();
     }
 
-    public function testReadsTheKeywordsOfTheOneUnionMemberBesideNull(): void
-    {
-        $member = $this->schema(['maxLength' => 3]);
-        $nullable = new Schema(new SchemaLocation('api.yaml', '/nullable'), [SchemaType::from(SchemaType::STRING), SchemaType::from(SchemaType::NULL)], null, null, null, false, null, null, [], [], null, null, [], [], [], null, ['minLength' => 1], new Extensions());
-        $composed = new Schema(new SchemaLocation('api.yaml', '/composed'), [SchemaType::from(SchemaType::NULL)], null, null, null, false, null, null, [], [], null, null, [$member], [], [], null, ['minLength' => 2], new Extensions());
-        $referenced = new Schema(new SchemaLocation('api.yaml', '/referenced'), [SchemaType::from(SchemaType::NULL)], '#/x', null, null, false, null, null, [], [], null, null, [], [], [], null, ['minLength' => 4], new Extensions());
-
-        self::assertSame([3], $this->valuesOf(['anyOf' => [$this->nullSchema(), $member]], 'maxLength'));
-        self::assertSame([], $this->valuesOf(['anyOf' => [$member, $this->schema(['maxLength' => 5])]], 'maxLength'));
-        self::assertSame([1], $this->valuesOf(['oneOf' => [$nullable, $this->nullSchema()]], 'minLength'));
-        self::assertSame([2], $this->valuesOf(['oneOf' => [$composed, $this->nullSchema()]], 'minLength'));
-        self::assertSame([4], $this->valuesOf(['oneOf' => [$referenced, $this->nullSchema()]], 'minLength'));
-    }
-
     /**
      * @param array{allOf?: list<Schema>, oneOf?: list<Schema>, anyOf?: list<Schema>} $compositions
      *
@@ -228,29 +251,6 @@ final class KeywordsTest extends TestCase
     private function valuesOf(array $compositions, string $keyword): array
     {
         return (new Keywords($this->schema([], null, null, [], $compositions), SchemaReferences::none()))->values($keyword);
-    }
-
-    public function testReadsNoSchemaTwiceOnAnAllOfCycle(): void
-    {
-        $again = new Schema(new SchemaLocation('api.yaml', '/loop'), [], null, null, null, false, null, null, [], [], null, null, [], [], [], null, ['maxLength' => 9], new Extensions());
-        $loop = new Schema(new SchemaLocation('api.yaml', '/loop'), [], null, null, null, false, null, null, [], [], null, null, [$again], [], [], null, [], new Extensions());
-
-        self::assertSame([], (new Keywords($loop, SchemaReferences::none()))->values('maxLength'));
-    }
-
-    public function testKeepsTheLinksOfAnAllOfBranchUpToTheSchemaItLeadsBackTo(): void
-    {
-        $branch = $this->linked('/A/allOf/0', '#/C', ['maxLength' => 5]);
-        $c = $this->linked('/C', '#/A', ['minLength' => 2]);
-        $a = new Schema(new SchemaLocation('api.yaml', '/A'), [], null, null, null, false, null, null, [], [], null, null, [$branch], [], [], null, [], new Extensions());
-        $graph = new SchemaGraph(
-            [new ResolvedSchema($a, 0, 'A', true), new ResolvedSchema($c, 0, 'C', true)],
-            [(new ReferenceUse('#/C', $branch->location()))->key() => $c->location()->toString(), (new ReferenceUse('#/A', $c->location()))->key() => $a->location()->toString()],
-        );
-        $keywords = new Keywords($a, new SchemaReferences($graph));
-
-        self::assertSame([5], $keywords->values('maxLength'));
-        self::assertSame([2], $keywords->values('minLength'));
     }
 
     /**
