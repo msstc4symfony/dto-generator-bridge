@@ -76,7 +76,6 @@ final class AlternativesTest extends TestCase
     {
         yield 'a $ref' => [['$ref' => '#/components/schemas/Other'], '/oneOf/1'];
         yield 'items beside a requirement' => [['required' => ['status'], 'items' => ['type' => 'string']], '/oneOf/1'];
-        yield 'an object property beside a requirement' => [['required' => ['status'], 'properties' => ['name' => ['type' => 'string', 'properties' => ['a' => ['type' => 'string']]]]], '/oneOf/1'];
         yield 'an allOf' => [['allOf' => [['required' => ['name']]]], '/oneOf/1'];
         yield 'a nested union' => [['anyOf' => [['required' => ['name']]]], '/oneOf/1'];
         yield 'a nested oneOf' => [['oneOf' => [['required' => ['name']]]], '/oneOf/1'];
@@ -88,6 +87,17 @@ final class AlternativesTest extends TestCase
         yield 'a keyword that checks the object' => [['minProperties' => 2], '/oneOf/1'];
         yield 'a property that is an object' => [['properties' => ['name' => ['type' => 'string', 'properties' => ['a' => ['type' => 'string']]]]], '/oneOf/1'];
         yield 'a property behind a $ref' => [['properties' => ['name' => ['$ref' => '#/components/schemas/Other']]], '/oneOf/1'];
+    }
+
+    public function testChecksNoMemberWithAPropertyItCannotCheck(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => self::PROPERTIES, 'oneOf' => [
+            ['required' => ['name']],
+            ['required' => ['status'], 'properties' => ['name' => ['type' => 'string', 'properties' => ['a' => ['type' => 'string']]]]],
+        ]]);
+
+        self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
+        self::assertSame([self::UNTYPED, self::AT . '/oneOf/1: "oneOf" is checked on a class only with members of "properties" that check one value each and "required"; it is not checked.'], $this->messages($output));
     }
 
     public function testWarnsAboutAMemberThatChecksNothing(): void
@@ -130,6 +140,7 @@ final class AlternativesTest extends TestCase
     public function testChecksTheUnionOfEverySchemaOfTheClassOnce(): void
     {
         $output = $this->withRuntime(['x-php-all-of' => 'merge', 'allOf' => [
+            ['type' => 'object', 'properties' => ['c' => ['type' => 'string']]],
             ['type' => 'object', 'properties' => ['a' => ['type' => 'string']], 'anyOf' => [['required' => ['a']], ['required' => ['b']]]],
             ['type' => 'object', 'properties' => ['b' => ['type' => 'string']], 'anyOf' => [['required' => ['b']], ['required' => ['a']]]],
         ]]);

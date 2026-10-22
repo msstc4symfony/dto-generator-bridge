@@ -85,12 +85,7 @@ final class ClassConditions
     public function alternatives(Keywords $keywords, string $keyword): array
     {
         $alternatives = [];
-        foreach ($keywords->schemas() as $place) {
-            $members = $keyword === 'oneOf' ? $place->oneOf() : $place->anyOf();
-            if ($members === [] || $place->discriminator() instanceof Discriminator || $this->properties->ofAncestor($place)) {
-                continue;
-            }
-
+        foreach (self::alternated($keywords, $keyword) as [$place, $members]) {
             $alternative = $this->alternative($keyword, $members, $place);
             if ($alternative instanceof ConstraintSpec) {
                 $alternatives[] = $alternative;
@@ -98,6 +93,26 @@ final class ClassConditions
         }
 
         return $alternatives;
+    }
+
+    /**
+     * The schemas of the class with the union, undiscriminated, which the generator leaves beside its properties.
+     *
+     * @param 'oneOf'|'anyOf' $keyword
+     *
+     * @return list<array{Schema, non-empty-list<Schema>}> each with its members
+     */
+    public static function alternated(Keywords $keywords, string $keyword): array
+    {
+        $places = [];
+        foreach ($keywords->schemas() as $place) {
+            $members = $keyword === 'oneOf' ? $place->oneOf() : $place->anyOf();
+            if ($members !== [] && !$place->discriminator() instanceof Discriminator) {
+                $places[] = [$place, $members];
+            }
+        }
+
+        return $places;
     }
 
     /**
