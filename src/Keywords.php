@@ -313,7 +313,7 @@ final class Keywords
             return array_map(fn ($member) => is_array($member) ? $this->exact($member) : ($member === 0.0 ? abs($member) : $member), $value);
         }
 
-        if (is_float($value) && $value >= self::MIN_INT_FLOAT && $value < self::MAX_INT_FLOAT && floor($value) === $value) {
+        if (is_float($value) && $value >= self::MIN_INT_FLOAT && $value < self::MAX_INT_FLOAT && fmod($value, 1.0) === 0.0) {
             return (int) $value;
         }
 
