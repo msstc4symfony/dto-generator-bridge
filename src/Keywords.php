@@ -290,7 +290,7 @@ final class Keywords
      * A `type` that admits none of the string and integer values of the enum, which the generator ignores (1.14), as
      * SchemaShape::contradictsItsEnum() does.
      */
-    private static function contradictsItsEnum(Schema $schema): bool
+    private function contradictsItsEnum(Schema $schema): bool
     {
         $declared = array_map(static fn (SchemaType $type): string => $type->value(), $schema->nonNullTypes());
         $values = array_filter($schema->enum() ?? [], static fn ($value): bool => is_int($value) || is_string($value));
