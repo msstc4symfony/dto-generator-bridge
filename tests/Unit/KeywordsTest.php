@@ -174,7 +174,7 @@ final class KeywordsTest extends TestCase
      */
     public function testTypesThroughTheMemberBesideOneThatOnlySaysObject(array $member, bool $plain): void
     {
-        $schema = (new SchemaParser())->parse(['allOf' => [['type' => 'array', 'maxItems' => 2], $member]], new SchemaLocation('api.yaml', '/A'), new Diagnostics());
+        $schema = (new SchemaParser())->parse(['allOf' => [['type' => 'object', 'additionalProperties' => ['type' => 'string']], $member]], new SchemaLocation('api.yaml', '/A'), new Diagnostics());
 
         self::assertSame($plain ? '/A/allOf/0' : '/A', $this->resolvedOf($schema)->location()->pointer());
     }
@@ -190,6 +190,7 @@ final class KeywordsTest extends TestCase
         yield 'nullable object' => [['type' => ['object', 'null']], true];
         yield 'no type' => [['description' => 'd', 'maxProperties' => 1], true];
         yield 'object or array' => [['type' => ['object', 'array']], false];
+        yield 'a reference beside' => [$object + ['$ref' => '#/Map'], false];
         yield 'x-php-type' => [$object + ['x-php-type' => 'App\\Labels'], false];
         yield 'properties' => [$object + ['properties' => ['a' => []]], false];
         yield 'required' => [$object + ['required' => ['a']], false];
@@ -231,6 +232,8 @@ final class KeywordsTest extends TestCase
         yield 'one of them admitted' => [['type' => ['string', 'array'], 'enum' => [1, 'a']], [1, 'a']];
         yield 'no type' => [['enum' => [1]], [1]];
         yield 'no string or integer' => [['type' => 'array', 'enum' => [[1]]], [[1]]];
+        yield 'only null' => [['type' => ['null'], 'enum' => [1]], [1]];
+        yield 'in an allOf member' => [['allOf' => [['type' => 'array', 'items' => ['type' => 'string'], 'enum' => ['a']]]], null];
     }
 
     public function testKeepsTheSchemaWhenTheSoleValueMemberOnlyConstrains(): void

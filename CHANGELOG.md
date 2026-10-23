@@ -8,8 +8,8 @@ All notable changes to this package are documented here. The format follows
 
 ### Fixed
 
-- With generator 1.14, an `enum` whose `type` admits none of its values (Zoom's `type: array` with the values of its
-  items), which the generator now ignores, gives no `Choice`, which no value could pass.
+- An `enum` whose `type` admits none of its values (Zoom's `type: array` with the values of its items) gives no
+  `Choice`, which no value could pass, with any generator; from 1.14 the generator ignores such an enum too.
 - With generator 1.14, an `allOf` member that only says `type: object` beside a `$ref` no longer hides the constraints
   of the referenced schema (the values of a map, the items of a list, `x-php-type`).
 

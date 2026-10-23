@@ -131,7 +131,8 @@ final class Keywords
     }
 
     /**
-     * The values every schema with an `enum` allows; null when none has one.
+     * The values every schema with an `enum` allows; null when none has one. An enum its own `type` admits none of is
+     * left out, as the generator ignores it.
      *
      * @return list<JsonValue>|null
      */
@@ -200,7 +201,8 @@ final class Keywords
     /**
      * Follows TypeMapper::bareType() of the generator: `x-php-type` or a class keeps the schema; a typed union gives the
      * type of its one member besides null, or keeps the schema; otherwise exactly one typed `allOf` branch gives the
-     * type, and the other branches only constrain it.
+     * type, and the other branches only constrain it. A branch that only says `type: object` beside another adds
+     * nothing (generator 1.14).
      *
      * @param list<string> $seen
      */
@@ -221,7 +223,6 @@ final class Keywords
         }
 
         $typed = $this->typed($schema->allOf());
-        // A member that only says "object" adds nothing to another member (generator 1.14).
         $specific = array_values(array_filter($typed, static fn (Schema $member): bool => !self::isPlainObject($member)));
         $typed = $specific === [] ? $typed : $specific;
         if (count($typed) !== 1) {
@@ -289,7 +290,7 @@ final class Keywords
      * A `type` that admits none of the string and integer values of the enum, which the generator ignores (1.14), as
      * SchemaShape::contradictsItsEnum() does.
      */
-    private function contradictsItsEnum(Schema $schema): bool
+    private static function contradictsItsEnum(Schema $schema): bool
     {
         $declared = array_map(static fn (SchemaType $type): string => $type->value(), $schema->nonNullTypes());
         $values = array_filter($schema->enum() ?? [], static fn ($value): bool => is_int($value) || is_string($value));
