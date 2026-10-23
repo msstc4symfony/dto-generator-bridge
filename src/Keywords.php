@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Msstc4Symfony\DtoGeneratorBridge;
 
 use MSSTC4PHP\DtoGenerator\Contract\SchemaReferences;
+use MSSTC4PHP\DtoGenerator\Domain\Schema\Discriminator;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\Schema;
+use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaType;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 
 /**
@@ -129,7 +131,8 @@ final class Keywords
     }
 
     /**
-     * The values every schema with an `enum` allows; null when none has one.
+     * The values every schema with an `enum` allows; null when none has one. An enum its own `type` admits none of is
+     * left out, as the generator ignores it.
      *
      * @return list<JsonValue>|null
      */
@@ -198,7 +201,8 @@ final class Keywords
     /**
      * Follows TypeMapper::bareType() of the generator: `x-php-type` or a class keeps the schema; a typed union gives the
      * type of its one member besides null, or keeps the schema; otherwise exactly one typed `allOf` branch gives the
-     * type, and the other branches only constrain it.
+     * type, and the other branches only constrain it. A branch that only says `type: object` beside another adds
+     * nothing (generator 1.14).
      *
      * @param list<string> $seen
      */
@@ -219,6 +223,8 @@ final class Keywords
         }
 
         $typed = $this->typed($schema->allOf());
+        $specific = array_values(array_filter($typed, static fn (Schema $member): bool => !self::isPlainObject($member)));
+        $typed = $specific === [] ? $typed : $specific;
         if (count($typed) !== 1) {
             return $schema;
         }
@@ -252,12 +258,55 @@ final class Keywords
         $enums = [];
         foreach ($this->schemas as $schema) {
             $enum = $schema->enum();
-            if ($enum !== null) {
+            if ($enum !== null && !$this->contradictsItsEnum($schema)) {
                 $enums[] = $this->common($enum, $enum);
             }
         }
 
         return $enums;
+    }
+
+    /**
+     * `type: object` and nothing that types or constrains its members, as SchemaShape::isPlainObject() of the generator.
+     */
+    private static function isPlainObject(Schema $schema): bool
+    {
+        $additional = $schema->additionalProperties();
+
+        return $schema->ref() === null
+            && !$schema->extensions()->has('x-php-type')
+            && $schema->nonNullTypes() === [SchemaType::from(SchemaType::OBJECT)]
+            && $schema->propertyNames() === []
+            && $schema->required() === []
+            && $schema->allOf() === [] && $schema->oneOf() === [] && $schema->anyOf() === []
+            && $schema->enum() === null
+            && !$schema->hasKeyword('const')
+            && !$schema->hasKeyword('patternProperties')
+            && !$schema->discriminator() instanceof Discriminator
+            && ($additional === null || $additional === true);
+    }
+
+    /**
+     * A `type` that admits none of the string and integer values of the enum, which the generator ignores (1.14), as
+     * SchemaShape::contradictsItsEnum() does.
+     */
+    private static function contradictsItsEnum(Schema $schema): bool
+    {
+        $declared = array_map(static fn (SchemaType $type): string => $type->value(), $schema->nonNullTypes());
+        $values = array_filter($schema->enum() ?? [], static fn ($value): bool => is_int($value) || is_string($value));
+        if ($declared === [] || $values === []) {
+            return false;
+        }
+
+        $strings = in_array(SchemaType::STRING, $declared, true);
+        $numbers = in_array(SchemaType::INTEGER, $declared, true) || in_array(SchemaType::NUMBER, $declared, true);
+        foreach ($values as $value) {
+            if (is_string($value) ? $strings : $numbers) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

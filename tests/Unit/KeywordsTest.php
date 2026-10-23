@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Msstc4Symfony\DtoGeneratorBridge\Test\Unit;
 
 use MSSTC4PHP\DtoGenerator\Contract\SchemaReferences;
+use MSSTC4PHP\DtoGenerator\Domain\Builder\SchemaParser;
+use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostics;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\Extensions;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\ReferenceUse;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\ResolvedSchema;
@@ -163,6 +165,75 @@ final class KeywordsTest extends TestCase
         $explicit = new Schema(new SchemaLocation('api.yaml', '/explicit'), [], null, null, null, false, null, null, [], [], null, null, [$typed], [], [], null, [], new Extensions(['x-php-type' => 'App\\Tags']));
         self::assertSame($explicit, $this->resolvedOf($explicit));
         self::assertSame([], (new Keywords($list, SchemaReferences::none()))->formats());
+    }
+
+    /**
+     * @dataProvider objectMembers
+     *
+     * @param array<string, mixed> $member
+     */
+    public function testTypesThroughTheMemberBesideOneThatOnlySaysObject(array $member, bool $plain): void
+    {
+        $schema = (new SchemaParser())->parse(['allOf' => [['type' => 'object', 'additionalProperties' => ['type' => 'string']], $member]], new SchemaLocation('api.yaml', '/A'), new Diagnostics());
+
+        self::assertSame($plain ? '/A/allOf/0' : '/A', $this->resolvedOf($schema)->location()->pointer());
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, bool}>
+     */
+    public static function objectMembers(): iterable
+    {
+        $object = ['type' => 'object'];
+
+        yield 'object' => [$object + ['description' => 'd', 'additionalProperties' => true, 'properties' => []], true];
+        yield 'nullable object' => [['type' => ['object', 'null']], true];
+        yield 'no type' => [['description' => 'd', 'maxProperties' => 1], true];
+        yield 'object or array' => [['type' => ['object', 'array']], false];
+        yield 'a reference beside' => [$object + ['$ref' => '#/Map'], false];
+        yield 'x-php-type' => [$object + ['x-php-type' => 'App\\Labels'], false];
+        yield 'properties' => [$object + ['properties' => ['a' => []]], false];
+        yield 'required' => [$object + ['required' => ['a']], false];
+        yield 'allOf' => [$object + ['allOf' => [$object]], false];
+        yield 'oneOf' => [$object + ['oneOf' => [$object]], false];
+        yield 'anyOf' => [$object + ['anyOf' => [$object]], false];
+        yield 'enum' => [$object + ['enum' => [['a' => 1]]], false];
+        yield 'const' => [$object + ['const' => ['a' => 1]], false];
+        yield 'patternProperties' => [$object + ['patternProperties' => ['^a' => []]], false];
+        yield 'discriminator' => [$object + ['discriminator' => ['propertyName' => 'k']], false];
+        yield 'no other properties' => [$object + ['additionalProperties' => false], false];
+        yield 'a schema for other properties' => [$object + ['additionalProperties' => ['type' => 'string']], false];
+    }
+
+    /**
+     * @dataProvider typedEnums
+     *
+     * @param array<string, mixed> $node
+     * @param list<JsonValue>|null $enum
+     */
+    public function testLeavesOutAnEnumTheTypeAdmitsNoneOf(array $node, ?array $enum): void
+    {
+        $schema = (new SchemaParser())->parse($node, new SchemaLocation('api.yaml', '/A'), new Diagnostics());
+
+        self::assertSame($enum, (new Keywords($schema, SchemaReferences::none()))->enum());
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, list<JsonValue>|null}>
+     */
+    public static function typedEnums(): iterable
+    {
+        yield 'strings of an array' => [['type' => 'array', 'enum' => ['a', 'b']], null];
+        yield 'integers of a string' => [['type' => 'string', 'enum' => [1]], null];
+        yield 'integers of a boolean' => [['type' => 'boolean', 'enum' => [1, 'a']], null];
+        yield 'strings of a string' => [['type' => 'string', 'enum' => ['a']], ['a']];
+        yield 'integers of an integer' => [['type' => 'integer', 'enum' => [1]], [1]];
+        yield 'integers of a number' => [['type' => 'number', 'enum' => [1]], [1]];
+        yield 'one of them admitted' => [['type' => ['string', 'array'], 'enum' => [1, 'a']], [1, 'a']];
+        yield 'no type' => [['enum' => [1]], [1]];
+        yield 'no string or integer' => [['type' => 'array', 'enum' => [[1]]], [[1]]];
+        yield 'only null' => [['type' => ['null'], 'enum' => [1]], [1]];
+        yield 'in an allOf member' => [['allOf' => [['type' => 'array', 'items' => ['type' => 'string'], 'enum' => ['a']]]], null];
     }
 
     public function testKeepsTheSchemaWhenTheSoleValueMemberOnlyConstrains(): void

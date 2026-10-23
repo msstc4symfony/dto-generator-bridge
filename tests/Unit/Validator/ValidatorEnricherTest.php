@@ -368,6 +368,26 @@ final class ValidatorEnricherTest extends TestCase
         self::assertSame(["Assert\\Choice(choices: ['calm'])"], $this->attributesOf($new, 'mood'));
     }
 
+    public function testChoosesNothingFromAnEnumTheTypeAdmitsNoneOf(): void
+    {
+        $code = $this->pet(['type' => 'object', 'properties' => [
+            'regions' => ['type' => 'array', 'items' => ['type' => 'string'], 'enum' => ['EU', 'HK']],
+            'code' => ['type' => 'string', 'enum' => [1, 2]],
+        ]]);
+
+        self::assertSame([], $this->attributesOf($code, 'regions'));
+        self::assertSame([], $this->attributesOf($code, 'code'));
+    }
+
+    public function testReadsTheMemberBesideOneThatOnlySaysObject(): void
+    {
+        $code = $this->pet(['type' => 'object', 'properties' => [
+            'labels' => ['allOf' => [['$ref' => '#/components/schemas/Labels'], ['type' => 'object', 'description' => 'd']]],
+        ]], ['Labels' => ['type' => 'object', 'additionalProperties' => ['type' => 'string', 'maxLength' => 5]]]);
+
+        self::assertSame(['Assert\\All(constraints: [new \\Symfony\\Component\\Validator\\Constraints\\Length(max: 5)])'], $this->attributesOf($code, 'labels'));
+    }
+
     public function testAddsGroupsAndKeepsTheDefaultOne(): void
     {
         $code = $this->pet(['type' => 'object', 'properties' => [
