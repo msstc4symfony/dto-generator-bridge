@@ -6,6 +6,8 @@ All notable changes to this package are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-23
+
 ### Added
 
 - A `oneOf` or `anyOf` beside the properties of a class, without a discriminator, which the generator leaves untyped,
@@ -23,7 +25,7 @@ All notable changes to this package are documented here. The format follows
 ### Changed
 
 - Enums are met by key rather than pairwise: specs with large enums (countries, currencies) generate much faster
-  (Stripe 3.0 s instead of 5.3 s, GitHub 15 s instead of 18.7 s).
+  (Stripe 2.6 s instead of 5.3 s, GitHub 14 s instead of 18.7 s).
 
 ## [1.6.0] - 2026-10-22
 
@@ -249,7 +251,8 @@ First release.
   annotations for PHP 7.4 targets.
 - `DtoGeneratorBundle`: the `dto-generator:generate` console command and an optional check on cache warmup.
 
-[Unreleased]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.3.0...v1.4.0
