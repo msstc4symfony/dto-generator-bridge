@@ -381,7 +381,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             // A declaration of the parent in groups of its own checks in others than the class's.
             $checked = [];
             foreach ($parents[$name] ?? [] as $schema) {
-                if (!$schema->extensions()->has('x-validator-groups') && !$schema->extensions()->has('x-validator-skip')) {
+                if (!$this->setsItsOwnChecks($schema)) {
                     array_push($checked, ...array_map(static fn (ConstraintSpec $spec): string => serialize($spec), $builder->build($schema, $property->type())));
                 }
             }
@@ -398,10 +398,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
                     if (!$spec->is('Valid')) {
                         $added[$property->name()][] = $spec;
                     } elseif (($parents[$name] ?? []) !== []) {
-                        $context->diagnostics()->warning(
-                            sprintf('The parent skips "%s" or checks it in groups of its own, so the object it holds may go unvalidated in the groups of this class: Symfony allows no Valid inside Property.', $property->wireName()),
-                            $schema->location(),
-                        );
+                        $this->warnAboutAnUncheckedObject($parents[$name], $property, $builder, $schema, $context);
                     }
                 }
             }
@@ -445,6 +442,52 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         }
 
         return $constraints;
+    }
+
+    /**
+     * Valid may not go inside Property: the object the class declares is checked only by the parent's property.
+     *
+     * @param list<Schema> $parents the parent's declarations
+     */
+    private function warnAboutAnUncheckedObject(array $parents, PropertyModel $property, ConstraintBuilder $builder, Schema $schema, ClassScope $context): void
+    {
+        $context->diagnostics()->warning(
+            $this->traverses($parents, $property, $builder)
+                ? sprintf('The parent skips "%s" or checks it in groups of its own, so the object it holds may go unvalidated in the groups of this class: Symfony allows no Valid inside Property.', $property->wireName())
+                : sprintf('"%s" keeps the type %s of the parent, which holds no object to traverse, so the constraints of the object this class declares are not checked.', $property->wireName(), $property->type()->describe()),
+            $schema->location(),
+        );
+    }
+
+    /**
+     * Whether the parent's declarations would traverse the value, had they no groups of their own or skip.
+     *
+     * @param list<Schema> $declarations
+     */
+    private function traverses(array $declarations, PropertyModel $property, ConstraintBuilder $builder): bool
+    {
+        foreach ($declarations as $declaration) {
+            foreach ($builder->build($declaration, $property->type()) as $spec) {
+                if ($spec->is('Valid')) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * A declaration that skips the validator, or has groups of its own, checks nothing in the groups of another. A skip
+     * that is not true skips nothing; the property's own reading warns about it.
+     */
+    private function setsItsOwnChecks(Schema $declaration): bool
+    {
+        $extensions = $declaration->extensions();
+
+        // A null list of groups stands for the default ones, as ExtensionReader::groups() reads it.
+        return ($extensions->has('x-validator-groups') && $extensions->get('x-validator-groups') !== null)
+            || ($extensions->has('x-validator-skip') && $extensions->get('x-validator-skip') === true);
     }
 
     /**
@@ -594,7 +637,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             $declaration = in_array($wireName, $place->propertyNames(), true) ? $place->requireProperty($wireName) : null;
             // One that skips the validator, or has groups of its own, checks nothing in the property's groups.
             if (!$declaration instanceof Schema || $declaration->location()->equals($context->schema()->location())
-                || $declaration->extensions()->has('x-validator-skip') || $declaration->extensions()->has('x-validator-groups')) {
+                || $this->setsItsOwnChecks($declaration)) {
                 continue;
             }
 

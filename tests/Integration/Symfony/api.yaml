@@ -271,3 +271,30 @@ components:
       properties:
         kind: {$ref: '#/components/schemas/CreatureKind'}
         wings: {type: integer}
+    JsonValue:
+      description: Holds itself in a list and a map, as Vercel's EdgeConfigItemValue does.
+      oneOf:
+        - {type: string}
+        - {type: number}
+        - {type: boolean}
+        - {type: object, additionalProperties: {$ref: '#/components/schemas/JsonValue'}}
+        - {type: array, items: {$ref: '#/components/schemas/JsonValue'}}
+    Setting:
+      type: object
+      required: [key]
+      properties:
+        key: {type: string, maxLength: 3}
+        value: {$ref: '#/components/schemas/JsonValue'}
+    Shape:
+      type: object
+      required: [form]
+      properties:
+        form: {type: string}
+        size: {type: integer, maximum: 10}
+      discriminator:
+        propertyName: form
+    Square:
+      description: A bare subtype, which adds nothing to its discriminated base.
+      allOf:
+        - $ref: '#/components/schemas/Shape'
+        - type: object
