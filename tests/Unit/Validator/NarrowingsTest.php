@@ -190,6 +190,19 @@ final class NarrowingsTest extends TestCase
         self::assertSame([], array_values(array_filter($this->messages($output), static fn (string $m): bool => strpos($m, 'may go unvalidated') !== false)));
     }
 
+    public function testTakesTheConstraintsOfAnotherDeclarationThatDoesNotSkip(): void
+    {
+        $output = $this->generate(['allOf' => [
+            ['type' => 'object', 'properties' => ['name' => ['type' => 'string', 'maxLength' => 3, 'x-validator-skip' => false]]],
+            ['type' => 'object', 'properties' => ['name' => ['type' => 'string', 'pattern' => '^a', 'x-validator-groups' => null]]],
+            ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]],
+        ]], []);
+
+        $attributes = $this->attributesOf($this->code($output, 'Pet.php'), 'name');
+        self::assertContains('Assert\\Length(max: 3)', $attributes);
+        self::assertCount(2, $attributes);
+    }
+
     public function testWarnsThatAVariantsObjectOverTheParentsMapIsNotChecked(): void
     {
         $output = $this->withRuntime(

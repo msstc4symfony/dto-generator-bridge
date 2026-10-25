@@ -398,12 +398,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
                     if (!$spec->is('Valid')) {
                         $added[$property->name()][] = $spec;
                     } elseif (($parents[$name] ?? []) !== []) {
-                        $context->diagnostics()->warning(
-                            $this->traverses($parents[$name], $property, $builder)
-                                ? sprintf('The parent skips "%s" or checks it in groups of its own, so the object it holds may go unvalidated in the groups of this class: Symfony allows no Valid inside Property.', $property->wireName())
-                                : sprintf('"%s" keeps the type %s of the parent, which holds no object to traverse, so the constraints of the object this class declares are not checked.', $property->wireName(), $property->type()->describe()),
-                            $schema->location(),
-                        );
+                        $this->warnAboutAnUncheckedObject($parents[$name], $property, $builder, $schema, $context);
                     }
                 }
             }
@@ -450,6 +445,21 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
     }
 
     /**
+     * Valid may not go inside Property: the object the class declares is checked only by the parent's property.
+     *
+     * @param list<Schema> $parents the parent's declarations
+     */
+    private function warnAboutAnUncheckedObject(array $parents, PropertyModel $property, ConstraintBuilder $builder, Schema $schema, ClassScope $context): void
+    {
+        $context->diagnostics()->warning(
+            $this->traverses($parents, $property, $builder)
+                ? sprintf('The parent skips "%s" or checks it in groups of its own, so the object it holds may go unvalidated in the groups of this class: Symfony allows no Valid inside Property.', $property->wireName())
+                : sprintf('"%s" keeps the type %s of the parent, which holds no object to traverse, so the constraints of the object this class declares are not checked.', $property->wireName(), $property->type()->describe()),
+            $schema->location(),
+        );
+    }
+
+    /**
      * Whether the parent's declarations would traverse the value, had they no groups of their own or skip.
      *
      * @param list<Schema> $declarations
@@ -475,7 +485,9 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
     {
         $extensions = $declaration->extensions();
 
-        return $extensions->has('x-validator-groups') || ($extensions->has('x-validator-skip') && $extensions->get('x-validator-skip') === true);
+        // A null list of groups stands for the default ones, as ExtensionReader::groups() reads it.
+        return ($extensions->has('x-validator-groups') && $extensions->get('x-validator-groups') !== null)
+            || ($extensions->has('x-validator-skip') && $extensions->get('x-validator-skip') === true);
     }
 
     /**
