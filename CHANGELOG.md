@@ -10,7 +10,10 @@ All notable changes to this package are documented here. The format follows
 
 - A variant that declares an object over its parent's map (which the generator keeps) is warned about for what it is:
   the property keeps the parent's type, so the constraints of the declared object are not checked. It no longer
-  claims that the parent skips the property or checks it in groups of its own.
+  claims that the parent skips the property or checks it in groups of its own, also when the parent's map has groups
+  of its own.
+- `x-validator-skip: false` on a parent's declaration no longer counts as a skip where a subclass compares its own
+  declaration with the parent's.
 
 ## [1.7.1] - 2026-10-23
 
