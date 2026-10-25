@@ -108,7 +108,7 @@ final class NarrowingsTest extends TestCase
         self::assertSame(["RuntimeAssert\\Present(properties: ['kind'])"], $this->classAttributesOf($this->code($output, 'Cat.php')));
         self::assertSame(['Assert\\Valid'], $this->attributesOf($this->code($output, 'Pet.php'), 'cfg'));
         self::assertSame(['Assert\\Valid'], $this->attributesOf($this->code($output, 'Pet.php'), 'tags'));
-        self::assertSame([], array_values(array_filter($this->messages($output), static fn (string $m): bool => strpos($m, 'may go unvalidated') !== false)));
+        self::assertSame([], array_values(array_filter($this->messages($output), static fn (string $m): bool => strpos($m, 'may go unvalidated') !== false || strpos($m, 'are not checked') !== false)));
     }
 
     public function testChecksWhatFollowsAConstraintTheParentHas(): void
@@ -161,6 +161,20 @@ final class NarrowingsTest extends TestCase
 
         self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
         self::assertContains('warning /api.yaml#/components/schemas/Pet: "properties" is checked by msstc4symfony/dto-generator-bridge-runtime 1.1 or newer, which the project does not install; it is not checked.', $this->messages($output));
+    }
+
+    public function testWarnsThatAVariantsObjectOverTheParentsMapIsNotChecked(): void
+    {
+        $output = $this->withRuntime(
+            ['type' => 'object', 'properties' => ['kind' => ['type' => 'string'], 'links' => ['type' => 'object']], 'oneOf' => [['$ref' => '#/components/schemas/Cat']], 'discriminator' => ['propertyName' => 'kind']],
+            ['Cat' => ['allOf' => [['$ref' => '#/components/schemas/Pet'], ['type' => 'object', 'properties' => ['links' => ['type' => 'object', 'properties' => ['self' => ['type' => 'string', 'maxLength' => 3]]]]]]]],
+        );
+
+        self::assertContains(
+            'warning /api.yaml#/components/schemas/Cat/allOf/1/properties/links: "links" keeps the type array<array-key, mixed>|null of the parent, which holds no object to traverse, so the constraints of the object this class declares are not checked.',
+            $this->messages($output),
+        );
+        self::assertSame([], array_values(array_filter($this->messages($output), static fn (string $m): bool => strpos($m, 'may go unvalidated') !== false)));
     }
 
     /**

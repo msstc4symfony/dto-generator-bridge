@@ -397,9 +397,16 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
                     // unless the parent declares it in groups of its own or skips it.
                     if (!$spec->is('Valid')) {
                         $added[$property->name()][] = $spec;
-                    } elseif (($parents[$name] ?? []) !== []) {
+                    } elseif ($this->setsItsOwnChecks($parents[$name] ?? [])) {
                         $context->diagnostics()->warning(
                             sprintf('The parent skips "%s" or checks it in groups of its own, so the object it holds may go unvalidated in the groups of this class: Symfony allows no Valid inside Property.', $property->wireName()),
+                            $schema->location(),
+                        );
+                    } elseif (($parents[$name] ?? []) !== []) {
+                        // The parent checks the property in every group, so its Valid would be among $checked: its type
+                        // is no class to traverse.
+                        $context->diagnostics()->warning(
+                            sprintf('"%s" keeps the type %s of the parent, which holds no object to traverse, so the constraints of the object this class declares are not checked.', $property->wireName(), $property->type()->describe()),
                             $schema->location(),
                         );
                     }
@@ -445,6 +452,20 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         }
 
         return $constraints;
+    }
+
+    /**
+     * @param list<Schema> $declarations
+     */
+    private function setsItsOwnChecks(array $declarations): bool
+    {
+        foreach ($declarations as $declaration) {
+            if ($declaration->extensions()->has('x-validator-groups') || $declaration->extensions()->has('x-validator-skip')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

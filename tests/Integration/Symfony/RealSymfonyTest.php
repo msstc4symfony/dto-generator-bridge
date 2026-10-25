@@ -487,6 +487,42 @@ final class RealSymfonyTest extends TestCase
     }
 
     /**
+     * A schema that holds itself in a list or a map is typed down to mixed inside; the values pass through unchanged.
+     *
+     * @dataProvider targets
+     */
+    public function testCarriesAValueThatHoldsItself(string $php): void
+    {
+        $this->runTarget($php, function (string $namespace, bool $annotations): void {
+            $serializer = $this->serializer($annotations);
+            $data = ['key' => 'long', 'value' => ['on' => [true, 'x', 1.5, ['deep' => []]]]];
+            $setting = $serializer->denormalize($data, $namespace . '\Setting');
+
+            self::assertIsObject($setting);
+            self::assertSame($data, $serializer->normalize($setting));
+            self::assertSame(['key'], $this->violationPaths($setting, $annotations));
+        });
+    }
+
+    /**
+     * A subtype that adds nothing still extends its base: the discriminator selects it, the base's constraints apply.
+     *
+     * @dataProvider targets
+     */
+    public function testBuildsABareSubtype(string $php): void
+    {
+        $this->runTarget($php, function (string $namespace, bool $annotations): void {
+            $serializer = $this->serializer($annotations);
+            $square = $serializer->denormalize(['form' => 'Square', 'size' => 11], $namespace . '\Shape');
+
+            self::assertIsObject($square);
+            self::assertSame($namespace . '\Square', get_class($square));
+            self::assertSame(['form' => 'Square', 'size' => 11], $serializer->normalize($square));
+            self::assertSame(['size'], $this->violationPaths($square, $annotations));
+        });
+    }
+
+    /**
      * The discriminator is an enum: a PHP enum on 8.1+ targets, a string with class constants before.
      *
      * @dataProvider targets
