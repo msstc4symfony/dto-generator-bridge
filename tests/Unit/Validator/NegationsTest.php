@@ -385,6 +385,26 @@ final class NegationsTest extends TestCase
         self::assertSame([self::AT . '/properties/value: "not" in a member of "oneOf" or "anyOf" is not checked.'], $this->messages($output));
     }
 
+    public function testLeavesUncheckedTheNegationOfAFormatTheConfigTurnsOff(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'notPhone' => ['type' => 'string', 'not' => ['format' => 'phone']],
+            'notSmall' => ['type' => 'integer', 'not' => ['format' => 'int8']],
+            'notGuid' => ['type' => 'string', 'not' => ['format' => 'uuid']],
+        ]], [], '8.2', ['formats' => ['phone' => false, 'int8' => false]], 'v7.1.0', self::RUNTIME);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame([], $this->attributesOf($code, 'notPhone'));
+        self::assertSame([], $this->attributesOf($code, 'notSmall'));
+        self::assertSame(['RuntimeAssert\\Not(constraints: [new \\Symfony\\Component\\Validator\\Constraints\\Uuid()])'], $this->attributesOf($code, 'notGuid'));
+        self::assertSame([
+            'warning /api.yaml#/components/schemas/Pet/properties/notPhone/not: "format: phone" is not checked.',
+            'warning /api.yaml#/components/schemas/Pet/properties/notPhone: "not" is not checked, as part of its schema cannot be.',
+            'warning /api.yaml#/components/schemas/Pet/properties/notSmall/not: "format: int8" is not checked.',
+            'warning /api.yaml#/components/schemas/Pet/properties/notSmall: "not" is not checked, as part of its schema cannot be.',
+        ], $this->messages($output));
+    }
+
     /**
      * @param array<string, mixed> $pet
      * @param array<string, mixed> $others

@@ -401,6 +401,56 @@ final class ValidatorEnricherTest extends TestCase
         self::assertSame([], $this->messages($output));
     }
 
+    public function testLeavesTheFormatsTheConfigTurnsOff(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'phone' => ['type' => 'string', 'format' => 'tel'],
+            'mail' => ['type' => 'string', 'format' => 'email'],
+            'guid' => ['type' => 'string', 'format' => 'uuid'],
+            'small' => ['type' => 'integer', 'format' => 'int8'],
+            'country' => ['type' => 'string', 'format' => 'country'],
+            'either' => ['format' => 'phone'],
+            'born' => ['type' => 'string', 'format' => 'date'],
+        ]], [], '8.2', ['formats' => ['phone' => false, 'E-mail' => false, 'int8' => false, 'country' => false]]);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame([], $this->attributesOf($code, 'phone'));
+        self::assertSame([], $this->attributesOf($code, 'mail'));
+        self::assertSame(['Assert\\Uuid'], $this->attributesOf($code, 'guid'));
+        self::assertSame([], $this->attributesOf($code, 'small'));
+        self::assertSame([], $this->attributesOf($code, 'country'));
+        self::assertSame([], $this->attributesOf($code, 'either'));
+        self::assertStringContainsString('public ?\\DateTimeImmutable $born', $code);
+        self::assertSame([], $this->messages($output));
+    }
+
+    public function testChecksOnlyTheFormatsTheConfigLists(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'phone' => ['type' => 'string', 'format' => 'phone'],
+            'guid' => ['type' => 'string', 'format' => 'GUID'],
+            'small' => ['type' => 'integer', 'format' => 'uint8'],
+        ]], [], '8.2', ['formats' => ['uuid', 'uint8']]);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame([], $this->attributesOf($code, 'phone'));
+        self::assertSame(['Assert\\Uuid'], $this->attributesOf($code, 'guid'));
+        self::assertSame(['Assert\\Range(min: 0, max: 255)'], $this->attributesOf($code, 'small'));
+    }
+
+    public function testChecksNoFormatWhenTheConfigSaysSo(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'phone' => ['type' => 'string', 'format' => 'phone'],
+            'small' => ['type' => 'integer', 'format' => 'int8', 'maximum' => 1000],
+        ]], [], '8.2', ['formats' => false]);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame([], $this->attributesOf($code, 'phone'));
+        self::assertSame(['Assert\\LessThanOrEqual(value: 1000)'], $this->attributesOf($code, 'small'));
+        self::assertSame([], $this->messages($output));
+    }
+
     public function testWritesTheInt32RangeAsAnAnnotationForPhp74(): void
     {
         $output = $this->generate(['type' => 'object', 'properties' => ['count' => ['type' => 'integer', 'format' => 'int32']]], [], '7.4', [], 'v6.4.1', ['doctrine/annotations' => '2.0.2']);

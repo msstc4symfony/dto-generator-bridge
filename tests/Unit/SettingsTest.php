@@ -47,8 +47,33 @@ final class SettingsTest extends TestCase
         self::assertNull($settings->version());
     }
 
+    public function testChecksEveryFormatByDefault(): void
+    {
+        self::assertTrue(Settings::fromConfig([])->formats()->enables('phone'));
+        self::assertTrue(Settings::fromConfig(['formats' => true])->formats()->enables('phone'));
+        self::assertFalse(Settings::fromConfig(['formats' => false])->formats()->enables('phone'));
+    }
+
+    public function testTurnsFormatsOnAndOffByTheirNames(): void
+    {
+        $formats = Settings::fromConfig(['formats' => ['Phone_Number' => false, 'uuid' => true]])->formats();
+
+        self::assertFalse($formats->enables('phone'));
+        self::assertTrue($formats->enables('uuid'));
+        self::assertTrue($formats->enables('email'));
+    }
+
+    public function testChecksOnlyTheListedFormats(): void
+    {
+        $formats = Settings::fromConfig(['formats' => ['GUID', 'int8']])->formats();
+
+        self::assertTrue($formats->enables('uuid'));
+        self::assertTrue($formats->enables('int8'));
+        self::assertFalse($formats->enables('phone'));
+    }
+
     /**
-     * @return iterable<string, array{array<string, array<array-key, int|string>|bool|float|int|string|null>, string}>
+     * @return iterable<string, array{array<string, array<array-key, bool|int|string>|bool|float|int|string|null>, string}>
      */
     public function invalidConfigs(): iterable
     {
@@ -69,13 +94,20 @@ final class SettingsTest extends TestCase
         yield 'groups item' => [['groups' => ['api', '']], 'extensionConfig.symfony.groups must be a list of group names.'];
         yield 'groups map' => [['groups' => ['a' => 'api']], 'extensionConfig.symfony.groups must be a list of group names.'];
         yield 'groups items' => [['groups' => [1, 2]], 'extensionConfig.symfony.groups must be a list of group names.'];
+        yield 'formats type' => [['formats' => 'phone'], 'extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true or false.'];
+        yield 'formats empty' => [['formats' => []], 'extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true or false.'];
+        yield 'formats switch' => [['formats' => ['phone' => 'no']], 'extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true or false.'];
+        yield 'formats item' => [['formats' => ['phone', 1]], 'extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true or false.'];
+        yield 'formats unknown' => [['formats' => ['ssh-key' => false, 'odd' => true]], 'extensionConfig.symfony.formats names "ssh-key", which the bridge does not check. extensionConfig.symfony.formats names "odd", which the bridge does not check.'];
+        yield 'formats date' => [['formats' => ['DateTime' => false]], 'extensionConfig.symfony.formats names "DateTime", which the bridge does not check: a date is a DateTimeInterface.'];
+        yield 'formats repeated' => [['formats' => ['phone', 'tel', 'uuid', 'GUID']], 'extensionConfig.symfony.formats names "tel" more than once. extensionConfig.symfony.formats names "GUID" more than once.'];
         yield 'groups repeated thrice' => [['groups' => ['api', 'api', 'api']], 'extensionConfig.symfony.groups names "api" more than once.'];
     }
 
     /**
      * @dataProvider invalidConfigs
      *
-     * @param array<string, array<array-key, int|string>|bool|float|int|string|null> $config
+     * @param array<string, array<array-key, bool|int|string>|bool|float|int|string|null> $config
      */
     public function testRefusesAConfigItCannotUse(array $config, string $message): void
     {

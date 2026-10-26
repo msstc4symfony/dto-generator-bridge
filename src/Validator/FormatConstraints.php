@@ -101,16 +101,19 @@ final class FormatConstraints
 
     private Diagnostics $diagnostics;
 
+    private FormatChecks $checks;
+
     private bool $subschema;
 
     /**
      * @param bool $subschema whether the format is of a subschema of `not`, `if` or `oneOf`, where JSON Schema reads an
      *                        unchecked format as matching any value: `not` would reject every one
      */
-    public function __construct(InstalledPackages $packages, Diagnostics $diagnostics, bool $subschema)
+    public function __construct(InstalledPackages $packages, Diagnostics $diagnostics, FormatChecks $checks, bool $subschema)
     {
         $this->packages = $packages;
         $this->diagnostics = $diagnostics;
+        $this->checks = $checks;
         $this->subschema = $subschema;
     }
 
@@ -142,7 +145,9 @@ final class FormatConstraints
 
         $constraints = [];
         foreach ($keywords->formats() as $format) {
-            if (isset(self::CONSTRAINTS[$format])) {
+            if (!$this->checks->enables($format)) {
+                $this->warnInSubschema($format, $at);
+            } elseif (isset(self::CONSTRAINTS[$format])) {
                 [$name, $option, $setting] = self::CONSTRAINTS[$format];
                 $constraints[] = new ConstraintSpec($name, $option === null ? [] : [AttributeArgument::named($option, ArgumentValue::literal($setting))]);
             } elseif (isset(self::PATTERNS[$format])) {
@@ -152,13 +157,22 @@ final class FormatConstraints
             } elseif (isset(self::CONSTANT_OPTIONS[$format])) {
                 [$name, $option, $class, $constant] = self::CONSTANT_OPTIONS[$format];
                 $constraints[] = new ConstraintSpec($name, [AttributeArgument::named($option, ArgumentValue::constant($constant, ClassName::fromFqcn($class)))]);
-            } elseif ($this->subschema) {
-                // The subschema reports itself unchecked rather than match what it should not.
-                $this->diagnostics->warning(sprintf('"format: %s" is not checked.', $format), $at);
+            } else {
+                $this->warnInSubschema($format, $at);
             }
         }
 
         return $constraints;
+    }
+
+    /**
+     * The subschema reports itself unchecked rather than match what it should not.
+     */
+    private function warnInSubschema(string $format, SchemaLocation $at): void
+    {
+        if ($this->subschema) {
+            $this->diagnostics->warning(sprintf('"format: %s" is not checked.', $format), $at);
+        }
     }
 
     /**
@@ -171,7 +185,8 @@ final class FormatConstraints
     {
         foreach ($this->subschema ? $keywords->formats() : [] as $format) {
             $ofStrings = Formats::isKnown($format, 'string') && !Formats::isKnown($format, 'integer') && !Formats::isKnown($format, 'number');
-            if (!$ofStrings && ($kind !== 'int' || !KindConstraints::rangesIntegersOf($format))) {
+            $ranged = $kind === 'int' && KindConstraints::rangesIntegersOf($format) && $this->checks->enables($format);
+            if (!$ofStrings && !$ranged) {
                 $this->diagnostics->warning(sprintf('"format: %s" is not checked.', $format), $at);
             }
         }
