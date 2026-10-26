@@ -16,6 +16,8 @@ All notable changes to this package are documented here. The format follows
   `MM/YYYY` with a `Regex`; `int8`, `int16`, `uint8`, `uint16`, `uint32`, `uint64` with their ranges, as `int32` was,
   the narrowest of several formats winning.
 - Twilio's `date-time-rfc-2822` dates are written and read in that form.
+- `extensionConfig.symfony.formats` turns format checks off: `false` for all of them, a list to check only those,
+  a map such as `{phone: false}` for some; dates keep their type.
 
 ### Changed
 

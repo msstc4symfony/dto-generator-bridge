@@ -73,9 +73,27 @@ extensionConfig:
     version: auto        # auto | '6.4' … — quote it: YAML reads 6.4 as a number
     groups: []           # validation groups for every constraint, plus Default
     additionalProperties: ignore   # ignore | spread — see "Undeclared properties"
+    formats: true        # true | false | [uuid, email] | {phone: false} — see "Format checks"
 ```
 
 The Symfony version is read per component from the project's `composer.lock`.
+
+### Format checks
+
+Every format in the table below gets its constraint unless `formats` turns it off: `false` checks none, a list checks
+only the formats it names, and a map turns the formats it names on or off, leaving the others checked:
+
+```yaml
+extensionConfig:
+  symfony:
+    formats:
+      phone: false       # any spelling: phone_number, tel…
+      currency: false
+```
+
+A format turned off stays an annotation, as JSON Schema has it; inside `not`, `if` and `oneOf` it leaves the keyword
+unchecked, with a warning. A format the bridge does not check is an error here, and so are the dates: `date`,
+`date-time` and `date-time-rfc-2822` give the property its `DateTimeInterface` type, which no setting changes.
 
 ## Validator constraints
 
