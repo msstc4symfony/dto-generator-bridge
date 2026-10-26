@@ -49,27 +49,27 @@ final class SettingsTest extends TestCase
 
     public function testChecksEveryFormatByDefault(): void
     {
-        self::assertTrue(Settings::fromConfig([])->formats()->enables('phone'));
-        self::assertTrue(Settings::fromConfig(['formats' => true])->formats()->enables('phone'));
-        self::assertFalse(Settings::fromConfig(['formats' => false])->formats()->enables('phone'));
+        self::assertTrue(Settings::fromConfig([])->formatChecks()->checks('phone'));
+        self::assertTrue(Settings::fromConfig(['formats' => true])->formatChecks()->checks('phone'));
+        self::assertFalse(Settings::fromConfig(['formats' => false])->formatChecks()->checks('phone'));
     }
 
     public function testTurnsFormatsOnAndOffByTheirNames(): void
     {
-        $formats = Settings::fromConfig(['formats' => ['Phone_Number' => false, 'uuid' => true]])->formats();
+        $formats = Settings::fromConfig(['formats' => ['Phone_Number' => false, 'uuid' => true]])->formatChecks();
 
-        self::assertFalse($formats->enables('phone'));
-        self::assertTrue($formats->enables('uuid'));
-        self::assertTrue($formats->enables('email'));
+        self::assertFalse($formats->checks('phone'));
+        self::assertTrue($formats->checks('uuid'));
+        self::assertTrue($formats->checks('email'));
     }
 
     public function testChecksOnlyTheListedFormats(): void
     {
-        $formats = Settings::fromConfig(['formats' => ['GUID', 'int8']])->formats();
+        $formats = Settings::fromConfig(['formats' => ['GUID', 'int8']])->formatChecks();
 
-        self::assertTrue($formats->enables('uuid'));
-        self::assertTrue($formats->enables('int8'));
-        self::assertFalse($formats->enables('phone'));
+        self::assertTrue($formats->checks('uuid'));
+        self::assertTrue($formats->checks('int8'));
+        self::assertFalse($formats->checks('phone'));
     }
 
     /**
@@ -98,6 +98,7 @@ final class SettingsTest extends TestCase
         yield 'formats empty' => [['formats' => []], 'extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true or false.'];
         yield 'formats switch' => [['formats' => ['phone' => 'no']], 'extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true or false.'];
         yield 'formats item' => [['formats' => ['phone', 1]], 'extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true or false.'];
+        yield 'formats item among unknown ones' => [['formats' => ['odd', 1, 'zzz']], 'extensionConfig.symfony.formats names "odd", which the bridge does not check. extensionConfig.symfony.formats names "zzz", which the bridge does not check. extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true or false.'];
         yield 'formats unknown' => [['formats' => ['ssh-key' => false, 'odd' => true]], 'extensionConfig.symfony.formats names "ssh-key", which the bridge does not check. extensionConfig.symfony.formats names "odd", which the bridge does not check.'];
         yield 'formats date' => [['formats' => ['DateTime' => false]], 'extensionConfig.symfony.formats names "DateTime", which the bridge does not check: a date is a DateTimeInterface.'];
         yield 'formats repeated' => [['formats' => ['phone', 'tel', 'uuid', 'GUID']], 'extensionConfig.symfony.formats names "tel" more than once. extensionConfig.symfony.formats names "GUID" more than once.'];

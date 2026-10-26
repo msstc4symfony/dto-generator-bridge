@@ -101,7 +101,7 @@ final class FormatConstraints
 
     private Diagnostics $diagnostics;
 
-    private FormatChecks $checks;
+    private FormatChecks $formatChecks;
 
     private bool $subschema;
 
@@ -109,12 +109,20 @@ final class FormatConstraints
      * @param bool $subschema whether the format is of a subschema of `not`, `if` or `oneOf`, where JSON Schema reads an
      *                        unchecked format as matching any value: `not` would reject every one
      */
-    public function __construct(InstalledPackages $packages, Diagnostics $diagnostics, FormatChecks $checks, bool $subschema)
+    public function __construct(InstalledPackages $packages, Diagnostics $diagnostics, FormatChecks $formatChecks, bool $subschema)
     {
         $this->packages = $packages;
         $this->diagnostics = $diagnostics;
-        $this->checks = $checks;
+        $this->formatChecks = $formatChecks;
         $this->subschema = $subschema;
+    }
+
+    /**
+     * Whether the bridge has a constraint for the format, of a string or of an integer.
+     */
+    public static function known(string $format): bool
+    {
+        return self::checks($format) || KindConstraints::rangesIntegersOf($format);
     }
 
     /**
@@ -145,7 +153,7 @@ final class FormatConstraints
 
         $constraints = [];
         foreach ($keywords->formats() as $format) {
-            if (!$this->checks->enables($format)) {
+            if (!$this->formatChecks->checks($format)) {
                 $this->warnInSubschema($format, $at);
             } elseif (isset(self::CONSTRAINTS[$format])) {
                 [$name, $option, $setting] = self::CONSTRAINTS[$format];
@@ -185,9 +193,9 @@ final class FormatConstraints
     {
         foreach ($this->subschema ? $keywords->formats() : [] as $format) {
             $ofStrings = Formats::isKnown($format, 'string') && !Formats::isKnown($format, 'integer') && !Formats::isKnown($format, 'number');
-            $ranged = $kind === 'int' && KindConstraints::rangesIntegersOf($format) && $this->checks->enables($format);
+            $ranged = $kind === 'int' && KindConstraints::rangesIntegersOf($format) && $this->formatChecks->checks($format);
             if (!$ofStrings && !$ranged) {
-                $this->diagnostics->warning(sprintf('"format: %s" is not checked.', $format), $at);
+                $this->warnInSubschema($format, $at);
             }
         }
     }

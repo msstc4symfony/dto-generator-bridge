@@ -67,12 +67,12 @@ final class KindConstraints
 
     private Diagnostics $diagnostics;
 
-    private FormatChecks $formats;
+    private FormatChecks $formatChecks;
 
-    public function __construct(Diagnostics $diagnostics, FormatChecks $formats)
+    public function __construct(Diagnostics $diagnostics, FormatChecks $formatChecks)
     {
         $this->diagnostics = $diagnostics;
-        $this->formats = $formats;
+        $this->formatChecks = $formatChecks;
     }
 
     /**
@@ -109,7 +109,7 @@ final class KindConstraints
         }
 
         foreach ($keywords->formats() as $format) {
-            $enabled = $this->formats->enables($format);
+            $enabled = $this->formatChecks->checks($format);
             $integer = $enabled && isset(self::INTEGER_BOUNDS[$format]);
             $string = $enabled && FormatConstraints::checks($format);
             if ($integer && $string) {
@@ -199,7 +199,7 @@ final class KindConstraints
         $lower = null;
         $upper = null;
         foreach ($kind === 'integer' ? $keywords->formats() : [] as $format) {
-            if (isset(self::INTEGER_BOUNDS[$format]) && $this->formats->enables($format)) {
+            if (isset(self::INTEGER_BOUNDS[$format]) && $this->formatChecks->checks($format)) {
                 [$min, $max, $label] = self::INTEGER_BOUNDS[$format];
                 $lower = $min === max($min, $lower[0] ?? $min) ? [$min, $label] : $lower;
                 $upper = $max !== null && $max === min($max, $upper[0] ?? $max) ? [$max, $label] : $upper;

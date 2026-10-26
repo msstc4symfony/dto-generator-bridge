@@ -118,7 +118,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         $extensions = new ExtensionReader($schema, $diagnostics);
         $skipped = $extensions->flag('x-validator-skip');
         $groups = $this->groups($extensions);
-        $builder = new ConstraintBuilder($context->references(), $context->target(), $diagnostics, new RuntimeConstraints($context->packages(), $diagnostics), $context->packages(), $this->settings->formats(), $context->keywordChecks(), $groups);
+        $builder = new ConstraintBuilder($context->references(), $context->target(), $diagnostics, new RuntimeConstraints($context->packages(), $diagnostics), $context->packages(), $this->settings->formatChecks(), $context->keywordChecks(), $groups);
         $type = $property->type();
         if ($skipped) {
             $constraints = [];
@@ -177,7 +177,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
     private function classSpecs(ClassScope $context, Keywords $keywords, ClassProperties $properties, array $groups, array $patterns): array
     {
         $runtime = new RuntimeConstraints($context->packages(), $context->diagnostics());
-        $builder = new ConstraintBuilder($context->references(), $context->target(), $context->diagnostics(), $runtime, $context->packages(), $this->settings->formats(), $context->keywordChecks(), $groups);
+        $builder = new ConstraintBuilder($context->references(), $context->target(), $context->diagnostics(), $runtime, $context->packages(), $this->settings->formatChecks(), $context->keywordChecks(), $groups);
         $constraints = array_merge(
             $this->requirements($context, $keywords, $runtime, $properties),
             $this->conditions($context, $keywords, $builder, $runtime, $groups, $properties),

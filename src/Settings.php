@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\Formats;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use Msstc4Symfony\DtoGeneratorBridge\Validator\FormatChecks;
+use Msstc4Symfony\DtoGeneratorBridge\Validator\FormatConstraints;
 
 /**
  * The `extensionConfig.symfony` section (bridge spec §3); null stands for "auto".
@@ -16,6 +17,8 @@ use Msstc4Symfony\DtoGeneratorBridge\Validator\FormatChecks;
  */
 final class Settings
 {
+    private const FORMATS_SHAPE = 'extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true or false.';
+
     private const KEYS = ['validator', 'serializer', 'version', 'groups', 'additionalProperties', 'formats'];
 
     private ?bool $validator;
@@ -29,19 +32,19 @@ final class Settings
 
     private bool $spreadsAdditionalProperties;
 
-    private FormatChecks $formats;
+    private FormatChecks $formatChecks;
 
     /**
      * @param list<non-empty-string> $groups
      */
-    private function __construct(?bool $validator, ?bool $serializer, ?SymfonyVersion $version, array $groups, bool $spreadsAdditionalProperties, FormatChecks $formats)
+    private function __construct(?bool $validator, ?bool $serializer, ?SymfonyVersion $version, array $groups, bool $spreadsAdditionalProperties, FormatChecks $formatChecks)
     {
         $this->validator = $validator;
         $this->serializer = $serializer;
         $this->version = $version;
         $this->groups = $groups;
         $this->spreadsAdditionalProperties = $spreadsAdditionalProperties;
-        $this->formats = $formats;
+        $this->formatChecks = $formatChecks;
     }
 
     /**
@@ -63,12 +66,12 @@ final class Settings
         $version = self::parseVersion($config, $problems);
         $groups = self::parseGroups($config, $problems);
         $spreads = self::parseAdditionalProperties($config, $problems);
-        $formats = self::parseFormats($config, $problems);
-        if ($problems !== [] || !$formats instanceof FormatChecks) {
+        $formatChecks = self::parseFormats($config, $problems);
+        if ($problems !== [] || !$formatChecks instanceof FormatChecks) {
             throw new InvalidArgumentException(implode(' ', $problems));
         }
 
-        return new self($validator, $serializer, $version, $groups, $spreads, $formats);
+        return new self($validator, $serializer, $version, $groups, $spreads, $formatChecks);
     }
 
     public function validator(): ?bool
@@ -103,9 +106,9 @@ final class Settings
         return $this->spreadsAdditionalProperties;
     }
 
-    public function formats(): FormatChecks
+    public function formatChecks(): FormatChecks
     {
-        return $this->formats;
+        return $this->formatChecks;
     }
 
     /**
@@ -222,24 +225,26 @@ final class Settings
 
         // An empty list and an empty map are one value in YAML and PHP, and they would mean opposite things.
         if (!is_array($value) || $value === []) {
-            $problems[] = 'extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true or false.';
+            $problems[] = self::FORMATS_SHAPE;
 
             return null;
         }
 
         $list = array_values($value) === $value;
         $switches = [];
+        // Every other problem is reported too.
+        $shaped = true;
         foreach ($value as $key => $item) {
             $written = $list ? $item : $key;
             $switch = $list ? true : $item;
             if (!is_string($written) || !is_bool($switch)) {
-                $problems[] = 'extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true or false.';
+                $shaped = false;
 
-                return null;
+                continue;
             }
 
             $format = Formats::normalize($written);
-            if (!FormatChecks::exists($format)) {
+            if (!FormatConstraints::known($format)) {
                 $problems[] = sprintf(
                     'extensionConfig.symfony.formats names "%s", which the bridge does not check%s.',
                     $written,
@@ -250,6 +255,10 @@ final class Settings
             } else {
                 $switches[$format] = $switch;
             }
+        }
+
+        if (!$shaped) {
+            $problems[] = self::FORMATS_SHAPE;
         }
 
         return new FormatChecks(!$list, $switches);

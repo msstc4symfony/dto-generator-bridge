@@ -410,6 +410,7 @@ final class ValidatorEnricherTest extends TestCase
             'small' => ['type' => 'integer', 'format' => 'int8'],
             'country' => ['type' => 'string', 'format' => 'country'],
             'either' => ['format' => 'phone'],
+            'anyInt8' => ['format' => 'int8'],
             'born' => ['type' => 'string', 'format' => 'date'],
         ]], [], '8.2', ['formats' => ['phone' => false, 'E-mail' => false, 'int8' => false, 'country' => false]]);
         $code = $this->code($output, 'Pet.php');
@@ -420,6 +421,7 @@ final class ValidatorEnricherTest extends TestCase
         self::assertSame([], $this->attributesOf($code, 'small'));
         self::assertSame([], $this->attributesOf($code, 'country'));
         self::assertSame([], $this->attributesOf($code, 'either'));
+        self::assertSame([], $this->attributesOf($code, 'anyInt8'));
         self::assertStringContainsString('public ?\\DateTimeImmutable $born', $code);
         self::assertSame([], $this->messages($output));
     }

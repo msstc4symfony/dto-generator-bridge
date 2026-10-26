@@ -27,15 +27,7 @@ final class FormatChecks
         $this->switches = $switches;
     }
 
-    /**
-     * Whether the bridge has a constraint for the format, of a string or of an integer.
-     */
-    public static function exists(string $format): bool
-    {
-        return FormatConstraints::checks($format) || KindConstraints::rangesIntegersOf($format);
-    }
-
-    public function enables(string $format): bool
+    public function checks(string $format): bool
     {
         return $this->switches[$format] ?? $this->default;
     }

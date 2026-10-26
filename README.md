@@ -92,7 +92,8 @@ extensionConfig:
 ```
 
 A format turned off stays an annotation, as JSON Schema has it; inside `not`, `if` and `oneOf` it leaves the keyword
-unchecked, with a warning. A format the bridge does not check is an error here, and so are the dates: `date`,
+unchecked, with a warning. An empty `formats: []` is an error, since YAML reads it as the empty map `{}` too, and the two would mean the
+opposite. A format the bridge does not check is an error here, and so are the dates: `date`,
 `date-time` and `date-time-rfc-2822` give the property its `DateTimeInterface` type, which no setting changes.
 
 ## Validator constraints
