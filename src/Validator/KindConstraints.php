@@ -24,32 +24,16 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
  *
  * @phpstan-type Kind 'string'|'integer'|'number'|'collection'|'several'|null
  *
- * An inclusive bound a format sets, and its name.
- * @phpstan-type ImpliedBound array{int, 'format: int32'}
+ * An inclusive bound a format sets, and its name (`format: int32`).
+ * @phpstan-type ImpliedBound array{int|float, non-empty-string}
  *
  * A bound and the keyword, or format, that sets it.
- * @phpstan-type Bound array{int|float, 'exclusiveMinimum'|'minimum'|'exclusiveMaximum'|'maximum'|'format: int32'}
+ * @phpstan-type Bound array{int|float, non-empty-string}
  *
  * @internal
  */
 final class KindConstraints
 {
-    /**
-     * Format → the constraint that checks it, and the option it needs.
-     *
-     * @var array<string, array{non-empty-string, ?non-empty-string, string|bool|null}>
-     */
-    private const FORMATS = [
-        'email' => ['Email', 'mode', 'html5'],
-        'ipv4' => ['Ip', 'version', '4'],
-        'ipv6' => ['Ip', 'version', '6'],
-        'hostname' => ['Hostname', 'requireTld', false],
-        'uuid' => ['Uuid', null, null],
-        'byte' => ['Regex', 'pattern', FormatPatterns::BASE64],
-        'uri' => ['Regex', 'pattern', FormatPatterns::URI],
-        'time' => ['Regex', 'pattern', FormatPatterns::TIME],
-    ];
-
     /**
      * The keywords JSON Schema applies to one kind of value only.
      *
@@ -62,20 +46,20 @@ final class KindConstraints
     ];
 
     /**
-     * The bounds of `format: int32`; `int64` is PHP's own int on 64-bit platforms and needs none. The literal
+     * The bounds of the integer formats; `int64` is PHP's own int on 64-bit platforms and needs none. The literal
      * 2147483648 is a float on 32-bit PHP, so the minimum is computed.
-     */
-    private const INT32 = [-2147483647 - 1, 2147483647];
-
-    /** The name the int32 bounds go by, beside the keywords that compete with them. */
-    private const INT32_LABEL = 'format: int32';
-
-    /**
-     * The formats whose constraint checks one kind of value only, and that kind as a warning names it.
      *
-     * @var array{int32: 'an integer', byte: 'a string', uri: 'a string', time: 'a string'}
+     * @var array<non-empty-string, array{int, int|float|null}>
      */
-    private const FORMAT_KINDS = ['int32' => 'an integer', 'byte' => 'a string', 'uri' => 'a string', 'time' => 'a string'];
+    private const INTEGER_BOUNDS = [
+        'int8' => [-128, 127],
+        'int16' => [-32768, 32767],
+        'int32' => [-2147483647 - 1, 2147483647],
+        'uint8' => [0, 255],
+        'uint16' => [0, 65535],
+        'uint32' => [0, 4294967295],
+        'uint64' => [0, null],
+    ];
 
     private Diagnostics $diagnostics;
 
@@ -109,36 +93,12 @@ final class KindConstraints
             return;
         }
 
-        foreach (array_intersect(array_keys(self::FORMAT_KINDS), $keywords->formats()) as $format) {
-            $this->diagnostics->warning(sprintf(
-                '"format: %s" checks only %s, and the value may be of another type; it is not checked.',
-                $format,
-                self::FORMAT_KINDS[$format],
-            ), $at);
-        }
-    }
-
-    /**
-     * Every format applies; one the config maps to a class gives the property that type, and the class validates
-     * itself.
-     *
-     * @return list<ConstraintSpec>
-     */
-    public function formats(Keywords $keywords, TypeModel $value): array
-    {
-        if (!$value instanceof ScalarType || $value->kind() !== 'string') {
-            return [];
-        }
-
-        $constraints = [];
         foreach ($keywords->formats() as $format) {
-            if (isset(self::FORMATS[$format])) {
-                [$name, $option, $setting] = self::FORMATS[$format];
-                $constraints[] = new ConstraintSpec($name, $option === null ? [] : [AttributeArgument::named($option, ArgumentValue::literal($setting))]);
+            $kind = isset(self::INTEGER_BOUNDS[$format]) ? 'an integer' : (FormatConstraints::checks($format) ? 'a string' : null);
+            if ($kind !== null) {
+                $this->diagnostics->warning(sprintf('"format: %s" checks only %s, and the value may be of another type; it is not checked.', $format, $kind), $at);
             }
         }
-
-        return $constraints;
     }
 
     /**
@@ -212,22 +172,27 @@ final class KindConstraints
      *
      * @param Kind $kind
      *
-     * @return array{ImpliedBound, ImpliedBound}|null
+     * @return array{ImpliedBound, ImpliedBound|null}|null
      */
     private function implied(Keywords $keywords, ?string $kind): ?array
     {
-        if ($kind !== 'integer' || !in_array('int32', $keywords->formats(), true)) {
-            return null;
+        foreach ($kind === 'integer' ? $keywords->formats() : [] as $format) {
+            if (isset(self::INTEGER_BOUNDS[$format])) {
+                [$lower, $upper] = self::INTEGER_BOUNDS[$format];
+                $label = 'format: ' . $format;
+
+                return [[$lower, $label], $upper === null ? null : [$upper, $label]];
+            }
         }
 
-        return [[self::INT32[0], self::INT32_LABEL], [self::INT32[1], self::INT32_LABEL]];
+        return null;
     }
 
     /**
      * One lower and one upper bound: the strictest of the inclusive and exclusive keywords and the implied bounds,
      * exclusive on a tie.
      *
-     * @param array{ImpliedBound, ImpliedBound}|null $implied
+     * @param array{ImpliedBound, ImpliedBound|null}|null $implied
      *
      * @return list<ConstraintSpec>
      */

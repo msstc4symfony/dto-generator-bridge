@@ -35,6 +35,14 @@ final class RuntimeConstraints
     }
 
     /**
+     * What else the project installs, which other constraints may need.
+     */
+    public function packages(): InstalledPackages
+    {
+        return $this->packages;
+    }
+
+    /**
      * @param non-empty-string $keyword
      */
     public function available(string $keyword, SchemaLocation $at): bool

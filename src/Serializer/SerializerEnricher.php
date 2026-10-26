@@ -38,6 +38,9 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
     /** DateTimeNormalizer::FORMAT_KEY in every version the bridge supports. */
     private const FORMAT_KEY = 'datetime_format';
 
+    /** DATE_RFC2822, for writing and reading alike. */
+    private const RFC_2822 = 'D, d M Y H:i:s O';
+
     /** The Serializer that deprecates reading a date-time off its default format without a context saying so. */
     private const LOOSE_DATE_TIME_SINCE = '8.1';
 
@@ -134,6 +137,13 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
             ]);
         }
 
+        // Twilio's dates: `Mon, 16 Aug 2010 03:45:01 +0000`.
+        if ($this->holds('date-time-rfc-2822', $schema, $property->type(), $references, $target)) {
+            $attributes[] = $this->attribute($version, 'Context', [
+                AttributeArgument::named('context', ArgumentValue::mapOf([self::FORMAT_KEY => ArgumentValue::literal(self::RFC_2822)])),
+            ]);
+        }
+
         // Serializer 8.1 deprecates reading a date-time off its default format, such as RFC 3339 with fractions of a
         // second, unless the context asks for the loose parser; 9.0 rejects it.
         if ($version->isAtLeast(SymfonyVersion::fromString(self::LOOSE_DATE_TIME_SINCE)) && $this->holds('date-time', $schema, $property->type(), $references, $target)) {
@@ -206,7 +216,7 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
     /**
      * Whether the value, or every item of it, has the format and the generator typed it as the target's date class.
      *
-     * @param 'date'|'date-time' $format
+     * @param 'date'|'date-time'|'date-time-rfc-2822' $format
      */
     private function holds(string $format, Schema $schema, TypeModel $type, SchemaReferences $references, TargetProfile $target): bool
     {
@@ -226,7 +236,7 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
 
         return $value instanceof ClassType
             && $value->className()->fqcn() === $target->dateTimeClass()->className()
-            && $resolved->format() === $format;
+            && $resolved->normalizedFormat() === $format;
     }
 
     /**

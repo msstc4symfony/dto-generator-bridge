@@ -505,6 +505,29 @@ final class RealSymfonyTest extends TestCase
     }
 
     /**
+     * Formats spelled as specs write them are checked, a number of whole numbers is an int, an RFC 2822 date keeps its
+     * form.
+     *
+     * @dataProvider targets
+     */
+    public function testChecksFormatsByTheirNames(string $php): void
+    {
+        $this->runTarget($php, function (string $namespace, bool $annotations): void {
+            $serializer = $this->serializer($annotations);
+            $good = ['phone' => '(800) 555-1234', 'amount' => '-1.50', 'tiny' => 127, 'net' => '10.0.0.1/24', 'currency' => 'usd', 'created' => 'Mon, 16 Aug 2010 03:45:01 +0000'];
+            $reachable = $serializer->denormalize($good, $namespace . '\Reachable');
+
+            self::assertIsObject($reachable);
+            self::assertSame($good, $serializer->normalize($reachable));
+            self::assertSame([], $this->violationPaths($reachable, $annotations));
+
+            $bad = $serializer->denormalize(['phone' => 'call me', 'amount' => '1,5', 'tiny' => 128, 'net' => '10.0.0.1', 'currency' => 'dollar'], $namespace . '\Reachable');
+            self::assertIsObject($bad);
+            self::assertSame(['phone', 'amount', 'tiny', 'net', 'currency'], $this->violationPaths($bad, $annotations));
+        });
+    }
+
+    /**
      * A subtype that adds nothing still extends its base: the discriminator selects it, the base's constraints apply.
      *
      * @dataProvider targets

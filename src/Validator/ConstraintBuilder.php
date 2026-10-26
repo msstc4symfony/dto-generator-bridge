@@ -45,6 +45,8 @@ final class ConstraintBuilder
 
     private KindConstraints $kinds;
 
+    private FormatConstraints $formats;
+
     private ValueConstraints $values;
 
     private ClaimedConstraints $claimed;
@@ -71,6 +73,7 @@ final class ConstraintBuilder
         $this->diagnostics = $diagnostics;
         $this->runtime = $runtime;
         $this->kinds = new KindConstraints($diagnostics);
+        $this->formats = new FormatConstraints($runtime->packages(), $diagnostics);
         $this->values = new ValueConstraints($target, $diagnostics);
         $this->claimed = new ClaimedConstraints($this, $references, $diagnostics, $runtime, $checks, $groups);
         $this->members = new MemberConstraints($this, $references, $runtime, $target, $groups);
@@ -107,7 +110,7 @@ final class ConstraintBuilder
             $replaced ? [] : $this->claimed->patterns($keywords, $value, $at),
             $this->values->choices($keywords, $value, $at),
             $this->values->constants($keywords, $value, $at),
-            $this->kinds->formats($keywords, $value),
+            $this->formats->of($keywords, $value, $at),
             $this->nested($keywords, $value, $at),
             $replaced ? [] : $this->claimed->conditions($keywords, $value, $at),
             $replaced ? [] : $this->claimed->negations($keywords, $value, $at),

@@ -43,6 +43,36 @@ final class FormatPatterns
         . '|' . self::HOUR . ':59:60' . self::FRACTION . '[+\-](?!00:00)' . self::HOUR . ':00'
         . '|' . self::HOUR_MINUTE . ':60' . self::FRACTION . '[+\-]' . self::HOUR . ':(?!00)[0-5][0-9])$/D';
 
+    /** ISO 4217 letters, in either case: Stripe writes `usd`. */
+    public const CURRENCY = '/^[A-Za-z]{3}$/D';
+
+    /**
+     * A phone number as people write it (Twilio's `(800) 555-1234`, Linode's `555-555-5555`, E.164 `+15017122661`),
+     * with an extension: digits among spaces, dots, slashes, hyphens and parentheses. Whether the number exists in its
+     * country needs a library such as libphonenumber.
+     */
+    public const PHONE = '/^(?=[^0-9]*+[0-9])\+?+[0-9 ().\/\-]++(?:(?:x|ext\.?+|#)[ ]*+[0-9]++)?+$/Di';
+
+    /** A JSON number in a string: Stripe's `decimal`. */
+    public const DECIMAL = '/^[+\-]?+(?:[0-9]++(?:\.[0-9]*+)?+|\.[0-9]++)(?:[eE][+\-]?+[0-9]++)?+$/D';
+
+    /** An integer in a string (Youtube's `uint64`), whose range is not checked. */
+    public const INTEGER = '/^[+\-]?+[0-9]++$/D';
+
+    public const DIGITS = '/^[0-9]++$/D';
+
+    /** RFC 3339 `duration` (ISO 8601): weeks alone, or a date part and a time part of whole numbers, seconds aside. */
+    public const DURATION = '/^P(?=[0-9T])(?:[0-9]++W|(?:[0-9]++Y)?+(?:[0-9]++M)?+(?:[0-9]++D)?+(?:T(?=[0-9])(?:[0-9]++H)?+(?:[0-9]++M)?+(?:[0-9]++(?:[.,][0-9]++)?+S)?+)?+)$/D';
+
+    /** The methods of RFC 9110, which are case-sensitive. */
+    public const HTTP_METHOD = '/^(?:GET|HEAD|POST|PUT|DELETE|CONNECT|OPTIONS|TRACE|PATCH)$/D';
+
+    /** Linode's `MM/YYYY`. */
+    public const MONTH_YEAR = '/^(?:0[1-9]|1[0-2])\/[0-9]{4}$/D';
+
+    /** Six pairs of hexadecimal digits joined by colons or hyphens, or three groups of four joined by dots. */
+    public const MAC_ADDRESS = '/^(?:[0-9A-Fa-f]{2}(?:[:\-][0-9A-Fa-f]{2}){5}|[0-9A-Fa-f]{4}(?:\.[0-9A-Fa-f]{4}){2})$/D';
+
     /** RFC 3986 unreserved characters and sub-delims. */
     private const CHARS = "A-Za-z0-9\\-._~!$&'()*+,;=";
 
