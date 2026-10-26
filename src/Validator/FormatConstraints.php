@@ -106,7 +106,7 @@ final class FormatConstraints
      * @param bool $subschema whether the format is of a subschema (`not`, `if`, `oneOf`…), where JSON Schema reads an
      *                        unchecked format as matching any string: `not` would reject every string
      */
-    public function __construct(InstalledPackages $packages, Diagnostics $diagnostics, bool $subschema = false)
+    public function __construct(InstalledPackages $packages, Diagnostics $diagnostics, bool $subschema)
     {
         $this->packages = $packages;
         $this->diagnostics = $diagnostics;
