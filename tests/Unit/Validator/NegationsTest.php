@@ -68,6 +68,8 @@ final class NegationsTest extends TestCase
             'time' => ['type' => 'integer', 'not' => ['format' => 'unixtime']],
             'mail' => ['type' => 'integer', 'not' => ['format' => 'email']],
             'tiny' => ['type' => 'integer', 'not' => ['format' => 'int8']],
+            'whole' => ['type' => 'integer', 'not' => ['format' => 'integer']],
+            'amount' => ['type' => 'number', 'not' => ['format' => 'decimal']],
         ]]);
         $code = $this->code($output, 'Pet.php');
 
@@ -86,6 +88,10 @@ final class NegationsTest extends TestCase
             self::AT . '/properties/one: "oneOf" is not checked, as part of its schema cannot be.',
             self::AT . '/properties/time/not: "format: unix-time" is not checked.',
             self::AT . '/properties/time: "not" is not checked, as part of its schema cannot be.',
+            self::AT . '/properties/whole/not: "format: integer" is not checked.',
+            self::AT . '/properties/whole: "not" is not checked, as part of its schema cannot be.',
+            self::AT . '/properties/amount/not: "format: decimal" is not checked.',
+            self::AT . '/properties/amount: "not" is not checked, as part of its schema cannot be.',
         ], $this->messages($output));
     }
 
