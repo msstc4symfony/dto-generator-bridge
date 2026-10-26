@@ -308,3 +308,8 @@ components:
         net: {type: string, format: ip/netmask}
         currency: {type: string, format: currency}
         created: {type: string, format: date-time-rfc-2822}
+        zone: {type: string, format: tz}
+        shade: {type: string, format: hex-color}
+        method: {type: string, format: http-method}
+        period: {type: string, format: duration}
+        id: {type: string, format: GUID}

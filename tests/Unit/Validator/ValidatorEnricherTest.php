@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Validator;
 
+use DateTimeZone;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\GeneratesDtos;
 use Msstc4Symfony\DtoGeneratorBridge\Validator\FormatPatterns;
 use PHPUnit\Framework\TestCase;
@@ -251,7 +252,7 @@ final class ValidatorEnricherTest extends TestCase
         self::assertSame([], $this->attributesOf($code, 'sunk'));
         self::assertSame([
             'warning /api.yaml#/components/schemas/Pet/properties/beyond: "minimum" and "format: int32" leave no valid value; they are not checked.',
-            'warning /api.yaml#/components/schemas/Pet/properties/either: "format: int32" checks only an integer, and the value may be of another type; it is not checked.',
+            'warning /api.yaml#/components/schemas/Pet/properties/either: "format: int32" checks an integer and a string each its own way, and the value may be of several types; it is not checked.',
             'warning /api.yaml#/components/schemas/Pet/properties/loose: "format: uuid" checks only a string, and the value may be of another type; it is not checked.',
             'warning /api.yaml#/components/schemas/Pet/properties/sunk: "format: int32" and "maximum" leave no valid value; they are not checked.',
         ], $this->messages($output));
@@ -267,6 +268,8 @@ final class ValidatorEnricherTest extends TestCase
             'unsigned' => ['type' => 'integer', 'format' => 'uint32', 'maximum' => 10],
             'huge' => ['type' => 'integer', 'format' => 'uint64'],
             'spelled' => ['type' => 'number', 'format' => 'UInt8'],
+            'both' => ['type' => 'integer', 'allOf' => [['format' => 'int32'], ['format' => 'int8']]],
+            'both unsigned' => ['type' => 'integer', 'allOf' => [['format' => 'uint64'], ['format' => 'int16']]],
             'time' => ['type' => 'integer', 'format' => 'unixtime'],
         ]]);
 
@@ -308,6 +311,7 @@ final class ValidatorEnricherTest extends TestCase
             'mac' => ['type' => 'string', 'format' => 'mac_address'],
             'method' => ['type' => 'string', 'format' => 'http-method'],
             'expiry' => ['type' => 'string', 'format' => 'MM/YYYY'],
+            'shade' => ['type' => 'string', 'format' => 'hex-color'],
             'site' => ['type' => 'string', 'format' => 'url'],
             'country' => ['type' => 'string', 'format' => 'iso-country-code'],
         ]]);
@@ -321,14 +325,14 @@ final class ValidatorEnricherTest extends TestCase
         self::assertSame(['Assert\\Ulid'], $this->attributesOf($code, 'ulid'));
         self::assertSame(["Assert\\Email(mode: 'html5')"], $this->attributesOf($code, 'mail'));
         self::assertSame(['Assert\\Json'], $this->attributesOf($code, 'json'));
-        self::assertSame(['Assert\\Timezone'], $this->attributesOf($code, 'zone'));
+        self::assertSame(['Assert\\Timezone(zone: \\' . DateTimeZone::class . '::ALL_WITH_BC)'], $this->attributesOf($code, 'zone'));
         self::assertSame(['Assert\\CssColor'], $this->attributesOf($code, 'color'));
         self::assertSame(['Assert\\Iban'], $this->attributesOf($code, 'iban'));
-        self::assertSame(['Assert\\Bic'], $this->attributesOf($code, 'bic'));
+        self::assertSame([], $this->attributesOf($code, 'bic'));
         self::assertSame(['Assert\\Isbn'], $this->attributesOf($code, 'isbn'));
         self::assertSame(['Assert\\Issn'], $this->attributesOf($code, 'issn'));
         self::assertSame(['Assert\\Isin'], $this->attributesOf($code, 'isin'));
-        $regex = static fn (string $pattern, string $property): string => '/Regex\\(\\s*pattern: ' . preg_quote("'" . $pattern . "'", '/') . ',?\\s*\\)\\] public \\?string \\$' . $property . ' /';
+        $regex = static fn (string $pattern, string $property): string => '/Regex\\(\\s*pattern: ' . preg_quote("'" . str_replace("'", "\\'", $pattern) . "'", '/') . ',?\\s*\\)\\] public \\?string \\$' . $property . ' /';
         self::assertMatchesRegularExpression($regex(FormatPatterns::PHONE, 'phone'), $code);
         self::assertMatchesRegularExpression($regex(FormatPatterns::CURRENCY, 'currency'), $code);
         self::assertMatchesRegularExpression($regex(FormatPatterns::DECIMAL, 'amount'), $code);
@@ -339,9 +343,13 @@ final class ValidatorEnricherTest extends TestCase
         self::assertMatchesRegularExpression($regex(FormatPatterns::MAC_ADDRESS, 'mac'), $code);
         self::assertMatchesRegularExpression($regex(FormatPatterns::HTTP_METHOD, 'method'), $code);
         self::assertMatchesRegularExpression($regex(FormatPatterns::MONTH_YEAR, 'expiry'), $code);
+        self::assertMatchesRegularExpression($regex(FormatPatterns::HEX_COLOR, 'shade'), $code);
         self::assertSame([], $this->attributesOf($code, 'site'));
         self::assertSame([], $this->attributesOf($code, 'country'));
-        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/country: "format: country" is checked with the data of symfony/intl, which the project does not install; it is not checked.'], $this->messages($output));
+        self::assertSame([
+            'warning /api.yaml#/components/schemas/Pet/properties/bic: "format: bic" is checked with the data of symfony/intl, which the project does not install; it is not checked.',
+            'warning /api.yaml#/components/schemas/Pet/properties/country: "format: country" is checked with the data of symfony/intl, which the project does not install; it is not checked.',
+        ], $this->messages($output));
     }
 
     public function testWarnsOnlyAboutTheFormatsItWouldCheckOnAValueOfSeveralTypes(): void
@@ -363,12 +371,14 @@ final class ValidatorEnricherTest extends TestCase
             'country' => ['type' => 'string', 'format' => 'iso-country-code'],
             'language' => ['type' => 'string', 'format' => 'language'],
             'locale' => ['type' => 'string', 'format' => 'bcp47'],
+            'bic' => ['type' => 'string', 'format' => 'swift'],
         ]], [], '8.2', [], 'v7.1.0', ['symfony/intl' => 'v7.1.0']);
         $code = $this->code($output, 'Pet.php');
 
         self::assertSame(['Assert\\Country'], $this->attributesOf($code, 'country'));
         self::assertSame(['Assert\\Language'], $this->attributesOf($code, 'language'));
         self::assertSame(['Assert\\Locale'], $this->attributesOf($code, 'locale'));
+        self::assertSame(['Assert\\Bic'], $this->attributesOf($code, 'bic'));
         self::assertSame([], $this->messages($output));
     }
 

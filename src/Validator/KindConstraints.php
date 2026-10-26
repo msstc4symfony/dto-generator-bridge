@@ -24,11 +24,14 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
  *
  * @phpstan-type Kind 'string'|'integer'|'number'|'collection'|'several'|null
  *
- * An inclusive bound a format sets, and its name (`format: int32`).
- * @phpstan-type ImpliedBound array{int|float, non-empty-string}
+ * The name of an integer format, as a warning names it beside the keywords.
+ * @phpstan-type FormatLabel 'format: int8'|'format: int16'|'format: int32'|'format: uint8'|'format: uint16'|'format: uint32'|'format: uint64'
+ *
+ * An inclusive bound a format sets, and its name.
+ * @phpstan-type ImpliedBound array{int|float, FormatLabel}
  *
  * A bound and the keyword, or format, that sets it.
- * @phpstan-type Bound array{int|float, non-empty-string}
+ * @phpstan-type Bound array{int|float, 'exclusiveMinimum'|'minimum'|'exclusiveMaximum'|'maximum'|FormatLabel}
  *
  * @internal
  */
@@ -46,19 +49,18 @@ final class KindConstraints
     ];
 
     /**
-     * The bounds of the integer formats; `int64` is PHP's own int on 64-bit platforms and needs none. The literal
-     * 2147483648 is a float on 32-bit PHP, so the minimum is computed.
-     *
-     * @var array<non-empty-string, array{int, int|float|null}>
+     * The bounds of the integer formats, and the name they go by beside the keywords that compete with them; `int64` is
+     * PHP's own int on 64-bit platforms and needs none. The literal 2147483648 is a float on 32-bit PHP, so the minimum
+     * is computed.
      */
     private const INTEGER_BOUNDS = [
-        'int8' => [-128, 127],
-        'int16' => [-32768, 32767],
-        'int32' => [-2147483647 - 1, 2147483647],
-        'uint8' => [0, 255],
-        'uint16' => [0, 65535],
-        'uint32' => [0, 4294967295],
-        'uint64' => [0, null],
+        'int8' => [-128, 127, 'format: int8'],
+        'int16' => [-32768, 32767, 'format: int16'],
+        'int32' => [-2147483647 - 1, 2147483647, 'format: int32'],
+        'uint8' => [0, 255, 'format: uint8'],
+        'uint16' => [0, 65535, 'format: uint16'],
+        'uint32' => [0, 4294967295, 'format: uint32'],
+        'uint64' => [0, null, 'format: uint64'],
     ];
 
     private Diagnostics $diagnostics;
@@ -94,9 +96,12 @@ final class KindConstraints
         }
 
         foreach ($keywords->formats() as $format) {
-            $kind = isset(self::INTEGER_BOUNDS[$format]) ? 'an integer' : (FormatConstraints::checks($format) ? 'a string' : null);
-            if ($kind !== null) {
-                $this->diagnostics->warning(sprintf('"format: %s" checks only %s, and the value may be of another type; it is not checked.', $format, $kind), $at);
+            $integer = isset(self::INTEGER_BOUNDS[$format]);
+            $string = FormatConstraints::checks($format);
+            if ($integer && $string) {
+                $this->diagnostics->warning(sprintf('"format: %s" checks an integer and a string each its own way, and the value may be of several types; it is not checked.', $format), $at);
+            } elseif ($integer || $string) {
+                $this->diagnostics->warning(sprintf('"format: %s" checks only %s, and the value may be of another type; it is not checked.', $format, $integer ? 'an integer' : 'a string'), $at);
             }
         }
     }
@@ -176,16 +181,18 @@ final class KindConstraints
      */
     private function implied(Keywords $keywords, ?string $kind): ?array
     {
+        // Formats of several schemas (an allOf of int32 and int8) leave the values all of them admit.
+        $lower = null;
+        $upper = null;
         foreach ($kind === 'integer' ? $keywords->formats() : [] as $format) {
             if (isset(self::INTEGER_BOUNDS[$format])) {
-                [$lower, $upper] = self::INTEGER_BOUNDS[$format];
-                $label = 'format: ' . $format;
-
-                return [[$lower, $label], $upper === null ? null : [$upper, $label]];
+                [$min, $max, $label] = self::INTEGER_BOUNDS[$format];
+                $lower = $lower === null || $min > $lower[0] ? [$min, $label] : $lower;
+                $upper = $max !== null && ($upper === null || $max < $upper[0]) ? [$max, $label] : $upper;
             }
         }
 
-        return null;
+        return $lower === null ? null : [$lower, $upper];
     }
 
     /**

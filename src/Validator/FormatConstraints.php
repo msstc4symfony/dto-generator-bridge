@@ -8,6 +8,7 @@ use MSSTC4PHP\DtoGenerator\Contract\InstalledPackages;
 use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostics;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ArgumentValue;
 use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeArgument;
+use MSSTC4PHP\DtoGenerator\Domain\Model\ClassName;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ScalarType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\TypeModel;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaLocation;
@@ -16,7 +17,7 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
 /**
  * The constraints of the formats of a string, by the name the generator reads a format as. A Symfony constraint where
  * one checks the format as specs use it, a Regex otherwise; one that rejects what APIs send (Url, which takes no
- * `urn:`; Currency, which takes no `usd`) is not used.
+ * `urn:`; Currency, which takes no `usd`; CssColor for `hex-color` without `#`) is not used.
  *
  * @internal
  */
@@ -39,10 +40,8 @@ final class FormatConstraints
         'uuid' => ['Uuid', null, null],
         'ulid' => ['Ulid', null, null],
         'json' => ['Json', null, null],
-        'timezone' => ['Timezone', null, null],
         'color' => ['CssColor', null, null],
         'iban' => ['Iban', null, null],
-        'bic' => ['Bic', null, null],
         'isbn' => ['Isbn', null, null],
         'issn' => ['Issn', null, null],
         'isin' => ['Isin', null, null],
@@ -59,6 +58,7 @@ final class FormatConstraints
         'time' => FormatPatterns::TIME,
         'duration' => FormatPatterns::DURATION,
         'mac-address' => FormatPatterns::MAC_ADDRESS,
+        'hex-color' => FormatPatterns::HEX_COLOR,
         'phone' => FormatPatterns::PHONE,
         'currency' => FormatPatterns::CURRENCY,
         'decimal' => FormatPatterns::DECIMAL,
@@ -77,11 +77,12 @@ final class FormatConstraints
     ];
 
     /**
-     * Format → the constraint of symfony/intl's data, which fails at validation without it.
+     * Format → the constraint that needs symfony/intl: Bic fails when it is built without it, the others when they
+     * validate.
      *
-     * @var array<non-empty-string, non-empty-string>
+     * @var array{country: 'Country', language: 'Language', locale: 'Locale', bic: 'Bic'}
      */
-    private const INTL = ['country' => 'Country', 'language' => 'Language', 'locale' => 'Locale'];
+    private const INTL = ['country' => 'Country', 'language' => 'Language', 'locale' => 'Locale', 'bic' => 'Bic'];
 
     private const INTL_PACKAGE = 'symfony/intl';
 
@@ -100,7 +101,7 @@ final class FormatConstraints
      */
     public static function checks(string $format): bool
     {
-        return isset(self::CONSTRAINTS[$format]) || isset(self::PATTERNS[$format]) || isset(self::INTL[$format]);
+        return isset(self::CONSTRAINTS[$format]) || isset(self::PATTERNS[$format]) || isset(self::INTL[$format]) || $format === 'timezone';
     }
 
     /**
@@ -124,6 +125,9 @@ final class FormatConstraints
                 $constraints[] = new ConstraintSpec('Regex', [AttributeArgument::named('pattern', ArgumentValue::literal(self::PATTERNS[$format]))]);
             } elseif (isset(self::INTL[$format])) {
                 array_push($constraints, ...$this->intl($format, $at));
+            } elseif ($format === 'timezone') {
+                // The zones PHP keeps for compatibility (`Asia/Calcutta`, `US/Pacific`, `GMT`) are what APIs send too.
+                $constraints[] = new ConstraintSpec('Timezone', [AttributeArgument::named('zone', ArgumentValue::constant('ALL_WITH_BC', ClassName::fromFqcn('DateTimeZone')))]);
             }
         }
 
@@ -131,6 +135,8 @@ final class FormatConstraints
     }
 
     /**
+     * @param key-of<self::INTL> $format
+     *
      * @return list<ConstraintSpec>
      */
     private function intl(string $format, SchemaLocation $at): array

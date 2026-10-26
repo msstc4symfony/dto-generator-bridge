@@ -47,11 +47,12 @@ final class FormatPatterns
     public const CURRENCY = '/^[A-Za-z]{3}$/D';
 
     /**
-     * A phone number as people write it (Twilio's `(800) 555-1234`, Linode's `555-555-5555`, E.164 `+15017122661`),
-     * with an extension: digits among spaces, dots, slashes, hyphens and parentheses. Whether the number exists in its
-     * country needs a library such as libphonenumber.
+     * A phone number as people write it (Twilio's `(800) 555-1234`, Linode's `555-555-5555`, E.164 `+15017122661`,
+     * `+7 (495) 123–45–67` pasted with no-break spaces and en dashes), with an extension (`x12`, `ext. 12`, `;ext=12`):
+     * digits among spaces, dots, slashes, hyphens and parentheses. Whether the number exists in its country needs a
+     * library such as libphonenumber.
      */
-    public const PHONE = '/^(?=[^0-9]*+[0-9])\+?+[0-9 ().\/\-]++(?:(?:x|ext\.?+|#)[ ]*+[0-9]++)?+$/Di';
+    public const PHONE = '/^(?=[^0-9]*+[0-9])\+?+[0-9 ().\/\-\x{00A0}\x{2013}]++(?:(?:x|ext\.?+|#|;ext=)[ ]*+[0-9]++)?+$/Diu';
 
     /** A JSON number in a string: Stripe's `decimal`. */
     public const DECIMAL = '/^[+\-]?+(?:[0-9]++(?:\.[0-9]*+)?+|\.[0-9]++)(?:[eE][+\-]?+[0-9]++)?+$/D';
@@ -61,17 +62,26 @@ final class FormatPatterns
 
     public const DIGITS = '/^[0-9]++$/D';
 
-    /** RFC 3339 `duration` (ISO 8601): weeks alone, or a date part and a time part of whole numbers, seconds aside. */
+    /**
+     * RFC 3339 `duration` (ISO 8601): weeks alone, or a date part and a time part of whole numbers; a fraction only of
+     * seconds, as RFC 3339 has none and ISO 8601 allows one in the last part. No sign.
+     */
     public const DURATION = '/^P(?=[0-9T])(?:[0-9]++W|(?:[0-9]++Y)?+(?:[0-9]++M)?+(?:[0-9]++D)?+(?:T(?=[0-9])(?:[0-9]++H)?+(?:[0-9]++M)?+(?:[0-9]++(?:[.,][0-9]++)?+S)?+)?+)$/D';
 
-    /** The methods of RFC 9110, which are case-sensitive. */
-    public const HTTP_METHOD = '/^(?:GET|HEAD|POST|PUT|DELETE|CONNECT|OPTIONS|TRACE|PATCH)$/D';
+    /**
+     * An RFC 9110 method: a token, as methods are extensible (`PROPFIND`, `QUERY`) and specs list them in either case
+     * (Twilio's enum has `get` and `GET`).
+     */
+    public const HTTP_METHOD = '/^[!#$%&\'*+\-.^_`|~0-9A-Za-z]++$/D';
 
     /** Linode's `MM/YYYY`. */
     public const MONTH_YEAR = '/^(?:0[1-9]|1[0-2])\/[0-9]{4}$/D';
 
-    /** Six pairs of hexadecimal digits joined by colons or hyphens, or three groups of four joined by dots. */
-    public const MAC_ADDRESS = '/^(?:[0-9A-Fa-f]{2}(?:[:\-][0-9A-Fa-f]{2}){5}|[0-9A-Fa-f]{4}(?:\.[0-9A-Fa-f]{4}){2})$/D';
+    /** Six pairs of hexadecimal digits joined by colons or hyphens, three groups of four joined by dots, or twelve digits. */
+    public const MAC_ADDRESS = '/^(?:[0-9A-Fa-f]{2}(?:[:\-][0-9A-Fa-f]{2}){5}|[0-9A-Fa-f]{4}(?:\.[0-9A-Fa-f]{4}){2}|[0-9A-Fa-f]{12})$/D';
+
+    /** Three, four, six or eight hexadecimal digits, with or without `#`, which CssColor requires. */
+    public const HEX_COLOR = '/^#?+(?:[0-9A-Fa-f]{3,4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/D';
 
     /** RFC 3986 unreserved characters and sub-delims. */
     private const CHARS = "A-Za-z0-9\\-._~!$&'()*+,;=";

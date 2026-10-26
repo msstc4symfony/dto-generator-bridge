@@ -9,10 +9,12 @@ All notable changes to this package are documented here. The format follows
 ### Added
 
 - Many more formats are checked, read by the name the generator gives them whatever the spelling (`phone_number`,
-  `GUID`, `ip/netmask`): `ip`, CIDR ranges, `ulid`, `json`, `timezone`, `color`, `iban`, `bic`, `isbn`, `issn`, `isin`
-  with Symfony's constraints; `country`, `language`, `locale` with them when `symfony/intl` is installed; `phone`,
-  `currency`, `decimal`, integers and digits in strings, `duration`, `mac-address`, `http-method`, `MM/YYYY` with a
-  `Regex`; `int8`, `int16`, `uint8`, `uint16`, `uint32`, `uint64` with their ranges, as `int32` was.
+  `GUID`, `ip/netmask`): `ip`, CIDR ranges, `ulid`, `json`, `timezone`, `color`, `iban`, `isbn`, `issn`, `isin`
+  with Symfony's constraints (`timezone` taking the zones PHP keeps for compatibility, such as `Asia/Calcutta`);
+  `country`, `language`, `locale`, `bic` with them when `symfony/intl` is installed; `phone`, `currency`, `decimal`,
+  integers and digits in strings, `duration`, `mac-address`, `hex-color`, `http-method` (any method token, any case),
+  `MM/YYYY` with a `Regex`; `int8`, `int16`, `uint8`, `uint16`, `uint32`, `uint64` with their ranges, as `int32` was,
+  the narrowest of several formats winning.
 - Twilio's `date-time-rfc-2822` dates are written and read in that form.
 
 ### Changed

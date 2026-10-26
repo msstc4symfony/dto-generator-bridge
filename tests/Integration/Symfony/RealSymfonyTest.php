@@ -514,16 +514,16 @@ final class RealSymfonyTest extends TestCase
     {
         $this->runTarget($php, function (string $namespace, bool $annotations): void {
             $serializer = $this->serializer($annotations);
-            $good = ['phone' => '(800) 555-1234', 'amount' => '-1.50', 'tiny' => 127, 'net' => '10.0.0.1/24', 'currency' => 'usd', 'created' => 'Mon, 16 Aug 2010 03:45:01 +0000'];
+            $good = ['phone' => '(800) 555-1234', 'amount' => '-1.50', 'tiny' => 127, 'net' => '10.0.0.1/24', 'currency' => 'usd', 'created' => 'Mon, 16 Aug 2010 03:45:01 +0000', 'zone' => 'Asia/Calcutta', 'shade' => 'ff0000', 'method' => 'get', 'period' => 'P1DT12H', 'id' => '0bcd1f8e-6a1f-4c9b-9a4b-0b8e5c2f1a3d'];
             $reachable = $serializer->denormalize($good, $namespace . '\Reachable');
 
             self::assertIsObject($reachable);
             self::assertSame($good, $serializer->normalize($reachable));
             self::assertSame([], $this->violationPaths($reachable, $annotations));
 
-            $bad = $serializer->denormalize(['phone' => 'call me', 'amount' => '1,5', 'tiny' => 128, 'net' => '10.0.0.1', 'currency' => 'dollar'], $namespace . '\Reachable');
+            $bad = $serializer->denormalize(['phone' => 'call me', 'amount' => '1,5', 'tiny' => 128, 'net' => '10.0.0.1', 'currency' => 'dollar', 'zone' => 'Mars/Olympus', 'shade' => 'red', 'method' => 'GET /', 'period' => '1 day', 'id' => 'not-a-uuid'], $namespace . '\Reachable');
             self::assertIsObject($bad);
-            self::assertSame(['phone', 'amount', 'tiny', 'net', 'currency'], $this->violationPaths($bad, $annotations));
+            self::assertSame(['phone', 'amount', 'tiny', 'net', 'currency', 'zone', 'shade', 'method', 'period', 'id'], $this->violationPaths($bad, $annotations));
         });
     }
 
