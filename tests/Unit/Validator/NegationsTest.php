@@ -57,6 +57,38 @@ final class NegationsTest extends TestCase
         ], $this->messages($output));
     }
 
+    public function testLeavesIfAndOneOfUncheckedAndOtherSubschemasCheckedWhereAFormatIsNot(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'pick' => ['type' => 'string', 'if' => ['format' => 'uri-reference'], 'then' => ['maxLength' => 5]],
+            'then' => ['type' => 'string', 'if' => ['minLength' => 3], 'then' => ['format' => 'uri-reference', 'maxLength' => 9]],
+            'one' => ['oneOf' => [['type' => 'string', 'format' => 'uri-reference'], ['type' => 'integer']]],
+            'any' => ['anyOf' => [['type' => 'string', 'format' => 'uri-reference', 'maxLength' => 5], ['type' => 'integer', 'minimum' => 3]]],
+            'names' => ['type' => 'object', 'additionalProperties' => ['type' => 'string'], 'propertyNames' => ['format' => 'uri-reference', 'maxLength' => 5]],
+            'time' => ['type' => 'integer', 'not' => ['format' => 'unixtime']],
+            'mail' => ['type' => 'integer', 'not' => ['format' => 'email']],
+            'tiny' => ['type' => 'integer', 'not' => ['format' => 'int8']],
+        ]]);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame([], $this->attributesOf($code, 'pick'));
+        self::assertStringContainsString('Length(max: 9)', implode(' ', $this->attributesOf($code, 'then')));
+        self::assertSame([], $this->attributesOf($code, 'one'));
+        self::assertStringContainsString('Length(max: 5)', implode(' ', $this->attributesOf($code, 'any')));
+        self::assertStringContainsString('Length(max: 5)', implode(' ', $this->attributesOf($code, 'names')));
+        self::assertSame([], $this->attributesOf($code, 'time'));
+        self::assertSame(['RuntimeAssert\\Not'], $this->attributesOf($code, 'mail'));
+        self::assertSame(['RuntimeAssert\\Not(constraints: [new ' . self::ASSERT . 'Range(min: -128, max: 127)])'], $this->attributesOf($code, 'tiny'));
+        self::assertSame([
+            self::AT . '/properties/pick/if: "format: uri-reference" is not checked.',
+            self::AT . '/properties/pick: "if" is not checked, as part of its schema cannot be.',
+            self::AT . '/properties/one/oneOf: "format: uri-reference" is not checked.',
+            self::AT . '/properties/one: "oneOf" is not checked, as part of its schema cannot be.',
+            self::AT . '/properties/time/not: "format: unix-time" is not checked.',
+            self::AT . '/properties/time: "not" is not checked, as part of its schema cannot be.',
+        ], $this->messages($output));
+    }
+
     public function testRejectsEveryValueOfASchemaOfNothing(): void
     {
         $output = $this->withRuntime(['type' => 'object', 'properties' => [

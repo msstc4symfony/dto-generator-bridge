@@ -63,7 +63,8 @@ final class ConstraintBuilder
      * @param InstalledPackages $packages what the project installs, which some formats need to be checked
      * @param KeywordChecks $checks where the keywords the bridge claims are marked as checked or warned about
      * @param list<non-empty-string> $groups the groups of the value, which nested composite constraints need too
-     * @param bool $subschema whether it builds a subschema of `not`, `if`, `oneOf`…, which an unchecked format changes
+     * @param bool $subschema whether it builds a subschema of `not`, `if` or `oneOf`, whose meaning an unchecked format
+     *                        turns around
      */
     public function __construct(
         SchemaReferences $references,
@@ -208,7 +209,10 @@ final class ConstraintBuilder
 
         // Diagnostics drops a repeated message, so the subschema gets its own to tell whether any keyword went unchecked.
         $own = new Diagnostics();
-        $builder = new self($this->references, $this->target, $own, $this->runtime, $this->packages, new KeywordChecks(), [], true);
+        // Where a subschema matching more values rejects or selects more, an unchecked format leaves it unchecked;
+        // elsewhere (anyOf, then, items…) it only admits more, as at the top.
+        $strict = in_array($keyword, ['not', 'if', 'oneOf'], true);
+        $builder = new self($this->references, $this->target, $own, $this->runtime, $this->packages, new KeywordChecks(), [], $strict);
         $nullable = !$nullIsAbsent && ($type instanceof NullableType || $type instanceof MixedType);
         $typeConstraint = $parsed->typeConstraint();
         $constraints = array_merge(

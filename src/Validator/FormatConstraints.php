@@ -11,6 +11,7 @@ use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeArgument;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ClassName;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ScalarType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\TypeModel;
+use MSSTC4PHP\DtoGenerator\Domain\Schema\Formats;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaLocation;
 use Msstc4Symfony\DtoGeneratorBridge\Keywords;
 
@@ -103,8 +104,8 @@ final class FormatConstraints
     private bool $subschema;
 
     /**
-     * @param bool $subschema whether the format is of a subschema (`not`, `if`, `oneOf`…), where JSON Schema reads an
-     *                        unchecked format as matching any string: `not` would reject every string
+     * @param bool $subschema whether the format is of a subschema of `not`, `if` or `oneOf`, where JSON Schema reads an
+     *                        unchecked format as matching any value: `not` would reject every one
      */
     public function __construct(InstalledPackages $packages, Diagnostics $diagnostics, bool $subschema)
     {
@@ -129,7 +130,13 @@ final class FormatConstraints
      */
     public function of(Keywords $keywords, TypeModel $value, SchemaLocation $at): array
     {
-        if (!$value instanceof ScalarType || $value->kind() !== 'string') {
+        if (!$value instanceof ScalarType) {
+            return [];
+        }
+
+        if ($value->kind() !== 'string') {
+            $this->warnAboutUncheckedFormatsOf($keywords, $value->kind(), $at);
+
             return [];
         }
 
@@ -152,6 +159,22 @@ final class FormatConstraints
         }
 
         return $constraints;
+    }
+
+    /**
+     * A format of strings matches every number or boolean, as JSON Schema has it; another the bridge does not check
+     * for the value (`not: {format: timestamp}` of an integer) leaves the subschema unchecked.
+     *
+     * @param 'int'|'float'|'bool' $kind
+     */
+    private function warnAboutUncheckedFormatsOf(Keywords $keywords, string $kind, SchemaLocation $at): void
+    {
+        foreach ($this->subschema ? $keywords->formats() : [] as $format) {
+            $ofStrings = Formats::isKnown($format, 'string') && !Formats::isKnown($format, 'integer') && !Formats::isKnown($format, 'number');
+            if (!$ofStrings && ($kind !== 'int' || !KindConstraints::rangesIntegersOf($format))) {
+                $this->diagnostics->warning(sprintf('"format: %s" is not checked.', $format), $at);
+            }
+        }
     }
 
     /**

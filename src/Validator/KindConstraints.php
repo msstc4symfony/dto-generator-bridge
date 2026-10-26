@@ -73,6 +73,14 @@ final class KindConstraints
     }
 
     /**
+     * Whether the integers of the format get a range.
+     */
+    public static function rangesIntegersOf(string $format): bool
+    {
+        return isset(self::INTEGER_BOUNDS[$format]);
+    }
+
+    /**
      * The constraints of the keywords of strings, numbers and collections the value is checked for.
      *
      * @return list<ConstraintSpec>

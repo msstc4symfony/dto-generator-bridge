@@ -20,6 +20,8 @@ All notable changes to this package are documented here. The format follows
 ### Changed
 
 - Requires generator 1.16, whose `Schema::normalizedFormat()` names the format.
+- Inside `not`, `if` and `oneOf`, a format the bridge does not check (`uri-reference`, `password`, an unknown one)
+  leaves the keyword unchecked, with a warning; `not: {format: uri-reference}` was a `Not` that rejected every string.
 - A value of several types warns about every format it leaves unchecked (`email`, `uuid`… as well), not only about
   `int32`, `byte`, `uri` and `time`.
 
