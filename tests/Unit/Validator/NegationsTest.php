@@ -54,7 +54,10 @@ final class NegationsTest extends TestCase
             self::AT . '/properties/link: "not" is not checked, as part of its schema cannot be.',
             self::AT . '/properties/odd/not: "format: ssh-key" is not checked.',
             self::AT . '/properties/odd: "not" is not checked, as part of its schema cannot be.',
+            self::AT . '/properties/ratio/not: "format: int32" is not checked.',
+            self::AT . '/properties/ratio: "not" is not checked, as part of its schema cannot be.',
         ], $this->messages($output));
+        self::assertSame([], $this->attributesOf($code, 'ratio'));
     }
 
     public function testLeavesIfAndOneOfUncheckedAndOtherSubschemasCheckedWhereAFormatIsNot(): void
@@ -71,6 +74,7 @@ final class NegationsTest extends TestCase
             'whole' => ['type' => 'integer', 'not' => ['format' => 'integer']],
             'amount' => ['type' => 'number', 'not' => ['format' => 'decimal']],
             'odd' => ['type' => 'boolean', 'not' => ['format' => 'ssh-key']],
+            'ratio' => ['type' => 'number', 'not' => ['format' => 'int32']],
         ]]);
         $code = $this->code($output, 'Pet.php');
 
@@ -95,7 +99,10 @@ final class NegationsTest extends TestCase
             self::AT . '/properties/amount: "not" is not checked, as part of its schema cannot be.',
             self::AT . '/properties/odd/not: "format: ssh-key" is not checked.',
             self::AT . '/properties/odd: "not" is not checked, as part of its schema cannot be.',
+            self::AT . '/properties/ratio/not: "format: int32" is not checked.',
+            self::AT . '/properties/ratio: "not" is not checked, as part of its schema cannot be.',
         ], $this->messages($output));
+        self::assertSame([], $this->attributesOf($code, 'ratio'));
     }
 
     public function testRejectsEveryValueOfASchemaOfNothing(): void
