@@ -344,6 +344,19 @@ final class ValidatorEnricherTest extends TestCase
         self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/country: "format: country" is checked with the data of symfony/intl, which the project does not install; it is not checked.'], $this->messages($output));
     }
 
+    public function testWarnsOnlyAboutTheFormatsItWouldCheckOnAValueOfSeveralTypes(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'link' => ['format' => 'uri-reference'],
+            'mail' => ['format' => 'email'],
+        ]]);
+
+        self::assertSame(
+            ['warning /api.yaml#/components/schemas/Pet/properties/mail: "format: email" checks only a string, and the value may be of another type; it is not checked.'],
+            $this->messages($output),
+        );
+    }
+
     public function testChecksCountriesLanguagesAndLocalesWithIntl(): void
     {
         $output = $this->generate(['type' => 'object', 'properties' => [
