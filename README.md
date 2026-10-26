@@ -93,8 +93,16 @@ nullable `oneOf`/`anyOf` (all apply, as in JSON Schema 2020-12):
 | `uniqueItems` | `Unique` |
 | `enum` | `Choice`; on a PHP enum only when it allows fewer cases (one beside a `$ref`), with the cases |
 | `const` | `IdenticalTo`, `IsNull` |
-| `format`: `email`, `ipv4`, `ipv6`, `hostname`, `uuid` | `Email(mode: 'html5')`, `Ip`, `Hostname(requireTld: false)`, `Uuid` |
-| `format: int32` | `Range(min: -2147483648, max: 2147483647)`, merged with `minimum` / `maximum` / `exclusive*` |
+| `format`: `email`, `ip`, `ipv4`, `ipv6`, `hostname`, `uuid` (`guid`) | `Email(mode: 'html5')`, `Ip(version: 'all')`, `Ip(version: '4')`, `Ip(version: '6')`, `Hostname(requireTld: false)`, `Uuid` (RFC 4122 versions in their canonical form: the nil UUID and `{…}` fail) |
+| `format`: `cidr`, `ipv4-cidr`, `ipv6-cidr` (Linode's `ip/netmask`, `ipv4/prefix_length`, `ipv6/128`) | `Cidr`, with the version |
+| `format`: `ulid`, `json`, `color` (`css-color`), `iban`, `isbn`, `issn`, `isin` | `Ulid`, `Json`, `CssColor`, `Iban`, `Isbn`, `Issn`, `Isin` |
+| `format: timezone` | `Timezone(zone: \DateTimeZone::ALL_WITH_BC)`: the names PHP keeps for compatibility (`Asia/Calcutta`, `US/Pacific`, `GMT`) pass too |
+| `format`: `country`, `language`, `locale`, `bic` | `Country`, `Language`, `Locale`, `Bic` when the project installs `symfony/intl`, whose data they need (`Bic` fails without it when the class is loaded); a warning otherwise. They take upper-case codes only: `us` or a lower-case BIC fail |
+| `format`: `phone` (`phone-number`, `tel`…) | `Regex` for a number as people write it: digits among spaces (no-break ones too), `+`, `.`, `/`, `-`, en dashes and parentheses, an extension (`x12`, `ext. 12`, `;ext=12`); Twilio's `(800) 555-1234`, `+7 (495) 123–45–67` and E.164 alike. It is lenient (unbalanced parentheses pass) and takes no letters (`1-800-FLOWERS` fails); whether the number exists needs libphonenumber |
+| `format`: `currency` | `Regex` for three letters of either case (Stripe writes `usd`, which `Currency` rejects) |
+| `format`: `decimal`; `int64`, `integer`…; `uint64`, `digits` of a string | `Regex` for a number (leniently: a sign, leading zeros, a leading or trailing dot, an exponent), an integer, digits; the range of a string's integer is not checked |
+| `format`: `duration`, `mac-address`, `hex-color`, `http-method`, `MM/YYYY` | `Regex` for an ISO 8601 duration (weeks alone, or date and time parts of whole numbers, a fraction only of seconds, no sign), a MAC address (`:` or `-` throughout, `.`, or none), three to eight hex digits with or without `#`, an RFC 9110 method token in any case, a month and year |
+| `format`: `int8`, `int16`, `int32`, `uint8`, `uint16`, `uint32` / `uint64` of an integer | `Range` of the type, merged with `minimum` / `maximum` / `exclusive*` / `GreaterThanOrEqual(value: 0)` |
 | `format: byte` | `Regex` for base64: the standard alphabet of RFC 4648, padding only at the end |
 | `format: uri` | `Regex` for an RFC 3986 URI: a scheme and any of its forms (`https://…`, `urn:…`, `mailto:…`) |
 | `format: time` | `Regex` for an RFC 3339 `full-time`: `08:30:06Z`, `23:59:60.5-08:00` |
@@ -124,12 +132,22 @@ annotations, which Symfony Validator 7 no longer reads: the bridge writes none a
 default `target.strict: true` (a warning otherwise). Annotations also need `doctrine/annotations` in the project; the
 bridge warns when it is missing. With `target.metadata: none` the bridge writes nothing.
 
-Keywords of one kind of value (`minLength`, `minimum`, `minItems`…) are written only for a property of that type; for a
-value of several types, a pattern PHP cannot compile or a malformed keyword the bridge warns and writes nothing. The
-same holds for `format: int32` (integers) and `format: byte`, `uri`, `time` (strings): a value of several types warns
-about them too, next to the generator's own warning about the format. The other formats (`email`, `uuid`…) are
-skipped on such a value without a warning. A mixed `enum` such as `[low, 1]` gives a `Choice` with both values; its
-property may hold a string or an int, so `minLength` or `minimum` beside it get that warning.
+Keywords of one kind of value (`minLength`, `minimum`, `minItems`…) are written only for a property of that type; for
+a value of several types, a pattern PHP cannot compile or a malformed keyword the bridge warns and writes nothing. The
+same holds for the formats: those of integers (`int32`…) and of strings (`email`, `uuid`, `byte`…) are checked only on
+a value of that type, and a value of several types warns about them. Inside `not`, `if` and `oneOf`, a format the
+bridge does not check (`uri-reference`, `password`, one the generator does not know, or one of numbers such as
+`unix-time` beside an integer) leaves that keyword unchecked, with a warning: JSON Schema reads such a format as
+matching any value, so `not` would reject every one. Elsewhere (`anyOf`, `then`, `items`, `propertyNames`…) it only
+admits more values and is left aside, as at the top. A mixed `enum` such as `[low, 1]` gives a `Choice` with both
+values; its property may hold a string or an int, so `minLength` or `minimum` beside it get that warning.
+
+The bridge reads a format by the name the generator reads it as (generator 1.16+): `dateTime` is `date-time`,
+`phone_number` is `phone`, `GUID` is `uuid` (the generator's docs list the spellings). `url` reads as `uri-reference`,
+which is not checked: specs write it for relative paths and bare host names too. A format the generator does not know,
+and the date formats, which the generator types as dates, get no constraint. Twilio's `date-time-rfc-2822` gets a
+Serializer `Context` with that format (`D, d M Y H:i:s O`) for writing and reading; a date without the day of the week,
+which RFC 2822 allows, does not read.
 
 The `int32` bounds compete with the schema's: the strictest bound on each side wins, so `minimum: 0` gives
 `Range(min: 0, max: 2147483647)`, and an exclusive bound gives a pair such as `GreaterThanOrEqual(value: -2147483648)`

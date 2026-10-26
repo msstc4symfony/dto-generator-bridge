@@ -141,6 +141,85 @@ final class FormatPatternsTest extends TestCase
     }
 
     /**
+     * Values real APIs send, which must pass, and values the format excludes.
+     *
+     * @return iterable<string, array{string, list<string>, list<string>}>
+     */
+    public static function values(): iterable
+    {
+        yield 'phone' => [FormatPatterns::PHONE, ['(800) 555-1234', '555-555-5555', '+15017122661', '+1 555 1234 ext. 12', '555-1234 x5', '555 1234;ext=5', "+7\u{00A0}(495)\u{00A0}123\u{2013}45\u{2013}67", '123.456.7890', '0049/30/123456'], ['call me', '+', '()', '', "555\n", '555-1234 x']];
+        yield 'currency' => [FormatPatterns::CURRENCY, ['usd', 'USD', 'Eur'], ['US', 'usdd', 'U$D', "usd\n"]];
+        yield 'decimal' => [FormatPatterns::DECIMAL, ['1', '-1.50', '+2', '1e3', '1.5E-7', '.5', '1.'], ['1,5', 'abc', '', '.', 'e3', '1e', '--1', ' 1']];
+        yield 'integer' => [FormatPatterns::INTEGER, ['0', '-12', '+7', '18446744073709551615'], ['1.0', '', '-', '1e3', ' 1']];
+        yield 'digits' => [FormatPatterns::DIGITS, ['0', '4111111111111111', '007'], ['-1', '', '1 2', 'x1']];
+        yield 'duration' => [FormatPatterns::DURATION, ['P1Y', 'PT1H', 'P1W', 'P1Y2M3DT4H5M6.5S', 'P3D', 'PT0,5S', 'PT36H'], ['P', 'PT', 'P1YT', '1Y', 'P1H', 'P1W2D', '-P1D', 'PT0.5H', 'p1d']];
+        yield 'MAC address' => [FormatPatterns::MAC_ADDRESS, ['00:1a:2B:3c:4d:5e', '00-1a-2b-3c-4d-5e', '001a.2b3c.4d5e', '001a2b3c4d5e'], ['00:1a:2b', 'zz:1a:2b:3c:4d:5e', '001a2b3c4d5', '00:1a:2b:3c:4d:5e:6f', '00:1A-2B:3C:4D:5E']];
+        yield 'hex colour' => [FormatPatterns::HEX_COLOR, ['#fff', 'fff', '#FF0000', 'ff0000', '#ff000080', 'ff00'], ['#ff', 'ff000', '#ggg', 'red', '##fff']];
+        yield 'HTTP method' => [FormatPatterns::HTTP_METHOD, ['GET', 'get', 'POST', 'PROPFIND', 'M-SEARCH'], ['', 'GET POST', 'GET/', "GET\n", 'GÉT']];
+        yield 'month and year' => [FormatPatterns::MONTH_YEAR, ['06/2022', '12/1999'], ['13/2022', '6/2022', '00/2022', '06/22', '06-2022']];
+    }
+
+    /**
+     * @dataProvider values
+     *
+     * @param list<string> $valid
+     * @param list<string> $invalid
+     */
+    public function testMatchesTheValuesOfItsFormat(string $pattern, array $valid, array $invalid): void
+    {
+        foreach ($this->withAndWithoutJit($pattern) as $setting => $regex) {
+            foreach ($valid as $value) {
+                self::assertSame(1, $this->match($regex, $value), $value . ', pcre.jit=' . $setting);
+            }
+
+            foreach ($invalid as $value) {
+                self::assertSame(0, $this->match($regex, $value), $value . ', pcre.jit=' . $setting);
+            }
+        }
+    }
+
+    /**
+     * Read as UTF-8 for its no-break space and en dash: a byte that is no UTF-8 fails the match, which Symfony's Regex
+     * reports as a violation.
+     */
+    public function testFailsAPhoneNumberThatIsNoUtf8(): void
+    {
+        self::assertFalse($this->match(FormatPatterns::PHONE, "\xFF555"));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function unbounded(): iterable
+    {
+        yield 'phone' => [FormatPatterns::PHONE, '5 '];
+        yield 'decimal' => [FormatPatterns::DECIMAL, '9'];
+        yield 'integer' => [FormatPatterns::INTEGER, '9'];
+        yield 'digits' => [FormatPatterns::DIGITS, '9'];
+        yield 'duration' => [FormatPatterns::DURATION, '9'];
+        yield 'HTTP method' => [FormatPatterns::HTTP_METHOD, 'A'];
+    }
+
+    /**
+     * Only character classes repeat, so a value of megabytes neither exhausts the JIT stack nor the backtracking
+     * limit, whether it matches or fails at its very end.
+     *
+     * @dataProvider unbounded
+     */
+    public function testMatchesAValueOfAnySize(string $pattern, string $unit): void
+    {
+        $prefix = $pattern === FormatPatterns::DURATION ? 'PT' : '';
+        $suffix = $pattern === FormatPatterns::DURATION ? 'S' : '';
+        foreach ($this->withAndWithoutJit($pattern) as $setting => $regex) {
+            foreach ([1, 8] as $megabytes) {
+                $large = $prefix . str_repeat($unit, intdiv($megabytes * 1048576, strlen($unit))) . '1' . $suffix;
+                self::assertSame(1, $this->match($regex, $large), sprintf('%d MB, pcre.jit=%s', $megabytes, $setting));
+                self::assertSame(0, $this->match($regex, $large . "\x01"), sprintf('%d MB and a control character, pcre.jit=%s', $megabytes, $setting));
+            }
+        }
+    }
+
+    /**
      * @return iterable<'0'|'1', string> the JIT setting, set while its pattern is in use
      */
     private function withAndWithoutJit(string $pattern): iterable

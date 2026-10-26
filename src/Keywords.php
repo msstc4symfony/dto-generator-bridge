@@ -113,7 +113,7 @@ final class Keywords
     }
 
     /**
-     * The distinct formats, the nearest first.
+     * The distinct formats by the name the generator reads them as, the nearest first.
      *
      * @return list<string>
      */
@@ -121,7 +121,7 @@ final class Keywords
     {
         $formats = [];
         foreach ($this->schemas as $schema) {
-            $format = $schema->format();
+            $format = $schema->normalizedFormat();
             if ($format !== null && !in_array($format, $formats, true)) {
                 $formats[] = $format;
             }

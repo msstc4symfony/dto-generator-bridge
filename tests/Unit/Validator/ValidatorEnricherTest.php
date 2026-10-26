@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Validator;
 
+use DateTimeZone;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\GeneratesDtos;
 use Msstc4Symfony\DtoGeneratorBridge\Validator\FormatPatterns;
 use PHPUnit\Framework\TestCase;
@@ -241,7 +242,7 @@ final class ValidatorEnricherTest extends TestCase
         self::assertSame([], $this->attributesOf($code, 'long'));
         self::assertSame([], $this->attributesOf($code, 'beyond'));
         self::assertSame([], $this->attributesOf($code, 'either'));
-        self::assertSame([], $this->attributesOf($code, 'fraction'));
+        self::assertSame([$int32], $this->attributesOf($code, 'fraction'));
         self::assertSame([], $this->attributesOf($code, 'loose'));
         self::assertSame([$int32], $this->attributesOf($code, 'below'));
         self::assertSame([$int32], $this->attributesOf($code, 'above'));
@@ -250,12 +251,154 @@ final class ValidatorEnricherTest extends TestCase
         self::assertSame([$int32], $this->attributesOf($code, 'floor'));
         self::assertSame([], $this->attributesOf($code, 'sunk'));
         self::assertSame([
-            'warning /api.yaml#/components/schemas/Pet/properties/either/format: Unknown string format "int32"; the property stays a string.',
-            'warning /api.yaml#/components/schemas/Pet/properties/fraction/format: Unknown number format "int32"; the property stays a float.',
             'warning /api.yaml#/components/schemas/Pet/properties/beyond: "minimum" and "format: int32" leave no valid value; they are not checked.',
-            'warning /api.yaml#/components/schemas/Pet/properties/either: "format: int32" checks only an integer, and the value may be of another type; it is not checked.',
+            'warning /api.yaml#/components/schemas/Pet/properties/either: "format: int32" checks an integer and a string each its own way, and the value may be of several types; it is not checked.',
+            'warning /api.yaml#/components/schemas/Pet/properties/loose: "format: uuid" checks only a string, and the value may be of another type; it is not checked.',
             'warning /api.yaml#/components/schemas/Pet/properties/sunk: "format: int32" and "maximum" leave no valid value; they are not checked.',
         ], $this->messages($output));
+    }
+
+    public function testBoundsTheOtherIntegerFormats(): void
+    {
+        $code = $this->pet(['type' => 'object', 'properties' => [
+            'tiny' => ['type' => 'integer', 'format' => 'int8'],
+            'small' => ['type' => 'integer', 'format' => 'int16'],
+            'byte' => ['type' => 'integer', 'format' => 'uint8'],
+            'word' => ['type' => 'integer', 'format' => 'uint16'],
+            'unsigned' => ['type' => 'integer', 'format' => 'uint32', 'maximum' => 10],
+            'huge' => ['type' => 'integer', 'format' => 'uint64'],
+            'spelled' => ['type' => 'number', 'format' => 'UInt8'],
+            'both' => ['type' => 'integer', 'allOf' => [['format' => 'int32'], ['format' => 'int8']]],
+            'both reversed' => ['type' => 'integer', 'allOf' => [['format' => 'int8'], ['format' => 'int32']]],
+            'both unsigned' => ['type' => 'integer', 'allOf' => [['format' => 'uint64'], ['format' => 'int16']]],
+            'time' => ['type' => 'integer', 'format' => 'unixtime'],
+        ]]);
+
+        self::assertSame(['Assert\Range(min: -128, max: 127)'], $this->attributesOf($code, 'tiny'));
+        self::assertSame(['Assert\Range(min: -32768, max: 32767)'], $this->attributesOf($code, 'small'));
+        self::assertSame(['Assert\Range(min: 0, max: 255)'], $this->attributesOf($code, 'byte'));
+        self::assertSame(['Assert\Range(min: 0, max: 65535)'], $this->attributesOf($code, 'word'));
+        self::assertSame(['Assert\Range(min: 0, max: 10)'], $this->attributesOf($code, 'unsigned'));
+        self::assertSame(['Assert\GreaterThanOrEqual(value: 0)'], $this->attributesOf($code, 'huge'));
+        self::assertSame(['Assert\Range(min: 0, max: 255)'], $this->attributesOf($code, 'spelled'));
+        self::assertSame(['Assert\\Range(min: -128, max: 127)'], $this->attributesOf($code, 'both'));
+        self::assertSame(['Assert\\Range(min: 0, max: 32767)'], $this->attributesOf($code, 'bothUnsigned'));
+        self::assertSame(['Assert\\Range(min: -128, max: 127)'], $this->attributesOf($code, 'bothReversed'));
+        self::assertSame([], $this->attributesOf($code, 'time'));
+    }
+
+    public function testChecksTheFormatsOfStringsByTheirName(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'ip' => ['type' => 'string', 'format' => 'ip'],
+            'net' => ['type' => 'string', 'format' => 'ip/netmask'],
+            'net4' => ['type' => 'string', 'format' => 'ipv4/prefix_length'],
+            'net6' => ['type' => 'string', 'format' => 'ipv6/128'],
+            'guid' => ['type' => 'string', 'format' => 'GUID'],
+            'ulid' => ['type' => 'string', 'format' => 'ulid'],
+            'mail' => ['type' => 'string', 'format' => 'e-mail'],
+            'json' => ['type' => 'string', 'format' => 'json'],
+            'zone' => ['type' => 'string', 'format' => 'time-zone'],
+            'color' => ['type' => 'string', 'format' => 'css-color'],
+            'iban' => ['type' => 'string', 'format' => 'iban'],
+            'bic' => ['type' => 'string', 'format' => 'swift'],
+            'isbn' => ['type' => 'string', 'format' => 'isbn'],
+            'issn' => ['type' => 'string', 'format' => 'issn'],
+            'isin' => ['type' => 'string', 'format' => 'isin'],
+            'phone' => ['type' => 'string', 'format' => 'phone-number'],
+            'currency' => ['type' => 'string', 'format' => 'currency'],
+            'amount' => ['type' => 'string', 'format' => 'decimal'],
+            'big' => ['type' => 'string', 'format' => 'uint64'],
+            'signed' => ['type' => 'string', 'format' => 'int64'],
+            'pin' => ['type' => 'string', 'format' => 'digits'],
+            'period' => ['type' => 'string', 'format' => 'duration'],
+            'mac' => ['type' => 'string', 'format' => 'mac_address'],
+            'method' => ['type' => 'string', 'format' => 'http-method'],
+            'expiry' => ['type' => 'string', 'format' => 'MM/YYYY'],
+            'shade' => ['type' => 'string', 'format' => 'hex-color'],
+            'site' => ['type' => 'string', 'format' => 'url'],
+            'country' => ['type' => 'string', 'format' => 'iso-country-code'],
+        ]]);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame(["Assert\\Ip(version: 'all')"], $this->attributesOf($code, 'ip'));
+        self::assertSame(['Assert\\Cidr'], $this->attributesOf($code, 'net'));
+        self::assertSame(["Assert\\Cidr(version: '4')"], $this->attributesOf($code, 'net4'));
+        self::assertSame(["Assert\\Cidr(version: '6')"], $this->attributesOf($code, 'net6'));
+        self::assertSame(['Assert\\Uuid'], $this->attributesOf($code, 'guid'));
+        self::assertSame(['Assert\\Ulid'], $this->attributesOf($code, 'ulid'));
+        self::assertSame(["Assert\\Email(mode: 'html5')"], $this->attributesOf($code, 'mail'));
+        self::assertSame(['Assert\\Json'], $this->attributesOf($code, 'json'));
+        self::assertSame(['Assert\\Timezone(zone: \\' . DateTimeZone::class . '::ALL_WITH_BC)'], $this->attributesOf($code, 'zone'));
+        self::assertSame(['Assert\\CssColor'], $this->attributesOf($code, 'color'));
+        self::assertSame(['Assert\\Iban'], $this->attributesOf($code, 'iban'));
+        self::assertSame([], $this->attributesOf($code, 'bic'));
+        self::assertSame(['Assert\\Isbn'], $this->attributesOf($code, 'isbn'));
+        self::assertSame(['Assert\\Issn'], $this->attributesOf($code, 'issn'));
+        self::assertSame(['Assert\\Isin'], $this->attributesOf($code, 'isin'));
+        $regex = static fn (string $pattern, string $property): string => '/Regex\\(\\s*pattern: ' . preg_quote("'" . str_replace("'", "\\'", $pattern) . "'", '/') . ',?\\s*\\)\\] public \\?string \\$' . $property . ' /';
+        self::assertMatchesRegularExpression($regex(FormatPatterns::PHONE, 'phone'), $code);
+        self::assertMatchesRegularExpression($regex(FormatPatterns::CURRENCY, 'currency'), $code);
+        self::assertMatchesRegularExpression($regex(FormatPatterns::DECIMAL, 'amount'), $code);
+        self::assertMatchesRegularExpression($regex(FormatPatterns::DIGITS, 'big'), $code);
+        self::assertMatchesRegularExpression($regex(FormatPatterns::INTEGER, 'signed'), $code);
+        self::assertMatchesRegularExpression($regex(FormatPatterns::DIGITS, 'pin'), $code);
+        self::assertMatchesRegularExpression($regex(FormatPatterns::DURATION, 'period'), $code);
+        self::assertMatchesRegularExpression($regex(FormatPatterns::MAC_ADDRESS, 'mac'), $code);
+        self::assertMatchesRegularExpression($regex(FormatPatterns::HTTP_METHOD, 'method'), $code);
+        self::assertMatchesRegularExpression($regex(FormatPatterns::MONTH_YEAR, 'expiry'), $code);
+        self::assertMatchesRegularExpression($regex(FormatPatterns::HEX_COLOR, 'shade'), $code);
+        self::assertSame([], $this->attributesOf($code, 'site'));
+        self::assertSame([], $this->attributesOf($code, 'country'));
+        self::assertSame([
+            'warning /api.yaml#/components/schemas/Pet/properties/bic: "format: bic" is checked with the data of symfony/intl, which the project does not install; it is not checked.',
+            'warning /api.yaml#/components/schemas/Pet/properties/country: "format: country" is checked with the data of symfony/intl, which the project does not install; it is not checked.',
+        ], $this->messages($output));
+    }
+
+    public function testNamesTheLaterOfTwoFormatsOfOneBound(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'tied' => ['type' => 'integer', 'allOf' => [['format' => 'uint64'], ['format' => 'uint8']], 'maximum' => -1],
+        ]]);
+
+        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/tied: "format: uint8" and "maximum" leave no valid value; they are not checked.'], $this->messages($output));
+    }
+
+    public function testWarnsOnlyAboutTheFormatsItWouldCheckOnAValueOfSeveralTypes(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'link' => ['format' => 'uri-reference'],
+            'mail' => ['format' => 'email'],
+            'zone' => ['format' => 'tz'],
+            'country' => ['format' => 'country'],
+        ]]);
+
+        self::assertSame(
+            [
+                'warning /api.yaml#/components/schemas/Pet/properties/mail: "format: email" checks only a string, and the value may be of another type; it is not checked.',
+                'warning /api.yaml#/components/schemas/Pet/properties/zone: "format: timezone" checks only a string, and the value may be of another type; it is not checked.',
+                'warning /api.yaml#/components/schemas/Pet/properties/country: "format: country" checks only a string, and the value may be of another type; it is not checked.',
+            ],
+            $this->messages($output),
+        );
+    }
+
+    public function testChecksCountriesLanguagesAndLocalesWithIntl(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'country' => ['type' => 'string', 'format' => 'iso-country-code'],
+            'language' => ['type' => 'string', 'format' => 'language'],
+            'locale' => ['type' => 'string', 'format' => 'bcp47'],
+            'bic' => ['type' => 'string', 'format' => 'swift'],
+        ]], [], '8.2', [], 'v7.1.0', ['symfony/intl' => 'v7.1.0']);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame(['Assert\\Country'], $this->attributesOf($code, 'country'));
+        self::assertSame(['Assert\\Language'], $this->attributesOf($code, 'language'));
+        self::assertSame(['Assert\\Locale'], $this->attributesOf($code, 'locale'));
+        self::assertSame(['Assert\\Bic'], $this->attributesOf($code, 'bic'));
+        self::assertSame([], $this->messages($output));
     }
 
     public function testWritesTheInt32RangeAsAnAnnotationForPhp74(): void
@@ -283,7 +426,7 @@ final class ValidatorEnricherTest extends TestCase
         self::assertSame([], $this->attributesOf($code, 'raw'));
         self::assertSame([], $this->attributesOf($code, 'either'));
         self::assertSame([
-            'warning /api.yaml#/components/schemas/Pet/properties/either/format: Unknown integer format "byte"; the property stays an int.',
+            'warning /api.yaml#/components/schemas/Pet/properties/either/format: Unknown integer format "byte"; the property stays an int. "formats" in the config can map it to a type.',
             'warning /api.yaml#/components/schemas/Pet/properties/either: "format: byte" checks only a string, and the value may be of another type; it is not checked.',
         ], $this->messages($output));
     }
@@ -313,7 +456,7 @@ final class ValidatorEnricherTest extends TestCase
         self::assertSame([], $this->attributesOf($code, 'relative'));
         self::assertSame([], $this->attributesOf($code, 'either'));
         self::assertSame([
-            'warning /api.yaml#/components/schemas/Pet/properties/either/format: Unknown integer format "uri"; the property stays an int.',
+            'warning /api.yaml#/components/schemas/Pet/properties/either/format: Unknown integer format "uri"; the property stays an int. "formats" in the config can map it to a type.',
             'warning /api.yaml#/components/schemas/Pet/properties/either: "format: uri" checks only a string, and the value may be of another type; it is not checked.',
         ], $this->messages($output));
     }

@@ -298,3 +298,18 @@ components:
       allOf:
         - $ref: '#/components/schemas/Shape'
         - type: object
+    Reachable:
+      description: Formats as specs write them, which the bridge checks by their names.
+      type: object
+      properties:
+        phone: {type: string, format: phone_number}
+        amount: {type: string, format: decimal}
+        tiny: {type: number, format: int8}
+        net: {type: string, format: ip/netmask}
+        currency: {type: string, format: currency}
+        created: {type: string, format: date-time-rfc-2822}
+        zone: {type: string, format: tz}
+        shade: {type: string, format: hex-color}
+        method: {type: string, format: http-method}
+        period: {type: string, format: duration}
+        id: {type: string, format: GUID}

@@ -31,7 +31,7 @@
     ],
     "require": {
         "php": ">=7.4",
-        "msstc4php/dto-generator": "^1.11",
+        "msstc4php/dto-generator": "^1.16",
         "msstc4symfony/dto-generator-bridge-runtime": "^1.3"
     },
     "require-dev": {

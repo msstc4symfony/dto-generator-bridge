@@ -94,6 +94,20 @@ final class SerializerEnricherTest extends TestCase
         self::assertSame([], $this->attributesOf($old, 'seen'));
     }
 
+    public function testReadsAFormatByItsName(): void
+    {
+        $schema = ['type' => 'object', 'properties' => [
+            'seen' => ['type' => 'string', 'format' => 'dateTime'],
+            'born' => ['type' => 'string', 'format' => 'full-date'],
+            'created' => ['type' => 'string', 'format' => 'date-time-rfc-2822'],
+        ]];
+        $code = $this->code($this->generate($schema, [], '8.2', self::ONLY_SERIALIZER, null, ['symfony/serializer' => 'v8.1.0']), 'Pet.php');
+
+        self::assertSame(["Serializer\\Context(denormalizationContext: ['datetime_format' => null])"], $this->attributesOf($code, 'seen'));
+        self::assertCount(1, $this->attributesOf($code, 'born'));
+        self::assertSame(["Serializer\\Context(context: ['datetime_format' => 'D, d M Y H:i:s O'])"], $this->attributesOf($code, 'created'));
+    }
+
     public function testFormatsDatesTypedThroughANullableUnion(): void
     {
         $code = $this->pet(['type' => 'object', 'properties' => [

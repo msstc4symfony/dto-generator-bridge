@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\DtoGeneratorBridge\Validator;
 
+use MSSTC4PHP\DtoGenerator\Contract\InstalledPackages;
 use MSSTC4PHP\DtoGenerator\Contract\SchemaReferences;
 use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostics;
 use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\KeywordChecks;
@@ -43,7 +44,11 @@ final class ConstraintBuilder
 
     private RuntimeConstraints $runtime;
 
+    private InstalledPackages $packages;
+
     private KindConstraints $kinds;
+
+    private FormatConstraints $formats;
 
     private ValueConstraints $values;
 
@@ -55,22 +60,29 @@ final class ConstraintBuilder
     private array $groups;
 
     /**
+     * @param InstalledPackages $packages what the project installs, which some formats need to be checked
      * @param KeywordChecks $checks where the keywords the bridge claims are marked as checked or warned about
      * @param list<non-empty-string> $groups the groups of the value, which nested composite constraints need too
+     * @param bool $subschema whether it builds a subschema of `not`, `if` or `oneOf`, whose meaning an unchecked format
+     *                        turns around
      */
     public function __construct(
         SchemaReferences $references,
         TargetProfile $target,
         Diagnostics $diagnostics,
         RuntimeConstraints $runtime,
+        InstalledPackages $packages,
         KeywordChecks $checks,
-        array $groups
+        array $groups,
+        bool $subschema = false
     ) {
         $this->references = $references;
         $this->target = $target;
         $this->diagnostics = $diagnostics;
         $this->runtime = $runtime;
+        $this->packages = $packages;
         $this->kinds = new KindConstraints($diagnostics);
+        $this->formats = new FormatConstraints($packages, $diagnostics, $subschema);
         $this->values = new ValueConstraints($target, $diagnostics);
         $this->claimed = new ClaimedConstraints($this, $references, $diagnostics, $runtime, $checks, $groups);
         $this->members = new MemberConstraints($this, $references, $runtime, $target, $groups);
@@ -107,7 +119,7 @@ final class ConstraintBuilder
             $replaced ? [] : $this->claimed->patterns($keywords, $value, $at),
             $this->values->choices($keywords, $value, $at),
             $this->values->constants($keywords, $value, $at),
-            $this->kinds->formats($keywords, $value),
+            $this->formats->of($keywords, $value, $at),
             $this->nested($keywords, $value, $at),
             $replaced ? [] : $this->claimed->conditions($keywords, $value, $at),
             $replaced ? [] : $this->claimed->negations($keywords, $value, $at),
@@ -197,7 +209,10 @@ final class ConstraintBuilder
 
         // Diagnostics drops a repeated message, so the subschema gets its own to tell whether any keyword went unchecked.
         $own = new Diagnostics();
-        $builder = new self($this->references, $this->target, $own, $this->runtime, new KeywordChecks(), []);
+        // Where a subschema matching more values rejects or selects more, an unchecked format leaves it unchecked;
+        // elsewhere (anyOf, then, items…) it only admits more, as at the top.
+        $strict = in_array($keyword, ['not', 'if', 'oneOf'], true);
+        $builder = new self($this->references, $this->target, $own, $this->runtime, $this->packages, new KeywordChecks(), [], $strict);
         $nullable = !$nullIsAbsent && ($type instanceof NullableType || $type instanceof MixedType);
         $typeConstraint = $parsed->typeConstraint();
         $constraints = array_merge(

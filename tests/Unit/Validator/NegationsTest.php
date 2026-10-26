@@ -37,6 +37,74 @@ final class NegationsTest extends TestCase
         self::assertSame([], $this->messages($output));
     }
 
+    public function testLeavesASubschemaUncheckedWhoseFormatItDoesNotCheck(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'link' => ['type' => 'string', 'not' => ['format' => 'uri-reference']],
+            'odd' => ['type' => 'string', 'not' => ['format' => 'ssh-key']],
+            'mail' => ['type' => 'string', 'not' => ['format' => 'e-mail']],
+        ]]);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame([], $this->attributesOf($code, 'link'));
+        self::assertSame([], $this->attributesOf($code, 'odd'));
+        self::assertSame(['RuntimeAssert\\Not(constraints: [new ' . self::ASSERT . "Email(mode: 'html5')])"], $this->attributesOf($code, 'mail'));
+        self::assertSame([
+            self::AT . '/properties/link/not: "format: uri-reference" is not checked.',
+            self::AT . '/properties/link: "not" is not checked, as part of its schema cannot be.',
+            self::AT . '/properties/odd/not: "format: ssh-key" is not checked.',
+            self::AT . '/properties/odd: "not" is not checked, as part of its schema cannot be.',
+            self::AT . '/properties/ratio/not: "format: int32" is not checked.',
+            self::AT . '/properties/ratio: "not" is not checked, as part of its schema cannot be.',
+        ], $this->messages($output));
+        self::assertSame([], $this->attributesOf($code, 'ratio'));
+    }
+
+    public function testLeavesIfAndOneOfUncheckedAndOtherSubschemasCheckedWhereAFormatIsNot(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'pick' => ['type' => 'string', 'if' => ['format' => 'uri-reference'], 'then' => ['maxLength' => 5]],
+            'then' => ['type' => 'string', 'if' => ['minLength' => 3], 'then' => ['format' => 'uri-reference', 'maxLength' => 9]],
+            'one' => ['oneOf' => [['type' => 'string', 'format' => 'uri-reference'], ['type' => 'integer']]],
+            'any' => ['anyOf' => [['type' => 'string', 'format' => 'uri-reference', 'maxLength' => 5], ['type' => 'integer', 'minimum' => 3]]],
+            'names' => ['type' => 'object', 'additionalProperties' => ['type' => 'string'], 'propertyNames' => ['format' => 'uri-reference', 'maxLength' => 5]],
+            'time' => ['type' => 'integer', 'not' => ['format' => 'unixtime']],
+            'mail' => ['type' => 'integer', 'not' => ['format' => 'email']],
+            'tiny' => ['type' => 'integer', 'not' => ['format' => 'int8']],
+            'whole' => ['type' => 'integer', 'not' => ['format' => 'integer']],
+            'amount' => ['type' => 'number', 'not' => ['format' => 'decimal']],
+            'odd' => ['type' => 'boolean', 'not' => ['format' => 'ssh-key']],
+            'ratio' => ['type' => 'number', 'not' => ['format' => 'int32']],
+        ]]);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame([], $this->attributesOf($code, 'pick'));
+        self::assertStringContainsString('Length(max: 9)', implode(' ', $this->attributesOf($code, 'then')));
+        self::assertSame([], $this->attributesOf($code, 'one'));
+        self::assertStringContainsString('Length(max: 5)', implode(' ', $this->attributesOf($code, 'any')));
+        self::assertStringContainsString('Length(max: 5)', implode(' ', $this->attributesOf($code, 'names')));
+        self::assertSame([], $this->attributesOf($code, 'time'));
+        self::assertSame(['RuntimeAssert\\Not'], $this->attributesOf($code, 'mail'));
+        self::assertSame(['RuntimeAssert\\Not(constraints: [new ' . self::ASSERT . 'Range(min: -128, max: 127)])'], $this->attributesOf($code, 'tiny'));
+        self::assertSame([
+            self::AT . '/properties/pick/if: "format: uri-reference" is not checked.',
+            self::AT . '/properties/pick: "if" is not checked, as part of its schema cannot be.',
+            self::AT . '/properties/one/oneOf: "format: uri-reference" is not checked.',
+            self::AT . '/properties/one: "oneOf" is not checked, as part of its schema cannot be.',
+            self::AT . '/properties/time/not: "format: unix-time" is not checked.',
+            self::AT . '/properties/time: "not" is not checked, as part of its schema cannot be.',
+            self::AT . '/properties/whole/not: "format: integer" is not checked.',
+            self::AT . '/properties/whole: "not" is not checked, as part of its schema cannot be.',
+            self::AT . '/properties/amount/not: "format: decimal" is not checked.',
+            self::AT . '/properties/amount: "not" is not checked, as part of its schema cannot be.',
+            self::AT . '/properties/odd/not: "format: ssh-key" is not checked.',
+            self::AT . '/properties/odd: "not" is not checked, as part of its schema cannot be.',
+            self::AT . '/properties/ratio/not: "format: int32" is not checked.',
+            self::AT . '/properties/ratio: "not" is not checked, as part of its schema cannot be.',
+        ], $this->messages($output));
+        self::assertSame([], $this->attributesOf($code, 'ratio'));
+    }
+
     public function testRejectsEveryValueOfASchemaOfNothing(): void
     {
         $output = $this->withRuntime(['type' => 'object', 'properties' => [
