@@ -235,11 +235,11 @@ final class Keywords
     /**
      * @param list<Schema> $members
      *
-     * @return list<Schema> the members that say what the value is, as TypeMapper::typed() of the generator decides
+     * @return array<int, Schema> the members that say what the value is, as TypeMapper::typed() of the generator decides
      */
     private function typed(array $members): array
     {
-        return array_values(array_filter(
+        return array_filter(
             $members,
             static fn (Schema $member): bool => $member->ref() !== null
                 || $member->nonNullTypes() !== []
@@ -247,7 +247,7 @@ final class Keywords
                 || $member->allOf() !== [] || $member->oneOf() !== [] || $member->anyOf() !== []
                 || $member->propertyNames() !== []
                 || $member->extensions()->has('x-php-type'),
-        ));
+        );
     }
 
     /**

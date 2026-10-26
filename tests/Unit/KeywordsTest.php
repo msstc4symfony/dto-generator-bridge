@@ -179,6 +179,14 @@ final class KeywordsTest extends TestCase
         self::assertSame($plain ? '/A/allOf/0' : '/A', $this->resolvedOf($schema)->location()->pointer());
     }
 
+    public function testTypesThroughTheMemberAfterOneThatOnlySaysObject(): void
+    {
+        $node = ['allOf' => [['description' => 'd'], ['type' => 'object'], ['type' => 'array', 'items' => ['type' => 'string']]]];
+        $schema = (new SchemaParser())->parse($node, new SchemaLocation('api.yaml', '/A'), new Diagnostics());
+
+        self::assertSame('/A/allOf/2', $this->resolvedOf($schema)->location()->pointer());
+    }
+
     /**
      * @return iterable<string, array{array<string, mixed>, bool}>
      */

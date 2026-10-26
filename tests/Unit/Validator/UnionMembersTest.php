@@ -160,6 +160,7 @@ final class UnionMembersTest extends TestCase
         yield 'a whole number for a number, which PHP tells from a float' => [['oneOf' => [['type' => 'number', 'const' => 2], $short]], []];
         yield 'a const that is a list' => [['oneOf' => [['const' => ['a']], $short]], []];
         yield 'two dates, one class' => [['oneOf' => [['type' => 'string', 'format' => 'date-time'], ['type' => 'string', 'format' => 'date']]], []];
+        yield 'any of two dates, one class' => [['anyOf' => [['type' => 'string', 'format' => 'date-time', 'maxLength' => 30], ['type' => 'string', 'format' => 'date']]], []];
         yield 'an enum member, a PHP enum' => [['oneOf' => [['type' => 'string', 'enum' => ['a', 'b']], $positive]], []];
         yield 'a member with allOf' => [['oneOf' => [['type' => 'string', 'allOf' => [['maxLength' => 3]]], $positive]], []];
         yield 'a member with oneOf' => [['oneOf' => [['type' => 'string', 'oneOf' => [['maxLength' => 3], ['minLength' => 5]]], $positive]], []];
