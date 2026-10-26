@@ -94,6 +94,36 @@ final class SerializerEnricherTest extends TestCase
         self::assertSame([], $this->attributesOf($old, 'seen'));
     }
 
+    public function testNamesTheCollectionClassAndItsItemsInTheContext(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'tags' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Tag']],
+            'labels' => ['type' => 'array', 'items' => ['type' => 'string']],
+            'colours' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Colour']],
+            'days' => ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'date']],
+            'grid' => ['type' => 'array', 'items' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Tag']], 'x-php-collection' => 'App\\Bag'],
+            'codes' => ['type' => 'array', 'items' => ['type' => ['integer', 'string']], 'x-php-collection' => 'App\\Bag'],
+            'notes' => ['type' => 'array', 'items' => ['type' => 'string'], 'x-php-collection' => false],
+        ]], [
+            'Tag' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]],
+            'Colour' => ['type' => 'string', 'enum' => ['red']],
+        ], '8.2', self::ONLY_SERIALIZER, null, self::SERIALIZER, true, [], [], [], ['collections' => ['class' => 'App\\Collection\\{item}List']]);
+        self::assertSame([], $this->messages($output));
+        $code = $this->code($output, 'Pet.php');
+        $context = static fn (string $class, string $item): string => sprintf("Serializer\\Context(context: ['dto_generator_collection' => ['class' => '%s', 'item' => '%s']])", $class, $item);
+
+        self::assertSame([$context('App\\Collection\\TagList', 'App\\Dto\\Tag')], $this->attributesOf($code, 'tags'));
+        self::assertSame([$context('App\\Collection\\StringList', 'string')], $this->attributesOf($code, 'labels'));
+        self::assertSame([$context('App\\Collection\\ColourList', 'App\\Dto\\Colour')], $this->attributesOf($code, 'colours'));
+        self::assertSame([$context('App\\Bag', 'App\\Dto\\Tag[]')], $this->attributesOf($code, 'grid'));
+        self::assertSame([$context('App\\Bag', 'mixed')], $this->attributesOf($code, 'codes'));
+        self::assertSame([], $this->attributesOf($code, 'notes'));
+        self::assertSame(
+            ["Serializer\\Context(normalizationContext: ['datetime_format' => 'Y-m-d', 'dto_generator_collection' => ['class' => 'App\\Collection\\DateTimeImmutableList', 'item' => 'DateTimeImmutable']], denormalizationContext: ['datetime_format' => '!Y-m-d', 'dto_generator_collection' => ['class' => 'App\\Collection\\DateTimeImmutableList', 'item' => 'DateTimeImmutable']])"],
+            $this->attributesOf($code, 'days'),
+        );
+    }
+
     public function testReadsAFormatByItsName(): void
     {
         $schema = ['type' => 'object', 'properties' => [

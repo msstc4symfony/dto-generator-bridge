@@ -6,6 +6,16 @@ All notable changes to this package are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Collection objects (generator 1.17 `dto.collections`): the property's Serializer Context names the collection class
+  and the type of its items for the runtime's `CollectionNormalizer` (runtime 1.4), in the one Context that also
+  carries a date format; `Count`, `Unique`, `All` and `Valid` apply to the collection as to the list.
+
+### Changed
+
+- Requires `msstc4php/dto-generator` ^1.17 and `msstc4symfony/dto-generator-bridge-runtime` ^1.4.
+
 ## [1.8.0] - 2026-10-26
 
 ### Added

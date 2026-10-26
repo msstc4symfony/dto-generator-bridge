@@ -17,6 +17,7 @@ use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostic;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use MSSTC4PHP\DtoGenerator\DtoGenerator;
 use Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalPropertiesNormalizer;
+use Msstc4Symfony\DtoGeneratorBridge\Runtime\CollectionNormalizer;
 use Msstc4Symfony\DtoGeneratorBridge\SymfonyExtension;
 use PHPUnit\Framework\TestCase;
 use RecursiveDirectoryIterator;
@@ -757,6 +758,34 @@ final class RealSymfonyTest extends TestCase
     /**
      * @dataProvider attributeTargets
      */
+    public function testReadsWritesAndValidatesListsHeldByCollectionObjects(string $php): void
+    {
+        $this->runTarget($php, function (string $namespace, bool $annotations) use ($php): void {
+            $serializer = $this->serializer($annotations, false, true);
+            $pet = $serializer->denormalize(self::VALID, $namespace . '\Pet');
+            self::assertIsObject($pet);
+            self::assertInstanceOf(Bag::class, (new ReflectionProperty($pet, 'tags'))->getValue($pet));
+            self::assertInstanceOf(Bag::class, (new ReflectionProperty($pet, 'friends'))->getValue($pet));
+            $written = $serializer->normalize($pet);
+            self::assertIsArray($written);
+            ksort($written);
+            $expected = self::VALID;
+            ksort($expected);
+            self::assertSame($expected, $written);
+            self::assertSame([], $this->violationPaths($pet, $annotations));
+
+            $wrong = $serializer->denormalize(['tags' => ['a', 'a', 'abcdef'], 'friends' => [['name' => 'toolong']]] + self::VALID, $namespace . '\Pet');
+            self::assertIsObject($wrong);
+            $paths = $this->violationPaths($wrong, $annotations);
+            sort($paths);
+            // PHP 8.0 allows no "new" in attributes, so the items' constraints inside All are not written.
+            self::assertSame($php === '8.0' ? ['friends[0].name', 'tags'] : ['friends[0].name', 'tags', 'tags[2]'], $paths);
+        }, 'collections');
+    }
+
+    /**
+     * @dataProvider attributeTargets
+     */
     public function testReadsAndWritesThroughTheReadAndWriteModels(string $php): void
     {
         if (!class_exists(ViewSuffixes::class)) {
@@ -828,7 +857,7 @@ final class RealSymfonyTest extends TestCase
 
     /**
      * @param callable(string, bool): void $check
-     * @param ''|'spread'|'views' $variant see generate()
+     * @param ''|'spread'|'views'|'collections' $variant see generate()
      */
     private function runTarget(string $php, callable $check, string $variant = ''): void
     {
@@ -841,7 +870,7 @@ final class RealSymfonyTest extends TestCase
      * Whether the target runs here: its classes need that PHP, and annotations need Symfony < 7 with Doctrine's reader.
      *
      * @param callable(string, bool): void $check the namespace of the generated classes, and whether they carry annotations
-     * @param ''|'spread'|'views' $variant see generate()
+     * @param ''|'spread'|'views'|'collections' $variant see generate()
      */
     private function withTarget(string $php, callable $check, string $variant = ''): bool
     {
@@ -880,8 +909,8 @@ final class RealSymfonyTest extends TestCase
     }
 
     /**
-     * @param ''|'spread'|'views' $variant with extensionConfig.symfony.additionalProperties: spread, or with
-     *                                     dto.readWriteModels: split
+     * @param ''|'spread'|'views'|'collections' $variant with extensionConfig.symfony.additionalProperties: spread, with
+     *                                                   dto.readWriteModels: split, or with every list a Bag
      */
     private function generate(string $php, string $variant): string
     {
@@ -896,8 +925,9 @@ final class RealSymfonyTest extends TestCase
         file_put_contents($dir . '/composer.json', '{}');
         // The bridge writes the runtime's constraints only for a project that has them.
         file_put_contents($dir . '/composer.lock', (string) json_encode(['packages' => [['name' => 'msstc4symfony/dto-generator-bridge-runtime', 'version' => 'v1.3.0']]]));
-        // Only the views name dto.readWriteModels, which a generator before 1.3 refuses.
+        // Only the views name dto.readWriteModels, which a generator before 1.3 refuses; dto.collections came with 1.17.
         $dto = $variant === 'views' ? ['dto' => ['readWriteModels' => 'split']] : [];
+        $dto = $variant === 'collections' ? ['dto' => ['collections' => ['class' => Bag::class]]] : $dto;
         file_put_contents($dir . '/dto-generator.yaml', (string) json_encode($dto + [
             'version' => 1,
             'target' => ['php' => $php],
@@ -930,7 +960,7 @@ final class RealSymfonyTest extends TestCase
         return $namespace;
     }
 
-    private function serializer(bool $annotations, bool $spread = false): Serializer
+    private function serializer(bool $annotations, bool $spread = false, bool $collections = false): Serializer
     {
         $metadata = new ClassMetadataFactory($this->loader(SerializerLoader::class, 'Symfony\Component\Serializer\Mapping\Loader', $annotations));
         $types = new PropertyInfoExtractor([], [new PhpDocExtractor(), new ReflectionExtractor()]);
@@ -942,6 +972,10 @@ final class RealSymfonyTest extends TestCase
         $objects = new ObjectNormalizer($metadata, new MetadataAwareNameConverter($metadata), null, $types, new ClassDiscriminatorFromClassMetadata($metadata));
         if ($spread) {
             $normalizers[] = new AdditionalPropertiesNormalizer($objects, $metadata);
+        }
+
+        if ($collections) {
+            $normalizers[] = new CollectionNormalizer();
         }
 
         $normalizers[] = $objects;
