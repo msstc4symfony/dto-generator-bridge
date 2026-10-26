@@ -54,7 +54,7 @@ final class FormatPatterns
      */
     public const PHONE = '/^(?=[^0-9]*+[0-9])\+?+[0-9 ().\/\-\x{00A0}\x{2013}]++(?:(?:x|ext\.?+|#|;ext=)[ ]*+[0-9]++)?+$/Diu';
 
-    /** A JSON number in a string: Stripe's `decimal`. */
+    /** A decimal number in a string (Stripe's `decimal`), leniently: a sign, leading zeros, a trailing dot, an exponent. */
     public const DECIMAL = '/^[+\-]?+(?:[0-9]++(?:\.[0-9]*+)?+|\.[0-9]++)(?:[eE][+\-]?+[0-9]++)?+$/D';
 
     /** An integer in a string (Youtube's `uint64`), whose range is not checked. */
@@ -77,8 +77,11 @@ final class FormatPatterns
     /** Linode's `MM/YYYY`. */
     public const MONTH_YEAR = '/^(?:0[1-9]|1[0-2])\/[0-9]{4}$/D';
 
-    /** Six pairs of hexadecimal digits joined by colons or hyphens, three groups of four joined by dots, or twelve digits. */
-    public const MAC_ADDRESS = '/^(?:[0-9A-Fa-f]{2}(?:[:\-][0-9A-Fa-f]{2}){5}|[0-9A-Fa-f]{4}(?:\.[0-9A-Fa-f]{4}){2}|[0-9A-Fa-f]{12})$/D';
+    /**
+     * Six pairs of hexadecimal digits joined by colons or by hyphens (one of them throughout), three groups of four
+     * joined by dots, or twelve digits.
+     */
+    public const MAC_ADDRESS = '/^(?:[0-9A-Fa-f]{2}([:\-])[0-9A-Fa-f]{2}(?:\1[0-9A-Fa-f]{2}){4}|[0-9A-Fa-f]{4}(?:\.[0-9A-Fa-f]{4}){2}|[0-9A-Fa-f]{12})$/D';
 
     /** Three, four, six or eight hexadecimal digits, with or without `#`, which CssColor requires. */
     public const HEX_COLOR = '/^#?+(?:[0-9A-Fa-f]{3,4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/D';

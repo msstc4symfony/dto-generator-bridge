@@ -153,7 +153,7 @@ final class FormatPatternsTest extends TestCase
         yield 'integer' => [FormatPatterns::INTEGER, ['0', '-12', '+7', '18446744073709551615'], ['1.0', '', '-', '1e3', ' 1']];
         yield 'digits' => [FormatPatterns::DIGITS, ['0', '4111111111111111', '007'], ['-1', '', '1 2', 'x1']];
         yield 'duration' => [FormatPatterns::DURATION, ['P1Y', 'PT1H', 'P1W', 'P1Y2M3DT4H5M6.5S', 'P3D', 'PT0,5S', 'PT36H'], ['P', 'PT', 'P1YT', '1Y', 'P1H', 'P1W2D', '-P1D', 'PT0.5H', 'p1d']];
-        yield 'MAC address' => [FormatPatterns::MAC_ADDRESS, ['00:1a:2B:3c:4d:5e', '00-1a-2b-3c-4d-5e', '001a.2b3c.4d5e', '001a2b3c4d5e'], ['00:1a:2b', 'zz:1a:2b:3c:4d:5e', '001a2b3c4d5', '00:1a:2b:3c:4d:5e:6f']];
+        yield 'MAC address' => [FormatPatterns::MAC_ADDRESS, ['00:1a:2B:3c:4d:5e', '00-1a-2b-3c-4d-5e', '001a.2b3c.4d5e', '001a2b3c4d5e'], ['00:1a:2b', 'zz:1a:2b:3c:4d:5e', '001a2b3c4d5', '00:1a:2b:3c:4d:5e:6f', '00:1A-2B:3C:4D:5E']];
         yield 'hex colour' => [FormatPatterns::HEX_COLOR, ['#fff', 'fff', '#FF0000', 'ff0000', '#ff000080', 'ff00'], ['#ff', 'ff000', '#ggg', 'red', '##fff']];
         yield 'HTTP method' => [FormatPatterns::HTTP_METHOD, ['GET', 'get', 'POST', 'PROPFIND', 'M-SEARCH'], ['', 'GET POST', 'GET/', "GET\n", 'GÉT']];
         yield 'month and year' => [FormatPatterns::MONTH_YEAR, ['06/2022', '12/1999'], ['13/2022', '6/2022', '00/2022', '06/22', '06-2022']];

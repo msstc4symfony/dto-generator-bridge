@@ -17,8 +17,8 @@ use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaLocation;
 use Msstc4Symfony\DtoGeneratorBridge\Keywords;
 
 /**
- * The constraints of the keywords JSON Schema applies to one kind of value (strings, numbers, collections) and of the
- * formats.
+ * The constraints of the keywords JSON Schema applies to one kind of value (strings, numbers, collections) and the
+ * ranges of the integer formats.
  *
  * The kind of a value, as the keywords of one kind of value see it; null for a boolean, an enum or a class.
  *
@@ -51,7 +51,9 @@ final class KindConstraints
     /**
      * The bounds of the integer formats, and the name they go by beside the keywords that compete with them; `int64` is
      * PHP's own int on 64-bit platforms and needs none. The literal 2147483648 is a float on 32-bit PHP, so the minimum
-     * is computed.
+     * is computed; the maximum of uint32 stays a float there, which Range compares alike.
+     *
+     * @var array<non-empty-string, array{int, int|float|null, FormatLabel}>
      */
     private const INTEGER_BOUNDS = [
         'int8' => [-128, 127, 'format: int8'],

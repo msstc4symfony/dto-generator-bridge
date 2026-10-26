@@ -37,6 +37,26 @@ final class NegationsTest extends TestCase
         self::assertSame([], $this->messages($output));
     }
 
+    public function testLeavesASubschemaUncheckedWhoseFormatItDoesNotCheck(): void
+    {
+        $output = $this->withRuntime(['type' => 'object', 'properties' => [
+            'link' => ['type' => 'string', 'not' => ['format' => 'uri-reference']],
+            'odd' => ['type' => 'string', 'not' => ['format' => 'ssh-key']],
+            'mail' => ['type' => 'string', 'not' => ['format' => 'e-mail']],
+        ]]);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame([], $this->attributesOf($code, 'link'));
+        self::assertSame([], $this->attributesOf($code, 'odd'));
+        self::assertSame(['RuntimeAssert\\Not(constraints: [new ' . self::ASSERT . "Email(mode: 'html5')])"], $this->attributesOf($code, 'mail'));
+        self::assertSame([
+            self::AT . '/properties/link/not: "format: uri-reference" is not checked.',
+            self::AT . '/properties/link: "not" is not checked, as part of its schema cannot be.',
+            self::AT . '/properties/odd/not: "format: ssh-key" is not checked.',
+            self::AT . '/properties/odd: "not" is not checked, as part of its schema cannot be.',
+        ], $this->messages($output));
+    }
+
     public function testRejectsEveryValueOfASchemaOfNothing(): void
     {
         $output = $this->withRuntime(['type' => 'object', 'properties' => [

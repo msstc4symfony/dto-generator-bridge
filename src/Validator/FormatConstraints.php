@@ -86,14 +86,31 @@ final class FormatConstraints
 
     private const INTL_PACKAGE = 'symfony/intl';
 
+    /**
+     * Format → the constraint, its option and the class constant the option takes.
+     *
+     * @var array{timezone: array{'Timezone', 'zone', 'DateTimeZone', 'ALL_WITH_BC'}}
+     */
+    private const CONSTANT_OPTIONS = [
+        // The zones PHP keeps for compatibility (`Asia/Calcutta`, `US/Pacific`, `GMT`) are what APIs send too.
+        'timezone' => ['Timezone', 'zone', 'DateTimeZone', 'ALL_WITH_BC'],
+    ];
+
     private InstalledPackages $packages;
 
     private Diagnostics $diagnostics;
 
-    public function __construct(InstalledPackages $packages, Diagnostics $diagnostics)
+    private bool $subschema;
+
+    /**
+     * @param bool $subschema whether the format is of a subschema (`not`, `if`, `oneOf`…), where JSON Schema reads an
+     *                        unchecked format as matching any string: `not` would reject every string
+     */
+    public function __construct(InstalledPackages $packages, Diagnostics $diagnostics, bool $subschema = false)
     {
         $this->packages = $packages;
         $this->diagnostics = $diagnostics;
+        $this->subschema = $subschema;
     }
 
     /**
@@ -101,7 +118,7 @@ final class FormatConstraints
      */
     public static function checks(string $format): bool
     {
-        return isset(self::CONSTRAINTS[$format]) || isset(self::PATTERNS[$format]) || isset(self::INTL[$format]) || $format === 'timezone';
+        return isset(self::CONSTRAINTS[$format]) || isset(self::PATTERNS[$format]) || isset(self::INTL[$format]) || isset(self::CONSTANT_OPTIONS[$format]);
     }
 
     /**
@@ -125,9 +142,12 @@ final class FormatConstraints
                 $constraints[] = new ConstraintSpec('Regex', [AttributeArgument::named('pattern', ArgumentValue::literal(self::PATTERNS[$format]))]);
             } elseif (isset(self::INTL[$format])) {
                 array_push($constraints, ...$this->intl($format, $at));
-            } elseif ($format === 'timezone') {
-                // The zones PHP keeps for compatibility (`Asia/Calcutta`, `US/Pacific`, `GMT`) are what APIs send too.
-                $constraints[] = new ConstraintSpec('Timezone', [AttributeArgument::named('zone', ArgumentValue::constant('ALL_WITH_BC', ClassName::fromFqcn('DateTimeZone')))]);
+            } elseif (isset(self::CONSTANT_OPTIONS[$format])) {
+                [$name, $option, $class, $constant] = self::CONSTANT_OPTIONS[$format];
+                $constraints[] = new ConstraintSpec($name, [AttributeArgument::named($option, ArgumentValue::constant($constant, ClassName::fromFqcn($class)))]);
+            } elseif ($this->subschema) {
+                // The subschema reports itself unchecked rather than match what it should not.
+                $this->diagnostics->warning(sprintf('"format: %s" is not checked.', $format), $at);
             }
         }
 
