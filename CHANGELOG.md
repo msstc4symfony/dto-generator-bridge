@@ -6,6 +6,8 @@ All notable changes to this package are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-26
+
 ### Added
 
 - Many more formats are checked, read by the name the generator gives them whatever the spelling (`phone_number`,
@@ -290,7 +292,8 @@ First release.
   annotations for PHP 7.4 targets.
 - `DtoGeneratorBundle`: the `dto-generator:generate` console command and an optional check on cache warmup.
 
-[Unreleased]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.7.1...HEAD
+[Unreleased]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.7.1...v1.8.0
 [1.7.1]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.5.0...v1.6.0
