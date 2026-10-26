@@ -223,7 +223,7 @@ final class Settings
             return new FormatChecks($value);
         }
 
-        // An empty list and an empty map are one value in YAML and PHP, and they would mean opposite things.
+        // `[]` and `{}` both arrive as one empty array, and they would mean opposite things.
         if (!is_array($value) || $value === []) {
             $problems[] = self::FORMATS_SHAPE;
 
@@ -232,7 +232,6 @@ final class Settings
 
         $list = array_values($value) === $value;
         $switches = [];
-        // Every other problem is reported too.
         $shaped = true;
         foreach ($value as $key => $item) {
             $written = $list ? $item : $key;

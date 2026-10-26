@@ -49,27 +49,27 @@ final class SettingsTest extends TestCase
 
     public function testChecksEveryFormatByDefault(): void
     {
-        self::assertTrue(Settings::fromConfig([])->formatChecks()->checks('phone'));
-        self::assertTrue(Settings::fromConfig(['formats' => true])->formatChecks()->checks('phone'));
-        self::assertFalse(Settings::fromConfig(['formats' => false])->formatChecks()->checks('phone'));
+        self::assertTrue(Settings::fromConfig([])->formatChecks()->allows('phone'));
+        self::assertTrue(Settings::fromConfig(['formats' => true])->formatChecks()->allows('phone'));
+        self::assertFalse(Settings::fromConfig(['formats' => false])->formatChecks()->allows('phone'));
     }
 
     public function testTurnsFormatsOnAndOffByTheirNames(): void
     {
-        $formats = Settings::fromConfig(['formats' => ['Phone_Number' => false, 'uuid' => true]])->formatChecks();
+        $formatChecks = Settings::fromConfig(['formats' => ['Phone_Number' => false, 'uuid' => true]])->formatChecks();
 
-        self::assertFalse($formats->checks('phone'));
-        self::assertTrue($formats->checks('uuid'));
-        self::assertTrue($formats->checks('email'));
+        self::assertFalse($formatChecks->allows('phone'));
+        self::assertTrue($formatChecks->allows('uuid'));
+        self::assertTrue($formatChecks->allows('email'));
     }
 
     public function testChecksOnlyTheListedFormats(): void
     {
-        $formats = Settings::fromConfig(['formats' => ['GUID', 'int8']])->formatChecks();
+        $formatChecks = Settings::fromConfig(['formats' => ['GUID', 'int8']])->formatChecks();
 
-        self::assertTrue($formats->checks('uuid'));
-        self::assertTrue($formats->checks('int8'));
-        self::assertFalse($formats->checks('phone'));
+        self::assertTrue($formatChecks->allows('uuid'));
+        self::assertTrue($formatChecks->allows('int8'));
+        self::assertFalse($formatChecks->allows('phone'));
     }
 
     /**

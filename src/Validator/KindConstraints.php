@@ -109,7 +109,7 @@ final class KindConstraints
         }
 
         foreach ($keywords->formats() as $format) {
-            $enabled = $this->formatChecks->checks($format);
+            $enabled = $this->formatChecks->allows($format);
             $integer = $enabled && isset(self::INTEGER_BOUNDS[$format]);
             $string = $enabled && FormatConstraints::checks($format);
             if ($integer && $string) {
@@ -199,7 +199,7 @@ final class KindConstraints
         $lower = null;
         $upper = null;
         foreach ($kind === 'integer' ? $keywords->formats() : [] as $format) {
-            if (isset(self::INTEGER_BOUNDS[$format]) && $this->formatChecks->checks($format)) {
+            if (isset(self::INTEGER_BOUNDS[$format]) && $this->formatChecks->allows($format)) {
                 [$min, $max, $label] = self::INTEGER_BOUNDS[$format];
                 $lower = $min === max($min, $lower[0] ?? $min) ? [$min, $label] : $lower;
                 $upper = $max !== null && $max === min($max, $upper[0] ?? $max) ? [$max, $label] : $upper;

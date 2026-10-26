@@ -153,7 +153,7 @@ final class FormatConstraints
 
         $constraints = [];
         foreach ($keywords->formats() as $format) {
-            if (!$this->formatChecks->checks($format)) {
+            if (!$this->formatChecks->allows($format)) {
                 $this->warnInSubschema($format, $at);
             } elseif (isset(self::CONSTRAINTS[$format])) {
                 [$name, $option, $setting] = self::CONSTRAINTS[$format];
@@ -193,7 +193,7 @@ final class FormatConstraints
     {
         foreach ($this->subschema ? $keywords->formats() : [] as $format) {
             $ofStrings = Formats::isKnown($format, 'string') && !Formats::isKnown($format, 'integer') && !Formats::isKnown($format, 'number');
-            $ranged = $kind === 'int' && KindConstraints::rangesIntegersOf($format) && $this->formatChecks->checks($format);
+            $ranged = $kind === 'int' && KindConstraints::rangesIntegersOf($format) && $this->formatChecks->allows($format);
             if (!$ofStrings && !$ranged) {
                 $this->warnInSubschema($format, $at);
             }

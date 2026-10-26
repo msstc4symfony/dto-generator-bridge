@@ -27,7 +27,7 @@ final class FormatChecks
         $this->switches = $switches;
     }
 
-    public function checks(string $format): bool
+    public function allows(string $format): bool
     {
         return $this->switches[$format] ?? $this->default;
     }
