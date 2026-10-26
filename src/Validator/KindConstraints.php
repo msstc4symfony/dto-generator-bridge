@@ -187,8 +187,8 @@ final class KindConstraints
         foreach ($kind === 'integer' ? $keywords->formats() : [] as $format) {
             if (isset(self::INTEGER_BOUNDS[$format])) {
                 [$min, $max, $label] = self::INTEGER_BOUNDS[$format];
-                $lower = $lower === null || $min > $lower[0] ? [$min, $label] : $lower;
-                $upper = $max !== null && ($upper === null || $max < $upper[0]) ? [$max, $label] : $upper;
+                $lower = $min === max($min, $lower[0] ?? $min) ? [$min, $label] : $lower;
+                $upper = $max !== null && $max === min($max, $upper[0] ?? $max) ? [$max, $label] : $upper;
             }
         }
 

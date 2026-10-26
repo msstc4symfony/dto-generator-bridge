@@ -269,6 +269,7 @@ final class ValidatorEnricherTest extends TestCase
             'huge' => ['type' => 'integer', 'format' => 'uint64'],
             'spelled' => ['type' => 'number', 'format' => 'UInt8'],
             'both' => ['type' => 'integer', 'allOf' => [['format' => 'int32'], ['format' => 'int8']]],
+            'both reversed' => ['type' => 'integer', 'allOf' => [['format' => 'int8'], ['format' => 'int32']]],
             'both unsigned' => ['type' => 'integer', 'allOf' => [['format' => 'uint64'], ['format' => 'int16']]],
             'time' => ['type' => 'integer', 'format' => 'unixtime'],
         ]]);
@@ -280,6 +281,9 @@ final class ValidatorEnricherTest extends TestCase
         self::assertSame(['Assert\Range(min: 0, max: 10)'], $this->attributesOf($code, 'unsigned'));
         self::assertSame(['Assert\GreaterThanOrEqual(value: 0)'], $this->attributesOf($code, 'huge'));
         self::assertSame(['Assert\Range(min: 0, max: 255)'], $this->attributesOf($code, 'spelled'));
+        self::assertSame(['Assert\\Range(min: -128, max: 127)'], $this->attributesOf($code, 'both'));
+        self::assertSame(['Assert\\Range(min: 0, max: 32767)'], $this->attributesOf($code, 'bothUnsigned'));
+        self::assertSame(['Assert\\Range(min: -128, max: 127)'], $this->attributesOf($code, 'bothReversed'));
         self::assertSame([], $this->attributesOf($code, 'time'));
     }
 
@@ -352,15 +356,30 @@ final class ValidatorEnricherTest extends TestCase
         ], $this->messages($output));
     }
 
+    public function testNamesTheLaterOfTwoFormatsOfOneBound(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'tied' => ['type' => 'integer', 'allOf' => [['format' => 'uint64'], ['format' => 'uint8']], 'maximum' => -1],
+        ]]);
+
+        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/tied: "format: uint8" and "maximum" leave no valid value; they are not checked.'], $this->messages($output));
+    }
+
     public function testWarnsOnlyAboutTheFormatsItWouldCheckOnAValueOfSeveralTypes(): void
     {
         $output = $this->generate(['type' => 'object', 'properties' => [
             'link' => ['format' => 'uri-reference'],
             'mail' => ['format' => 'email'],
+            'zone' => ['format' => 'tz'],
+            'country' => ['format' => 'country'],
         ]]);
 
         self::assertSame(
-            ['warning /api.yaml#/components/schemas/Pet/properties/mail: "format: email" checks only a string, and the value may be of another type; it is not checked.'],
+            [
+                'warning /api.yaml#/components/schemas/Pet/properties/mail: "format: email" checks only a string, and the value may be of another type; it is not checked.',
+                'warning /api.yaml#/components/schemas/Pet/properties/zone: "format: timezone" checks only a string, and the value may be of another type; it is not checked.',
+                'warning /api.yaml#/components/schemas/Pet/properties/country: "format: country" checks only a string, and the value may be of another type; it is not checked.',
+            ],
             $this->messages($output),
         );
     }
