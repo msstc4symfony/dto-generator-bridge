@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Msstc4Symfony\DtoGeneratorBridge;
 
 use InvalidArgumentException;
+use MSSTC4PHP\DtoGenerator\Domain\Schema\Formats;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
+use Msstc4Symfony\DtoGeneratorBridge\Validator\FormatChecks;
+use Msstc4Symfony\DtoGeneratorBridge\Validator\FormatConstraints;
 
 /**
  * The `extensionConfig.symfony` section (bridge spec §3); null stands for "auto".
@@ -14,7 +17,9 @@ use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
  */
 final class Settings
 {
-    private const KEYS = ['validator', 'serializer', 'version', 'groups', 'additionalProperties'];
+    private const FORMATS_SHAPE = 'extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true or false.';
+
+    private const KEYS = ['validator', 'serializer', 'version', 'groups', 'additionalProperties', 'formats'];
 
     private ?bool $validator;
 
@@ -27,16 +32,19 @@ final class Settings
 
     private bool $spreadsAdditionalProperties;
 
+    private FormatChecks $formatChecks;
+
     /**
      * @param list<non-empty-string> $groups
      */
-    private function __construct(?bool $validator, ?bool $serializer, ?SymfonyVersion $version, array $groups, bool $spreadsAdditionalProperties)
+    private function __construct(?bool $validator, ?bool $serializer, ?SymfonyVersion $version, array $groups, bool $spreadsAdditionalProperties, FormatChecks $formatChecks)
     {
         $this->validator = $validator;
         $this->serializer = $serializer;
         $this->version = $version;
         $this->groups = $groups;
         $this->spreadsAdditionalProperties = $spreadsAdditionalProperties;
+        $this->formatChecks = $formatChecks;
     }
 
     /**
@@ -58,11 +66,12 @@ final class Settings
         $version = self::parseVersion($config, $problems);
         $groups = self::parseGroups($config, $problems);
         $spreads = self::parseAdditionalProperties($config, $problems);
-        if ($problems !== []) {
+        $formatChecks = self::parseFormats($config, $problems);
+        if ($problems !== [] || !$formatChecks instanceof FormatChecks) {
             throw new InvalidArgumentException(implode(' ', $problems));
         }
 
-        return new self($validator, $serializer, $version, $groups, $spreads);
+        return new self($validator, $serializer, $version, $groups, $spreads, $formatChecks);
     }
 
     public function validator(): ?bool
@@ -95,6 +104,11 @@ final class Settings
     public function spreadsAdditionalProperties(): bool
     {
         return $this->spreadsAdditionalProperties;
+    }
+
+    public function formatChecks(): FormatChecks
+    {
+        return $this->formatChecks;
     }
 
     /**
@@ -193,5 +207,59 @@ final class Settings
         }
 
         return $value === 'spread';
+    }
+
+    /**
+     * `true` checks every format, `false` none, a list only those, a map of formats to true or false turns them on or
+     * off, the others checked.
+     *
+     * @param array<int|string, JsonValue> $config
+     * @param list<string> $problems
+     */
+    private static function parseFormats(array $config, array &$problems): ?FormatChecks
+    {
+        $value = array_key_exists('formats', $config) ? $config['formats'] : true;
+        if (is_bool($value)) {
+            return new FormatChecks($value);
+        }
+
+        // `[]` and `{}` both arrive as one empty array, and they would mean opposite things.
+        if (!is_array($value) || $value === []) {
+            $problems[] = self::FORMATS_SHAPE;
+
+            return null;
+        }
+
+        $list = array_values($value) === $value;
+        $switches = [];
+        $shaped = true;
+        foreach ($value as $key => $item) {
+            $written = $list ? $item : $key;
+            $switch = $list ? true : $item;
+            if (!is_string($written) || !is_bool($switch)) {
+                $shaped = false;
+
+                continue;
+            }
+
+            $format = Formats::normalize($written);
+            if (!FormatConstraints::known($format)) {
+                $problems[] = sprintf(
+                    'extensionConfig.symfony.formats names "%s", which the bridge does not check%s.',
+                    $written,
+                    in_array($format, Formats::DATES, true) ? ': a date is a DateTimeInterface' : '',
+                );
+            } elseif (array_key_exists($format, $switches)) {
+                $problems[] = sprintf('extensionConfig.symfony.formats names "%s" more than once.', $written);
+            } else {
+                $switches[$format] = $switch;
+            }
+        }
+
+        if (!$shaped) {
+            $problems[] = self::FORMATS_SHAPE;
+        }
+
+        return new FormatChecks(!$list, $switches);
     }
 }

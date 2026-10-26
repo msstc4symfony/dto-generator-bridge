@@ -67,9 +67,12 @@ final class KindConstraints
 
     private Diagnostics $diagnostics;
 
-    public function __construct(Diagnostics $diagnostics)
+    private FormatChecks $formatChecks;
+
+    public function __construct(Diagnostics $diagnostics, FormatChecks $formatChecks)
     {
         $this->diagnostics = $diagnostics;
+        $this->formatChecks = $formatChecks;
     }
 
     /**
@@ -106,8 +109,9 @@ final class KindConstraints
         }
 
         foreach ($keywords->formats() as $format) {
-            $integer = isset(self::INTEGER_BOUNDS[$format]);
-            $string = FormatConstraints::checks($format);
+            $enabled = $this->formatChecks->allows($format);
+            $integer = $enabled && isset(self::INTEGER_BOUNDS[$format]);
+            $string = $enabled && FormatConstraints::checks($format);
             if ($integer && $string) {
                 $this->diagnostics->warning(sprintf('"format: %s" checks an integer and a string each its own way, and the value may be of several types; it is not checked.', $format), $at);
             } elseif ($integer || $string) {
@@ -195,7 +199,7 @@ final class KindConstraints
         $lower = null;
         $upper = null;
         foreach ($kind === 'integer' ? $keywords->formats() : [] as $format) {
-            if (isset(self::INTEGER_BOUNDS[$format])) {
+            if (isset(self::INTEGER_BOUNDS[$format]) && $this->formatChecks->allows($format)) {
                 [$min, $max, $label] = self::INTEGER_BOUNDS[$format];
                 $lower = $min === max($min, $lower[0] ?? $min) ? [$min, $label] : $lower;
                 $upper = $max !== null && $max === min($max, $upper[0] ?? $max) ? [$max, $label] : $upper;
