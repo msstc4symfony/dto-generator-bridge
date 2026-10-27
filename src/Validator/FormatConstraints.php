@@ -24,6 +24,7 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
  */
 final class FormatConstraints
 {
+    /** @var non-empty-string */
     public const PHONE = 'phone';
 
     /** @var list<non-empty-string> the formats `strict` checks with a library; of() writes PhoneNumber for each */
@@ -71,7 +72,7 @@ final class FormatConstraints
         'ip-or-cidr' => FormatPatterns::IP_OR_CIDR,
         'mac-address' => FormatPatterns::MAC_ADDRESS,
         'hex-color' => FormatPatterns::HEX_COLOR,
-        'phone' => FormatPatterns::PHONE,
+        self::PHONE => FormatPatterns::PHONE,
         'currency' => FormatPatterns::CURRENCY,
         'decimal' => FormatPatterns::DECIMAL,
         'int8' => FormatPatterns::INTEGER,

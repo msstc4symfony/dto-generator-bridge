@@ -106,8 +106,8 @@ of one, that holds the format itself. Only `phone` takes `strict`.
 `x-validator-format: false` on a property's schema, or on a child's declaration of an inherited one, leaves its
 formats, its items' and subschemas' included, unchecked whatever the config says, and `true` checks them (each as
 strictly as the config sets it); not on a schema its `$ref` points to, and not on the schema of a class, whose
-properties take their own. A format turned off inside `not`, `if` or `oneOf` leaves that keyword unchecked, with a
-warning, as the config's switch does.
+properties take their own, nor inside a subschema (`not`, `oneOf`…), which follows the property's. A format turned off
+inside `not`, `if` or `oneOf` leaves that keyword unchecked, with a warning, as the config's switch does.
 
 ## Validator constraints
 

@@ -146,6 +146,47 @@ final class NarrowingsTest extends TestCase
         self::assertContains('warning /api.yaml#/components/schemas/Pet/allOf/1/properties/tel: "format: phone" is set to strict, which needs odolbeau/phone-number-bundle 3.5 or newer, which the project does not install; a Regex checks the number.', $this->messages($output));
     }
 
+    /**
+     * @return iterable<string, array{array<string, bool>, ?list<string>}>
+     */
+    public static function quietDeclarations(): iterable
+    {
+        yield 'formats turned off' => [['x-validator-format' => false], []];
+        yield 'skipped' => [['x-validator-skip' => true], null];
+    }
+
+    /**
+     * @dataProvider quietDeclarations
+     *
+     * @param array<string, bool> $extensions
+     * @param list<string>|null $attributes the class's, null for none at all
+     */
+    public function testSaysNothingOfTheLibraryForADeclarationThatChecksNoPhoneNumber(array $extensions, ?array $attributes): void
+    {
+        $output = $this->generate(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['properties' => ['tel' => ['type' => 'string', 'format' => 'phone', 'minLength' => 3] + $extensions]],
+        ]], ['Base' => ['type' => 'object', 'properties' => ['tel' => ['type' => 'string']]]], '8.2', ['formats' => ['phone' => 'strict']], 'v7.1.0', self::RUNTIME);
+
+        self::assertSame([], array_values(array_filter($this->messages($output), static fn (string $m): bool => strpos($m, 'strict') !== false)));
+        $class = $this->classAttributesOf($this->code($output, 'Pet.php'));
+        if ($attributes === null) {
+            self::assertSame([], $class);
+        } else {
+            self::assertSame(["RuntimeAssert\\Property(name: 'tel', constraints: [new " . self::ASSERT . 'Length(min: 3)])'], $class);
+        }
+    }
+
+    public function testSaysNothingOfTheLibraryWhenTheChildChecksNothingWithoutTheRuntime(): void
+    {
+        $output = $this->generate(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['properties' => ['tel' => ['type' => 'string', 'format' => 'phone']]],
+        ]], ['Base' => ['type' => 'object', 'properties' => ['tel' => ['type' => 'string']]]], '8.2', ['formats' => ['phone' => 'strict']]);
+
+        self::assertSame([], array_values(array_filter($this->messages($output), static fn (string $m): bool => strpos($m, 'strict') !== false)));
+    }
+
     public function testChecksEachConstraintOnceAndThoseOfAParentInGroupsOfItsOwn(): void
     {
         $output = $this->withRuntime(['allOf' => [

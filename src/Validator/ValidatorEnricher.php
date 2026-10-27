@@ -244,8 +244,11 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
      */
     private function warnAboutAStrictCheckWithoutItsLibrary(Schema $schema, InstalledPackages $packages, SchemaReferences $references, Diagnostics $diagnostics): void
     {
-        $strict = $this->settings->formatChecks()->isStrict(FormatConstraints::PHONE) && !$this->formatChecks($packages)->isStrict(FormatConstraints::PHONE);
-        if ($strict && (new ExtensionReader($schema, $diagnostics))->optionalFlag('x-validator-format') !== false && in_array(FormatConstraints::PHONE, (new Keywords($schema, $references))->formats(), true)) {
+        if (!$this->settings->formatChecks()->isStrict(FormatConstraints::PHONE) || $this->formatChecks($packages)->isStrict(FormatConstraints::PHONE)) {
+            return;
+        }
+
+        if ((new ExtensionReader($schema, $diagnostics))->optionalFlag('x-validator-format') !== false && in_array(FormatConstraints::PHONE, (new Keywords($schema, $references))->formats(), true)) {
             $diagnostics->warning(sprintf('"format: phone" is set to strict, which needs %s %s or newer, which the project does not install; a Regex checks the number.', FormatConstraints::PHONE_PACKAGE, FormatConstraints::PHONE_PACKAGE_MINIMUM), $schema->location());
         }
     }
@@ -402,6 +405,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         }
 
         $added = [];
+        $declarations = [];
         foreach ($own as $name => $schemas) {
             $property = $properties->find((string) $name);
             assert($property instanceof PropertyModel);
@@ -414,7 +418,11 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             }
 
             foreach ($schemas as $schema) {
-                $this->warnAboutAStrictCheckWithoutItsLibrary($schema, $context->packages(), $context->references(), $context->diagnostics());
+                if ((new ExtensionReader($schema, $context->diagnostics()))->flag('x-validator-skip')) {
+                    continue;
+                }
+
+                $declarations[] = $schema;
                 foreach ($builder->build($schema, $property->type()) as $spec) {
                     if (in_array(serialize($spec), $checked, true)) {
                         continue;
@@ -457,6 +465,10 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
 
         if (($added === [] && $presence === []) || !$runtime->available('properties', $context->schema()->location())) {
             return [];
+        }
+
+        foreach ($declarations as $declaration) {
+            $this->warnAboutAStrictCheckWithoutItsLibrary($declaration, $context->packages(), $context->references(), $context->diagnostics());
         }
 
         $constraints = [];
