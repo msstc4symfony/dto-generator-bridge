@@ -135,7 +135,8 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
         $references = $context->references();
         $target = $context->target();
         // One Context per property: Symfony keeps only the last one for a group.
-        $contexts = ['context' => [], 'normalizationContext' => [], 'denormalizationContext' => []];
+        $shared = [];
+        $contexts = ['normalizationContext' => [], 'denormalizationContext' => []];
         if ($this->holds('date', $schema, $property->type(), $references, $target)) {
             $contexts['normalizationContext'][self::FORMAT_KEY] = ArgumentValue::literal('Y-m-d');
             // "!" resets the time; createFromFormat() would take it from the clock otherwise.
@@ -144,7 +145,7 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
 
         // Twilio's dates: `Mon, 16 Aug 2010 03:45:01 +0000`.
         if ($this->holds('date-time-rfc-2822', $schema, $property->type(), $references, $target)) {
-            $contexts['context'][self::FORMAT_KEY] = ArgumentValue::literal(self::RFC_2822);
+            $shared[self::FORMAT_KEY] = ArgumentValue::literal(self::RFC_2822);
         }
 
         // Serializer 8.1 deprecates reading a date-time off its default format, such as RFC 3339 with fractions of a
@@ -155,13 +156,15 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
 
         $collection = $this->collection($property->type(), $target);
         if ($collection instanceof ArgumentValue) {
-            $directed = $contexts['normalizationContext'] !== [] || $contexts['denormalizationContext'] !== [];
-            foreach ($directed ? ['normalizationContext', 'denormalizationContext'] : ['context'] as $key) {
-                $contexts[$key][CollectionNormalizer::CONTEXT] = $collection;
+            if ($contexts['normalizationContext'] !== [] || $contexts['denormalizationContext'] !== []) {
+                $contexts['normalizationContext'][CollectionNormalizer::CONTEXT] = $collection;
+                $contexts['denormalizationContext'][CollectionNormalizer::CONTEXT] = $collection;
+            } else {
+                $shared[CollectionNormalizer::CONTEXT] = $collection;
             }
         }
 
-        $arguments = [];
+        $arguments = $shared === [] ? [] : [AttributeArgument::named('context', ArgumentValue::mapOf($shared))];
         foreach ($contexts as $name => $entries) {
             if ($entries !== []) {
                 $arguments[] = AttributeArgument::named($name, ArgumentValue::mapOf($entries));

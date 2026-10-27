@@ -124,6 +124,35 @@ final class SerializerEnricherTest extends TestCase
         );
     }
 
+    public function testAddsTheCollectionToTheOneDirectionThatHasAContext(): void
+    {
+        $schema = ['type' => 'object', 'properties' => [
+            'seen' => ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'date-time']],
+            'sent' => ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'date-time-rfc-2822']],
+        ]];
+        $code = $this->code($this->generate($schema, [], '8.2', self::ONLY_SERIALIZER, null, ['symfony/serializer' => 'v8.1.0'], true, [], [], [], ['collections' => ['class' => 'App\\Collection\\{item}List']]), 'Pet.php');
+        $collection = "'dto_generator_collection' => ['class' => 'App\\Collection\\DateTimeImmutableList', 'item' => 'DateTimeImmutable']";
+
+        self::assertSame(["Serializer\\Context(normalizationContext: [{$collection}], denormalizationContext: ['datetime_format' => null, {$collection}])"], $this->attributesOf($code, 'seen'));
+        self::assertSame(["Serializer\\Context(context: ['datetime_format' => 'D, d M Y H:i:s O', {$collection}])"], $this->attributesOf($code, 'sent'));
+    }
+
+    public function testNamesTheItemsOfACollectionBelowPhp81(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'tags' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Tag']],
+            'colours' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Colour'], 'x-php-collection' => 'App\\Bag'],
+        ]], [
+            'Tag' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]],
+            'Colour' => ['type' => 'string', 'enum' => ['red']],
+        ], '8.0', self::ONLY_SERIALIZER, null, self::SERIALIZER, true, [], [], [], ['collections' => ['class' => 'App\\Collection\\{item}List']]);
+        $code = $this->code($output, 'Pet.php');
+        $context = static fn (string $class, string $item): string => sprintf("Serializer\\Context(context: ['dto_generator_collection' => ['class' => '%s', 'item' => '%s']])", $class, $item);
+
+        self::assertSame([$context('App\\Collection\\TagList', 'App\\Dto\\Tag')], $this->attributesOf($code, 'tags'));
+        self::assertSame([$context('App\\Bag', 'string')], $this->attributesOf($code, 'colours'));
+    }
+
     public function testReadsAFormatByItsName(): void
     {
         $schema = ['type' => 'object', 'properties' => [
