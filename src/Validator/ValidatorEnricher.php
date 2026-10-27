@@ -428,11 +428,11 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             $lists[] = $ancestor->requiredInherited();
         }
 
-        $lists[] = [];
+        // The root's list is empty: it has no ancestor.
         $presence = [];
         for ($level = 0; $level < count($lists) - 1; $level++) {
             $names = [];
-            foreach (array_intersect(array_diff($lists[$level], $lists[$level + 1]), $lists[0]) as $wireName) {
+            foreach (array_diff($lists[$level], $lists[$level + 1]) as $wireName) {
                 $property = $properties->find($wireName);
                 assert($property instanceof PropertyModel);
                 $names[] = ArgumentValue::literal($property->name());
