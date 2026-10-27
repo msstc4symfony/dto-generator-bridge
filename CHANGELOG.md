@@ -6,6 +6,8 @@ All notable changes to this package are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-27
+
 ### Added
 
 - `format: ip-or-cidr` (Linode's `ipv4|ipv6/prefix_length`) is checked with a `Regex`: an IP address of either version,
@@ -18,9 +20,13 @@ All notable changes to this package are documented here. The format follows
 
 ### Changed
 
+- Requires generator 1.17.
 - `Present` for an inherited property the child requires follows the generator's `ClassModel::requiredInherited()`:
   a declaration through `allOf` (no `type` of its own) and a property of any type are checked too, a requirement of
-  a grandparent's property as well, and none repeats what the parent's `Present` or a required base property checks.
+  a grandparent's property as well. None repeats what an ancestor's `Present` or a required base property checks; one
+  an ancestor skips, or checks in groups of its own, stays on the child.
+- `x-validator-skip: true` on a child's declaration of an inherited property leaves out the constraints of that
+  declaration too.
 
 ## [1.8.0] - 2026-10-26
 
@@ -308,7 +314,8 @@ First release.
   annotations for PHP 7.4 targets.
 - `DtoGeneratorBundle`: the `dto-generator:generate` console command and an optional check on cache warmup.
 
-[Unreleased]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.7.1...v1.8.0
 [1.7.1]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.6.0...v1.7.0
