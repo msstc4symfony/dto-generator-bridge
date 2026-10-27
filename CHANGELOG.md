@@ -6,6 +6,22 @@ All notable changes to this package are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `format: ip-or-cidr` (Linode's `ipv4|ipv6/prefix_length`) is checked with a `Regex`: an IP address of either version,
+  with a prefix length or without one (generator 1.17).
+- `extensionConfig.symfony.formats: {phone: strict}` checks phone numbers with `PhoneNumber` of
+  `odolbeau/phone-number-bundle` (libphonenumber) when the project installs 3.5 or newer, and with the `Regex`
+  otherwise, with a warning.
+- `x-validator-format: false` on a property (or a child's declaration of an inherited one) turns its format checks
+  off, `true` on, whatever the config says.
+
+### Changed
+
+- `Present` for an inherited property the child requires follows the generator's `ClassModel::requiredInherited()`:
+  a declaration through `allOf` (no `type` of its own) and a property of any type are checked too, a requirement of
+  a grandparent's property as well, and none repeats what the parent's `Present` or a required base property checks.
+
 ## [1.8.0] - 2026-10-26
 
 ### Added

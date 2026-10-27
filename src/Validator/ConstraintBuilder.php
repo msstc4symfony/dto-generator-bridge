@@ -23,6 +23,7 @@ use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaLocation;
 use MSSTC4PHP\DtoGenerator\Domain\Shared\Json;
 use MSSTC4PHP\DtoGenerator\Domain\Target\Capability;
 use MSSTC4PHP\DtoGenerator\Domain\Target\TargetProfile;
+use Msstc4Symfony\DtoGeneratorBridge\ExtensionReader;
 use Msstc4Symfony\DtoGeneratorBridge\Keywords;
 
 /**
@@ -55,6 +56,10 @@ final class ConstraintBuilder
     private ValueConstraints $values;
 
     private ClaimedConstraints $claimed;
+
+    private KeywordChecks $checks;
+
+    private bool $subschema;
 
     private MemberConstraints $members;
 
@@ -90,46 +95,27 @@ final class ConstraintBuilder
         $this->formats = new FormatConstraints($packages, $diagnostics, $formatChecks, $subschema);
         $this->values = new ValueConstraints($target, $diagnostics);
         $this->claimed = new ClaimedConstraints($this, $references, $diagnostics, $runtime, $checks, $groups);
+        $this->checks = $checks;
+        $this->subschema = $subschema;
         $this->members = new MemberConstraints($this, $references, $runtime, $target, $groups);
         $this->groups = $groups;
     }
 
     /**
+     * `x-validator-format` on the schema turns its formats, and those of what it holds, on or off.
+     *
      * @return list<ConstraintSpec>
      */
     public function build(Schema $schema, TypeModel $type): array
     {
-        $keywords = new Keywords($schema, $this->references);
-        $value = $type instanceof NullableType ? $type->inner() : $type;
-        $at = $schema->location();
-        $reader = new KeywordReader($keywords, $this->diagnostics, $at);
-        // As in the generator, which stays quiet about what a schema whose type x-php-type replaces says.
-        $replaced = $keywords->resolved()->extensions()->has('x-php-type');
-        $this->kinds->warnAboutFormatsOfOneKind($keywords, $value, $at);
-
-        $members = $replaced ? [] : $this->members->of($keywords, $value, $at);
-        if (!$replaced) {
-            if ($members === null) {
-                $this->claimed->warnAboutUnreachedMembers($keywords, $at);
-            }
-
-            $this->claimed->warnAboutDependencies($keywords, $at);
+        $switch = (new ExtensionReader($schema, $this->diagnostics))->optionalFlag('x-validator-format');
+        if ($switch === null) {
+            return $this->constraints($schema, $type);
         }
 
-        return array_merge(
-            $this->kinds->of($keywords, $reader, $value, $at),
-            $replaced ? [] : $this->claimed->contains($keywords, $reader, $value, $at),
-            $replaced ? [] : $this->claimed->tuples($keywords, $value, $at),
-            $replaced ? [] : $this->claimed->keys($keywords, $value, $at),
-            $replaced ? [] : $this->claimed->patterns($keywords, $value, $at),
-            $this->values->choices($keywords, $value, $at),
-            $this->values->constants($keywords, $value, $at),
-            $this->formats->of($keywords, $value, $at),
-            $this->nested($keywords, $value, $at),
-            $replaced ? [] : $this->claimed->conditions($keywords, $value, $at),
-            $replaced ? [] : $this->claimed->negations($keywords, $value, $at),
-            $members ?? [],
-        );
+        return (new self($this->references, $this->target, $this->diagnostics, $this->runtime, $this->packages, $this->formatChecks->allSwitched($switch), $this->checks, $this->groups, $this->subschema))
+            ->constraints($schema, $type)
+        ;
     }
 
     /**
@@ -281,6 +267,44 @@ final class ConstraintBuilder
         }
 
         return ConstraintSpec::runtime('IfThenElse', $arguments);
+    }
+
+    /**
+     * @return list<ConstraintSpec>
+     */
+    private function constraints(Schema $schema, TypeModel $type): array
+    {
+        $keywords = new Keywords($schema, $this->references);
+        $value = $type instanceof NullableType ? $type->inner() : $type;
+        $at = $schema->location();
+        $reader = new KeywordReader($keywords, $this->diagnostics, $at);
+        // As in the generator, which stays quiet about what a schema whose type x-php-type replaces says.
+        $replaced = $keywords->resolved()->extensions()->has('x-php-type');
+        $this->kinds->warnAboutFormatsOfOneKind($keywords, $value, $at);
+
+        $members = $replaced ? [] : $this->members->of($keywords, $value, $at);
+        if (!$replaced) {
+            if ($members === null) {
+                $this->claimed->warnAboutUnreachedMembers($keywords, $at);
+            }
+
+            $this->claimed->warnAboutDependencies($keywords, $at);
+        }
+
+        return array_merge(
+            $this->kinds->of($keywords, $reader, $value, $at),
+            $replaced ? [] : $this->claimed->contains($keywords, $reader, $value, $at),
+            $replaced ? [] : $this->claimed->tuples($keywords, $value, $at),
+            $replaced ? [] : $this->claimed->keys($keywords, $value, $at),
+            $replaced ? [] : $this->claimed->patterns($keywords, $value, $at),
+            $this->values->choices($keywords, $value, $at),
+            $this->values->constants($keywords, $value, $at),
+            $this->formats->of($keywords, $value, $at),
+            $this->nested($keywords, $value, $at),
+            $replaced ? [] : $this->claimed->conditions($keywords, $value, $at),
+            $replaced ? [] : $this->claimed->negations($keywords, $value, $at),
+            $members ?? [],
+        );
     }
 
     /**

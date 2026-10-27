@@ -40,7 +40,7 @@ final class RuntimeConstraints
     public function available(string $keyword, SchemaLocation $at): bool
     {
         $minimum = self::MINIMUM_OF[$keyword] ?? self::MINIMUM;
-        if ($this->installed($minimum)) {
+        if (PackageVersion::atLeast($this->packages, self::PACKAGE, $minimum)) {
             return true;
         }
 
@@ -52,22 +52,5 @@ final class RuntimeConstraints
         ), $at);
 
         return false;
-    }
-
-    /**
-     * A branch (dev-main) counts as new: it is what a project tries before a release.
-     */
-    private function installed(string $minimum): bool
-    {
-        $version = $this->packages->version(self::PACKAGE);
-        if ($version === null) {
-            return false;
-        }
-
-        if (preg_match('/^v?(\d+)\.(\d+)/', $version, $match) !== 1) {
-            return true;
-        }
-
-        return version_compare($match[1] . '.' . $match[2], $minimum, '>=');
     }
 }

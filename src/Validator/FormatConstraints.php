@@ -24,6 +24,17 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
  */
 final class FormatConstraints
 {
+    /** @var non-empty-string */
+    public const PHONE = 'phone';
+
+    /** @var list<non-empty-string> the formats `strict` checks with a library; of() writes PhoneNumber for each */
+    public const STRICT_FORMATS = [self::PHONE];
+
+    public const PHONE_PACKAGE = 'odolbeau/phone-number-bundle';
+
+    /** The first release whose PhoneNumber is an attribute. */
+    public const PHONE_PACKAGE_MINIMUM = '3.5';
+
     /**
      * Format → the constraint that checks it, and the option it needs.
      *
@@ -58,9 +69,10 @@ final class FormatConstraints
         'uri' => FormatPatterns::URI,
         'time' => FormatPatterns::TIME,
         'duration' => FormatPatterns::DURATION,
+        'ip-or-cidr' => FormatPatterns::IP_OR_CIDR,
         'mac-address' => FormatPatterns::MAC_ADDRESS,
         'hex-color' => FormatPatterns::HEX_COLOR,
-        'phone' => FormatPatterns::PHONE,
+        self::PHONE => FormatPatterns::PHONE,
         'currency' => FormatPatterns::CURRENCY,
         'decimal' => FormatPatterns::DECIMAL,
         'int8' => FormatPatterns::INTEGER,
@@ -134,6 +146,14 @@ final class FormatConstraints
     }
 
     /**
+     * Whether the config may set the format to `strict`.
+     */
+    public static function hasStrictCheck(string $format): bool
+    {
+        return in_array($format, self::STRICT_FORMATS, true);
+    }
+
+    /**
      * Only a string is checked; a format the config maps to a class gives the property that type, and the class
      * validates itself.
      *
@@ -155,6 +175,8 @@ final class FormatConstraints
         foreach ($keywords->formats() as $format) {
             if (!$this->formatChecks->allows($format)) {
                 $this->warnInSubschema($format, $at);
+            } elseif ($this->formatChecks->isStrict($format)) {
+                $constraints[] = ConstraintSpec::phoneNumber();
             } elseif (isset(self::CONSTRAINTS[$format])) {
                 [$name, $option, $setting] = self::CONSTRAINTS[$format];
                 $constraints[] = new ConstraintSpec($name, $option === null ? [] : [AttributeArgument::named($option, ArgumentValue::literal($setting))]);
