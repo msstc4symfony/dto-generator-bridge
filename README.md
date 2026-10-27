@@ -237,9 +237,9 @@ They follow JSON Schema with these limits:
   out.
 - **A property of the parent declared again** in a child's schema, narrowing only its values, stays the parent's (the
   generator lets no child narrow its type); the child checks the constraints of its declaration that the parent's
-  lack with `Property` (a missing value passes them), and with `Present` that it is set when the child's schema
-  requires what the parent's leaves optional and no declaration admits `null`. A parent's declaration in groups of its
-  own does not count.
+  lack with `Property` (a missing value passes them), and with `Present` that it is set when the child requires what an
+  ancestor leaves optional, as the generator lists it (`ClassModel::requiredInherited()`: no declaration admits
+  `null`; a property of any type counts). A parent's declaration in groups of its own does not count.
 - **`dependentRequired`** reads a property as present when it is not `null`: like the rest of the DTO, it cannot tell
   a missing key from `null`, so a pair whose first property has a default is not checked (it is always present),
   with a warning. A name that is not a property of the class gives a warning and leaves its pair out. A class that

@@ -6,6 +6,12 @@ All notable changes to this package are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- `Present` for an inherited property the child requires follows the generator's `ClassModel::requiredInherited()`:
+  a declaration through `allOf` (no `type` of its own) and a property of any type are checked too, a requirement of
+  a grandparent's property as well, and none repeats what the parent's `Present` or a required base property checks.
+
 ## [1.8.0] - 2026-10-26
 
 ### Added

@@ -63,7 +63,7 @@ final class NarrowingsTest extends TestCase
         ], $this->classAttributesOf($this->code($output, 'Pet.php')));
     }
 
-    public function testLeavesNullAndWhatTheParentRequiresAlone(): void
+    public function testLeavesNullAndWhatTheParentRequiresAloneButNotAPropertyOfAnyType(): void
     {
         $output = $this->withRuntime(['allOf' => [
             ['$ref' => '#/components/schemas/Base'],
@@ -79,7 +79,22 @@ final class NarrowingsTest extends TestCase
             'Maybe' => ['type' => ['integer', 'null']],
         ]);
 
-        self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
+        // The constructor turns null away from a property of any type the class requires, as the generator reads it.
+        self::assertSame(["RuntimeAssert\\Present(properties: ['any'])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
+    public function testLeavesToTheParentThePresenceItChecks(): void
+    {
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Mid'],
+            ['type' => 'object', 'required' => ['late'], 'properties' => ['own' => ['type' => 'string']]],
+        ]], [
+            'Base' => ['type' => 'object', 'properties' => ['early' => ['type' => 'string'], 'late' => ['type' => 'string']]],
+            'Mid' => ['allOf' => [['$ref' => '#/components/schemas/Base'], ['type' => 'object', 'required' => ['early'], 'properties' => ['mid' => ['type' => 'string']]]]],
+        ]);
+
+        self::assertSame(["RuntimeAssert\\Present(properties: ['early'])"], $this->classAttributesOf($this->code($output, 'Mid.php')));
+        self::assertSame(["RuntimeAssert\\Present(properties: ['late'])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
     }
 
     public function testChecksEachConstraintOnceAndThoseOfAParentInGroupsOfItsOwn(): void
@@ -105,7 +120,8 @@ final class NarrowingsTest extends TestCase
             ['Cat' => $variant, 'Dog' => $variant, 'Cfg' => ['type' => 'object', 'properties' => ['on' => ['type' => 'boolean']]]],
         );
 
-        self::assertSame(["RuntimeAssert\\Present(properties: ['kind'])"], $this->classAttributesOf($this->code($output, 'Cat.php')));
+        // Both variants require the discriminator, so the base declares it required.
+        self::assertSame([], $this->classAttributesOf($this->code($output, 'Cat.php')));
         self::assertSame(['Assert\\Valid'], $this->attributesOf($this->code($output, 'Pet.php'), 'cfg'));
         self::assertSame(['Assert\\Valid'], $this->attributesOf($this->code($output, 'Pet.php'), 'tags'));
         self::assertSame([], array_values(array_filter($this->messages($output), static fn (string $m): bool => strpos($m, 'may go unvalidated') !== false || strpos($m, 'are not checked') !== false)));

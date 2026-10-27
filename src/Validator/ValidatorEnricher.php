@@ -404,22 +404,14 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             }
         }
 
-        // The parent leaves a property optional that the class's schema requires: the class checks it is set, unless a
-        // declaration admits null, which then stands for a value.
-        $parentRequired = [];
-        foreach ($keywords->schemas() as $place) {
-            array_push($parentRequired, ...$properties->ofAncestor($place) ? $place->required() : []);
-        }
-
+        // The generator lists what the class requires though an ancestor leaves it optional; the parent's own Present
+        // already checks those it lists itself.
+        $ancestors = $context->ancestors();
         $required = [];
-        foreach ($keywords->schemas() as $place) {
-            foreach ($properties->ofAncestor($place) ? [] : array_diff(array_intersect($place->required(), $inherited), $parentRequired) as $name) {
-                $property = $properties->find($name);
-                assert($property instanceof PropertyModel);
-                if (!$this->admitsNull(array_merge($parents[$name] ?? [], $own[$name] ?? []), $context->references()) && !in_array($property->name(), $required, true)) {
-                    $required[] = $property->name();
-                }
-            }
+        foreach (array_diff($context->class()->requiredInherited(), $ancestors === [] ? [] : $ancestors[0]->requiredInherited()) as $wireName) {
+            $property = $properties->find($wireName);
+            assert($property instanceof PropertyModel);
+            $required[] = $property->name();
         }
 
         if (($added === [] && $required === []) || !$runtime->available('properties', $context->schema()->location())) {
@@ -488,23 +480,6 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         // A null list of groups stands for the default ones, as ExtensionReader::groups() reads it.
         return ($extensions->has('x-validator-groups') && $extensions->get('x-validator-groups') !== null)
             || ($extensions->has('x-validator-skip') && $extensions->get('x-validator-skip') === true);
-    }
-
-    /**
-     * Whether a declaration lets null through: no type, or a type that lists it.
-     *
-     * @param list<Schema> $declarations
-     */
-    private function admitsNull(array $declarations, SchemaReferences $references): bool
-    {
-        foreach ($declarations as $declaration) {
-            $resolved = $references->resolve($declaration);
-            if ($resolved->types() === [] || $resolved->isNullable()) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**
