@@ -58,6 +58,7 @@ final class FormatConstraints
         'uri' => FormatPatterns::URI,
         'time' => FormatPatterns::TIME,
         'duration' => FormatPatterns::DURATION,
+        'ip-or-cidr' => FormatPatterns::IP_OR_CIDR,
         'mac-address' => FormatPatterns::MAC_ADDRESS,
         'hex-color' => FormatPatterns::HEX_COLOR,
         'phone' => FormatPatterns::PHONE,

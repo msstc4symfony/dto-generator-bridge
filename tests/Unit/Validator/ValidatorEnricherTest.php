@@ -294,6 +294,7 @@ final class ValidatorEnricherTest extends TestCase
             'net' => ['type' => 'string', 'format' => 'ip/netmask'],
             'net4' => ['type' => 'string', 'format' => 'ipv4/prefix_length'],
             'net6' => ['type' => 'string', 'format' => 'ipv6/128'],
+            'span' => ['type' => 'string', 'format' => 'ipv4|ipv6/prefix_length'],
             'guid' => ['type' => 'string', 'format' => 'GUID'],
             'ulid' => ['type' => 'string', 'format' => 'ulid'],
             'mail' => ['type' => 'string', 'format' => 'e-mail'],
@@ -345,6 +346,7 @@ final class ValidatorEnricherTest extends TestCase
         self::assertMatchesRegularExpression($regex(FormatPatterns::DIGITS, 'pin'), $code);
         self::assertMatchesRegularExpression($regex(FormatPatterns::DURATION, 'period'), $code);
         self::assertMatchesRegularExpression($regex(FormatPatterns::MAC_ADDRESS, 'mac'), $code);
+        self::assertMatchesRegularExpression($regex(FormatPatterns::IP_OR_CIDR, 'span'), $code);
         self::assertMatchesRegularExpression($regex(FormatPatterns::HTTP_METHOD, 'method'), $code);
         self::assertMatchesRegularExpression($regex(FormatPatterns::MONTH_YEAR, 'expiry'), $code);
         self::assertMatchesRegularExpression($regex(FormatPatterns::HEX_COLOR, 'shade'), $code);

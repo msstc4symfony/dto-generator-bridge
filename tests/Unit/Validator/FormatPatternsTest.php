@@ -156,6 +156,7 @@ final class FormatPatternsTest extends TestCase
         yield 'MAC address' => [FormatPatterns::MAC_ADDRESS, ['00:1a:2B:3c:4d:5e', '00-1a-2b-3c-4d-5e', '001a.2b3c.4d5e', '001a2b3c4d5e'], ['00:1a:2b', 'zz:1a:2b:3c:4d:5e', '001a2b3c4d5', '00:1a:2b:3c:4d:5e:6f', '00:1A-2B:3C:4D:5E']];
         yield 'hex colour' => [FormatPatterns::HEX_COLOR, ['#fff', 'fff', '#FF0000', 'ff0000', '#ff000080', 'ff00'], ['#ff', 'ff000', '#ggg', 'red', '##fff']];
         yield 'HTTP method' => [FormatPatterns::HTTP_METHOD, ['GET', 'get', 'POST', 'PROPFIND', 'M-SEARCH'], ['', 'GET POST', 'GET/', "GET\n", 'GÉT']];
+        yield 'address or range' => [FormatPatterns::IP_OR_CIDR, ['192.0.2.1', '192.0.2.0/24', '0.0.0.0/0', '255.255.255.255/32', '2001:db8::1', '2001:db8::/32', '::/0', '::1/128', '::ffff:192.0.2.1', 'FE80::1/64'], ['192.0.2.1/33', '256.0.0.1', '192.0.2', '192.0.2.01', '192.0.2.1/', '192.0.2.1/08', '2001:db8::/129', 'example.com', '2001:db8::g', '', "192.0.2.1\n"]];
         yield 'month and year' => [FormatPatterns::MONTH_YEAR, ['06/2022', '12/1999'], ['13/2022', '6/2022', '00/2022', '06/22', '06-2022']];
     }
 

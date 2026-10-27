@@ -86,6 +86,14 @@ final class FormatPatterns
     /** Three, four, six or eight hexadecimal digits, with or without `#`, which CssColor requires. */
     public const HEX_COLOR = '/^#?+(?:[0-9A-Fa-f]{3,4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/D';
 
+    /**
+     * Linode's `ipv4|ipv6/prefix_length`: an address or a range, of either version, as its examples have no prefix.
+     * Symfony's Ip and Cidr take one of the two each. An IPv6 address is checked for its alphabet only, as IP literals
+     * of a URI are.
+     */
+    public const IP_OR_CIDR = '/^(?:' . self::IPV4_OCTET . '(?:\.' . self::IPV4_OCTET . '){3}(?:\/(?:3[0-2]|[12]?[0-9]))?'
+        . '|(?=[0-9A-Fa-f.]*+:)[0-9A-Fa-f:.]{2,45}+(?:\/(?:12[0-8]|1[01][0-9]|[1-9]?[0-9]))?)$/D';
+
     /** RFC 3986 unreserved characters and sub-delims. */
     private const CHARS = "A-Za-z0-9\\-._~!$&'()*+,;=";
 
@@ -101,6 +109,8 @@ final class FormatPatterns
     private const PATH = '[' . self::CHARS . ':@\/]*+(?:' . self::OCTET . '[' . self::CHARS . ':@\/]*+)*+';
 
     private const QUERY = '[' . self::CHARS . ':@\/?]*+(?:' . self::OCTET . '[' . self::CHARS . ':@\/?]*+)*+';
+
+    private const IPV4_OCTET = '(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])';
 
     private const HOUR = '(?:[01][0-9]|2[0-3])';
 

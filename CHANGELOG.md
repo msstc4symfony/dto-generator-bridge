@@ -6,6 +6,11 @@ All notable changes to this package are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `format: ip-or-cidr` (Linode's `ipv4|ipv6/prefix_length`) is checked with a `Regex`: an IP address of either version,
+  with a prefix length or without one (generator 1.17).
+
 ### Changed
 
 - `Present` for an inherited property the child requires follows the generator's `ClassModel::requiredInherited()`:
