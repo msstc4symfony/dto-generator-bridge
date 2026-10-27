@@ -100,12 +100,14 @@ two would mean the opposite. A format the bridge does not check is an error here
 [odolbeau/phone-number-bundle](https://github.com/odolbeau/phone-number-bundle) (libphonenumber) instead of the
 `Regex`, which takes any number as people write it. Without a region the library takes only international numbers
 (`+15017122661`): the bundle's `default_region` sets one when the bundle is registered. Without the package (3.5 or
-newer, whose constraint is an attribute) the `Regex` stays, with a warning on each property that holds the format
-itself. Only `phone` takes `strict`.
+newer, whose constraint is an attribute) the `Regex` stays, with a warning on each property, or child's declaration
+of one, that holds the format itself. Only `phone` takes `strict`.
 
 `x-validator-format: false` on a property's schema, or on a child's declaration of an inherited one, leaves its
 formats, its items' and subschemas' included, unchecked whatever the config says, and `true` checks them (each as
-strictly as the config sets it); not on a schema its `$ref` points to.
+strictly as the config sets it); not on a schema its `$ref` points to, and not on the schema of a class, whose
+properties take their own. A format turned off inside `not`, `if` or `oneOf` leaves that keyword unchecked, with a
+warning, as the config's switch does.
 
 ## Validator constraints
 
@@ -125,7 +127,7 @@ nullable `oneOf`/`anyOf` (all apply, as in JSON Schema 2020-12):
 | `const` | `IdenticalTo`, `IsNull` |
 | `format`: `email`, `ip`, `ipv4`, `ipv6`, `hostname`, `uuid` (`guid`) | `Email(mode: 'html5')`, `Ip(version: 'all')`, `Ip(version: '4')`, `Ip(version: '6')`, `Hostname(requireTld: false)`, `Uuid` (RFC 4122 versions in their canonical form: the nil UUID and `{…}` fail) |
 | `format`: `cidr`, `ipv4-cidr`, `ipv6-cidr` (Linode's `ip/netmask`, `ipv4/prefix_length`, `ipv6/128`) | `Cidr`, with the version |
-| `format`: `ip-or-cidr` (Linode's `ipv4\|ipv6/prefix_length`) | `Regex` for an address or a range of either version (the prefix optional; an IPv6 address checked for its alphabet only) |
+| `format`: `ip-or-cidr` (Linode's `ipv4\|ipv6/prefix_length`) | `Regex` for an address or a range of either version (the prefix optional; IPv6 in its RFC 4291 forms, the groups of one ending in an IPv4 address and holding `::` not counted exactly) |
 | `format`: `ulid`, `json`, `color` (`css-color`), `iban`, `isbn`, `issn`, `isin` | `Ulid`, `Json`, `CssColor`, `Iban`, `Isbn`, `Issn`, `Isin` |
 | `format: timezone` | `Timezone(zone: \DateTimeZone::ALL_WITH_BC)`: the names PHP keeps for compatibility (`Asia/Calcutta`, `US/Pacific`, `GMT`) pass too |
 | `format`: `country`, `language`, `locale`, `bic` | `Country`, `Language`, `Locale`, `Bic` when the project installs `symfony/intl`, whose data they need (`Bic` fails without it when the class is loaded); a warning otherwise. They take upper-case codes only: `us` or a lower-case BIC fail |

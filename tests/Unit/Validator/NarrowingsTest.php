@@ -136,6 +136,16 @@ final class NarrowingsTest extends TestCase
         self::assertSame(["RuntimeAssert\\Property(name: 'code', constraints: [new " . self::ASSERT . 'Uuid()])'], $this->classAttributesOf($this->code($output, 'Pet.php')));
     }
 
+    public function testSaysTheChildChecksAPhoneNumberWithItsRegexWithoutTheLibrary(): void
+    {
+        $output = $this->generate(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['properties' => ['tel' => ['type' => 'string', 'format' => 'phone']]],
+        ]], ['Base' => ['type' => 'object', 'properties' => ['tel' => ['type' => 'string']]]], '8.2', ['formats' => ['phone' => 'strict']], 'v7.1.0', self::RUNTIME);
+
+        self::assertContains('warning /api.yaml#/components/schemas/Pet/allOf/1/properties/tel: "format: phone" is set to strict, which needs odolbeau/phone-number-bundle 3.5 or newer, which the project does not install; a Regex checks the number.', $this->messages($output));
+    }
+
     public function testChecksEachConstraintOnceAndThoseOfAParentInGroupsOfItsOwn(): void
     {
         $output = $this->withRuntime(['allOf' => [

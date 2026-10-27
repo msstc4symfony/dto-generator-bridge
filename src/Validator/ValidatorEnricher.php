@@ -10,6 +10,7 @@ use MSSTC4PHP\DtoGenerator\Contract\InstalledPackages;
 use MSSTC4PHP\DtoGenerator\Contract\PropertyContext;
 use MSSTC4PHP\DtoGenerator\Contract\PropertyEnricher;
 use MSSTC4PHP\DtoGenerator\Contract\SchemaReferences;
+use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostics;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ArgumentValue;
 use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeArgument;
 use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeModel;
@@ -119,12 +120,11 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         $extensions = new ExtensionReader($schema, $diagnostics);
         $skipped = $extensions->flag('x-validator-skip');
         $groups = $this->groups($extensions);
-        $formatChecks = $this->formatChecks($context->packages());
-        if ($this->settings->formatChecks()->isStrict('phone') && !$formatChecks->isStrict('phone') && $extensions->optionalFlag('x-validator-format') !== false && in_array('phone', (new Keywords($schema, $context->references()))->formats(), true)) {
-            $diagnostics->warning(sprintf('"format: phone" is set to strict, which needs %s %s or newer, which the project does not install; a Regex checks the number.', FormatConstraints::PHONE_PACKAGE, FormatConstraints::PHONE_PACKAGE_MINIMUM), $schema->location());
+        if (!$skipped) {
+            $this->warnAboutAStrictCheckWithoutItsLibrary($schema, $context->packages(), $context->references(), $diagnostics);
         }
 
-        $builder = new ConstraintBuilder($context->references(), $context->target(), $diagnostics, new RuntimeConstraints($context->packages(), $diagnostics), $context->packages(), $formatChecks, $context->keywordChecks(), $groups);
+        $builder = new ConstraintBuilder($context->references(), $context->target(), $diagnostics, new RuntimeConstraints($context->packages(), $diagnostics), $context->packages(), $this->formatChecks($context->packages()), $context->keywordChecks(), $groups);
         $type = $property->type();
         if ($skipped) {
             $constraints = [];
@@ -236,7 +236,18 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
     {
         $checks = $this->settings->formatChecks();
 
-        return !$checks->isStrict('phone') || PackageVersion::atLeast($packages, FormatConstraints::PHONE_PACKAGE, FormatConstraints::PHONE_PACKAGE_MINIMUM) ? $checks : $checks->withoutStrict();
+        return !$checks->isStrict(FormatConstraints::PHONE) || PackageVersion::atLeast($packages, FormatConstraints::PHONE_PACKAGE, FormatConstraints::PHONE_PACKAGE_MINIMUM) ? $checks : $checks->withoutStrict();
+    }
+
+    /**
+     * Said where a declaration holds `format: phone` itself; one inside its items or subschemas gets the Regex quietly.
+     */
+    private function warnAboutAStrictCheckWithoutItsLibrary(Schema $schema, InstalledPackages $packages, SchemaReferences $references, Diagnostics $diagnostics): void
+    {
+        $strict = $this->settings->formatChecks()->isStrict(FormatConstraints::PHONE) && !$this->formatChecks($packages)->isStrict(FormatConstraints::PHONE);
+        if ($strict && (new ExtensionReader($schema, $diagnostics))->optionalFlag('x-validator-format') !== false && in_array(FormatConstraints::PHONE, (new Keywords($schema, $references))->formats(), true)) {
+            $diagnostics->warning(sprintf('"format: phone" is set to strict, which needs %s %s or newer, which the project does not install; a Regex checks the number.', FormatConstraints::PHONE_PACKAGE, FormatConstraints::PHONE_PACKAGE_MINIMUM), $schema->location());
+        }
     }
 
     private function keywordsOf(ClassScope $context): Keywords
@@ -403,6 +414,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             }
 
             foreach ($schemas as $schema) {
+                $this->warnAboutAStrictCheckWithoutItsLibrary($schema, $context->packages(), $context->references(), $context->diagnostics());
                 foreach ($builder->build($schema, $property->type()) as $spec) {
                     if (in_array(serialize($spec), $checked, true)) {
                         continue;

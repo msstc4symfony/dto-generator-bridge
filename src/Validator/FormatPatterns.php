@@ -126,7 +126,8 @@ final class FormatPatterns
         . '|' . self::HEXTET . ':(?::' . self::HEXTET . '){1,6}'
         . '|:(?:(?::' . self::HEXTET . '){1,7}|:)'
         . '|(?:' . self::HEXTET . ':){6}' . self::IPV4
-        . '|(?:(?:' . self::HEXTET . ':){1,5}|:):(?:' . self::HEXTET . ':){0,4}' . self::IPV4 . ')';
+        . '|(?:' . self::HEXTET . ':){1,5}:(?:' . self::HEXTET . ':){0,4}' . self::IPV4
+        . '|::(?:' . self::HEXTET . ':){0,5}' . self::IPV4 . ')';
 
     private const HOUR = '(?:[01][0-9]|2[0-3])';
 

@@ -24,8 +24,10 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
  */
 final class FormatConstraints
 {
+    public const PHONE = 'phone';
+
     /** @var list<non-empty-string> the formats `strict` checks with a library; of() writes PhoneNumber for each */
-    public const STRICT_FORMATS = ['phone'];
+    public const STRICT_FORMATS = [self::PHONE];
 
     public const PHONE_PACKAGE = 'odolbeau/phone-number-bundle';
 
