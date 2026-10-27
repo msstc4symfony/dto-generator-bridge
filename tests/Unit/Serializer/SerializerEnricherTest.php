@@ -14,6 +14,9 @@ final class SerializerEnricherTest extends TestCase
 
     private const SERIALIZER = ['symfony/serializer' => 'v7.1.0'];
 
+    /** With the runtime that reads collection objects. */
+    private const COLLECTIONS = self::SERIALIZER + ['msstc4symfony/dto-generator-bridge-runtime' => 'v1.4.0'];
+
     private const DEFAULTED = [
         'oneOf' => [['$ref' => '#/components/schemas/Cat'], ['$ref' => '#/components/schemas/Other']],
         'discriminator' => ['propertyName' => 'kind', 'mapping' => ['cat' => 'Cat'], 'defaultMapping' => 'Other'],
@@ -107,7 +110,7 @@ final class SerializerEnricherTest extends TestCase
         ]], [
             'Tag' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]],
             'Colour' => ['type' => 'string', 'enum' => ['red']],
-        ], '8.2', self::ONLY_SERIALIZER, null, self::SERIALIZER, true, [], [], [], ['collections' => ['class' => 'App\\Collection\\{item}List']]);
+        ], '8.2', self::ONLY_SERIALIZER, null, self::COLLECTIONS, true, [], [], [], ['collections' => ['class' => 'App\\Collection\\{item}List']]);
         self::assertSame([], $this->messages($output));
         $code = $this->code($output, 'Pet.php');
         $context = static fn (string $class, string $item): string => sprintf("Serializer\\Context(context: ['dto_generator_collection' => ['class' => '%s', 'item' => '%s']])", $class, $item);
@@ -151,6 +154,86 @@ final class SerializerEnricherTest extends TestCase
 
         self::assertSame([$context('App\\Collection\\TagList', 'App\\Dto\\Tag')], $this->attributesOf($code, 'tags'));
         self::assertSame([$context('App\\Bag', 'string')], $this->attributesOf($code, 'colours'));
+    }
+
+    public function testTypesTheMapsAndWarnsAboutObjectsItCannotType(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'byName' => ['type' => 'array', 'items' => ['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Tag']], 'x-php-collection' => 'App\\Bag'],
+            'counts' => ['type' => 'array', 'items' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer']], 'x-php-collection' => 'App\\Bag'],
+            'maybe' => ['type' => 'array', 'items' => ['oneOf' => [['$ref' => '#/components/schemas/Tag'], ['type' => 'null']]], 'x-php-collection' => 'App\\Bag'],
+            'maybeByName' => ['type' => 'array', 'items' => ['type' => 'object', 'additionalProperties' => ['oneOf' => [['$ref' => '#/components/schemas/Tag'], ['type' => 'null']]]], 'x-php-collection' => 'App\\Bag'],
+        ]], ['Tag' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]]], '8.2', self::ONLY_SERIALIZER, null, self::COLLECTIONS);
+        $code = $this->code($output, 'Pet.php');
+        $context = static fn (string $item): string => sprintf("Serializer\\Context(context: ['dto_generator_collection' => ['class' => 'App\\Bag', 'item' => '%s']])", $item);
+
+        self::assertSame([$context('App\\Dto\\Tag[]')], $this->attributesOf($code, 'byName'));
+        self::assertSame([$context('mixed')], $this->attributesOf($code, 'counts'));
+        self::assertSame([$context('mixed')], $this->attributesOf($code, 'maybe'));
+        self::assertSame(
+            [
+                'warning /api.yaml#/components/schemas/Pet/properties/maybe: CollectionNormalizer cannot type the items of App\\Bag, App\\Dto\\Tag|null: they stay as the data has them, not objects.',
+                'warning /api.yaml#/components/schemas/Pet/properties/maybeByName: CollectionNormalizer cannot type the items of App\\Bag, array<array-key, App\\Dto\\Tag|null>: they stay as the data has them, not objects.',
+            ],
+            $this->messages($output),
+        );
+    }
+
+    /**
+     * @return array<string, array{string, array<string, string>, string}>
+     */
+    public static function missingCollectionNormalizers(): array
+    {
+        return [
+            // The one warning of the run, though the runtime is missing too.
+            'php 7.4' => ['7.4', ['symfony/serializer' => 'v6.4.0', 'doctrine/annotations' => '2.0.0'], 'needs PHP 8.0; on PHP 7.4 the Serializer cannot read them.'],
+            'no runtime' => ['8.2', self::SERIALIZER, 'comes with msstc4symfony/dto-generator-bridge-runtime 1.4, which the project does not install; the Serializer cannot read them.'],
+            'old runtime' => ['8.2', self::SERIALIZER + ['msstc4symfony/dto-generator-bridge-runtime' => 'v1.3.2'], 'comes with msstc4symfony/dto-generator-bridge-runtime 1.4, which the project does not install; the Serializer cannot read them.'],
+        ];
+    }
+
+    /**
+     * @dataProvider missingCollectionNormalizers
+     *
+     * @param array<string, string> $packages
+     */
+    public function testWarnsOnceWhenNothingReadsTheCollections(string $php, array $packages, string $message): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'labels' => ['type' => 'array', 'items' => ['type' => 'string'], 'x-php-collection' => 'App\\Bag'],
+            'codes' => ['type' => 'array', 'items' => ['type' => 'integer'], 'x-php-collection' => 'App\\Bag'],
+        ]], [], $php, self::ONLY_SERIALIZER, null, $packages);
+
+        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/labels: CollectionNormalizer, which builds collection objects, ' . $message], $this->messages($output));
+    }
+
+    public function testWritesTheCollectionInAnAnnotation(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'labels' => ['type' => 'array', 'items' => ['type' => 'string'], 'x-php-collection' => 'App\\Bag'],
+        ]], [], '7.4', self::ONLY_SERIALIZER, null, ['symfony/serializer' => 'v6.4.0', 'doctrine/annotations' => '2.0.0']);
+
+        self::assertStringContainsString('@Serializer\\Context(context={"dto_generator_collection"={"class"="App\\Bag", "item"="string"}})', $this->code($output, 'Pet.php'));
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function runtimeBranches(): array
+    {
+        return ['main' => ['dev-main'], 'named after an old release' => ['dev-1.3-fix']];
+    }
+
+    /**
+     * @dataProvider runtimeBranches
+     */
+    public function testABranchOfTheRuntimeReadsTheCollections(string $branch): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'labels' => ['type' => 'array', 'items' => ['type' => 'string'], 'x-php-collection' => 'App\\Bag'],
+        ]], [], '8.2', self::ONLY_SERIALIZER, null, self::SERIALIZER + ['msstc4symfony/dto-generator-bridge-runtime' => $branch]);
+
+        self::assertSame([], $this->messages($output));
     }
 
     public function testReadsAFormatByItsName(): void

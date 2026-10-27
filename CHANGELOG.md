@@ -11,6 +11,8 @@ All notable changes to this package are documented here. The format follows
 - Collection objects (generator 1.17 `dto.collections`): the property's Serializer Context names the collection class
   and the type of its items for the runtime's `CollectionNormalizer` (runtime 1.4), in the one Context that also
   carries a date format; `Count`, `Unique`, `All` and `Valid` apply to the collection as to the list.
+  Items that are a map of classes are read as `Tag[]`; items it cannot type (`?Tag`, a union) stay as decoded, with
+  a warning, as does a target below PHP 8.0 or a runtime below 1.4, once per run.
 
 ### Changed
 

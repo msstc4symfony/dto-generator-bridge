@@ -400,7 +400,13 @@ The bridge writes its `#[Serializer\Context]` with `dto_generator_collection: {c
 format of the items goes into the same Context, because Symfony keeps one per property. The list's constraints stay:
 `minItems`/`maxItems` as `Count`, `uniqueItems` as `Unique`, the items' as `All` and `Valid`. Symfony checks them on
 an object only when it is `Countable` (Count), an `IteratorAggregate` (Unique) and `Traversable` (All, Valid), as
-dto-collection's lists are. `contains` is checked on arrays only, as before.
+dto-collection's lists are. `contains`, `prefixItems` and `unevaluatedItems` are checked on arrays only, as before
+(with a warning on a collection).
+
+The item type the Serializer reads is the class or enum (an enum below PHP 8.1 as its scalar), the scalar, or
+`Tag[]` for a list or map of classes. Items it cannot type, such as nullable objects (`?Tag`) or a union, stay as
+the data has them, with a warning. `CollectionNormalizer` needs PHP 8.0 and dto-generator-bridge-runtime 1.4: on an
+older target or runtime the bridge warns once, since the Serializer cannot build the collection then.
 
 ## Symfony bundle
 

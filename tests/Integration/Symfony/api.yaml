@@ -50,6 +50,12 @@ components:
       type: object
       properties:
         name: {type: string, maxLength: 5}
+    Diary:
+      type: object
+      properties:
+        days:
+          type: array
+          items: {type: string, format: date}
     Den:
       type: object
       properties:

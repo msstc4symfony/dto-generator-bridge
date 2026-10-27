@@ -780,6 +780,16 @@ final class RealSymfonyTest extends TestCase
             sort($paths);
             // PHP 8.0 allows no "new" in attributes, so the items' constraints inside All are not written.
             self::assertSame($php === '8.0' ? ['friends[0].name', 'tags'] : ['friends[0].name', 'tags', 'tags[2]'], $paths);
+
+            // The date format of the Context reaches the items through CollectionNormalizer.
+            $diary = $serializer->denormalize(['days' => ['2026-10-27']], $namespace . '\Diary');
+            self::assertIsObject($diary);
+            $days = (new ReflectionProperty($diary, 'days'))->getValue($diary);
+            self::assertInstanceOf(Bag::class, $days);
+            $day = iterator_to_array($days, false)[0];
+            self::assertInstanceOf(DateTimeInterface::class, $day);
+            self::assertSame('2026-10-27 00:00:00', $day->format('Y-m-d H:i:s'));
+            self::assertSame(['days' => ['2026-10-27']], $serializer->normalize($diary));
         }, 'collections');
     }
 
@@ -924,7 +934,7 @@ final class RealSymfonyTest extends TestCase
         copy(__DIR__ . '/api.yaml', $dir . '/api.yaml');
         file_put_contents($dir . '/composer.json', '{}');
         // The bridge writes the runtime's constraints only for a project that has them.
-        file_put_contents($dir . '/composer.lock', (string) json_encode(['packages' => [['name' => 'msstc4symfony/dto-generator-bridge-runtime', 'version' => 'v1.3.0']]]));
+        file_put_contents($dir . '/composer.lock', (string) json_encode(['packages' => [['name' => 'msstc4symfony/dto-generator-bridge-runtime', 'version' => 'v1.4.0']]]));
         // Only the views name dto.readWriteModels, which a generator before 1.3 refuses; dto.collections came with 1.17.
         $dto = $variant === 'views' ? ['dto' => ['readWriteModels' => 'split']] : [];
         $dto = $variant === 'collections' ? ['dto' => ['collections' => ['class' => Bag::class]]] : $dto;

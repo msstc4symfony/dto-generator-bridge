@@ -154,7 +154,13 @@
   setNormalizationContextForGroups` перезаписывает), поэтому ключ коллекции и формат даты сливаются в одну карту;
   при одних только «ненаправленных» ключах — `context:`, иначе ключ дублируется в normalization/denormalization.
 - Тип элемента для Serializer (`serializerType()`): класс/enum → FQCN, enum до 8.1 → скаляр, скаляр → kind, список
-  классов → `Fqcn[]`, остальное → `mixed` (runtime пропускает как есть).
+  или map классов → `Fqcn[]` (ArrayDenormalizer сохраняет ключи), остальное → `mixed` (runtime пропускает как есть);
+  `mixed` при классе внутри элемента (`?Tag`, union) — warning на свойстве.
+- `checkCollectionNormalizer()` — раз за запуск (флаг на enricher, как `refusedToSpread`): warning при цели < PHP 8.0
+  или runtime < 1.4 / не установлен (ветка `dev-*` считается новой). Поэтому юнит-тесты коллекций передают
+  `self::COLLECTIONS` (runtime v1.4.0), а фиктивный `composer.lock` интеграции — v1.4.0.
+- Сборка Context вынесена в `SerializerEnricher::context()`; общий `context:` — отдельная `$shared` (ленивый ключ
+  `$contexts['context']` PHPStan не принимает, а ранний пустой ключ давал эквивалентный мутант).
 - Валидатор: `CollectionType` = `'collection'` в `KindConstraints`, элементы через `ConstraintBuilder::nested()`.
 - Интеграционный вариант `collections` в `RealSymfonyTest` (класс `tests/Integration/Symfony/Bag.php`) нашёл, что
   обобщённый `@var Bag<T>` Symfony читает как CollectionType и не строит объект → ядро пишет аргументы только в

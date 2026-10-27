@@ -296,8 +296,9 @@ final class ConstraintBuilder
         }
 
         $resolved = $keywords->resolved();
-        if ($value instanceof ListType || $value instanceof CollectionType) {
-            [$item, $itemSchema] = [$value instanceof CollectionType ? $value->list()->item() : $value->item(), $resolved->items()];
+        $value = $value instanceof CollectionType ? $value->list() : $value;
+        if ($value instanceof ListType) {
+            [$item, $itemSchema] = [$value->item(), $resolved->items()];
         } elseif ($value instanceof MapType) {
             [$item, $itemSchema] = [$value->value(), $resolved->additionalProperties()];
         } else {
