@@ -177,6 +177,17 @@ final class NarrowingsTest extends TestCase
         }
     }
 
+    public function testChecksTheDeclarationsOfTheChildAfterOneItSkips(): void
+    {
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['properties' => ['tel' => ['type' => 'string', 'maxLength' => 9, 'x-validator-skip' => true]]],
+            ['properties' => ['tel' => ['type' => 'string', 'minLength' => 3]]],
+        ]], ['Base' => ['type' => 'object', 'properties' => ['tel' => ['type' => 'string']]]]);
+
+        self::assertSame(["RuntimeAssert\\Property(name: 'tel', constraints: [new " . self::ASSERT . 'Length(min: 3)])'], $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
     public function testSaysNothingOfTheLibraryWhenTheChildChecksNothingWithoutTheRuntime(): void
     {
         $output = $this->generate(['allOf' => [
