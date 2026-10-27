@@ -50,6 +50,14 @@ components:
       type: object
       properties:
         name: {type: string, maxLength: 5}
+    Atlas:
+      type: object
+      properties:
+        places:
+          type: array
+          items:
+            type: object
+            additionalProperties: {$ref: '#/components/schemas/Owner'}
     Diary:
       type: object
       properties:

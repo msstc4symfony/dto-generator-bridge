@@ -25,6 +25,7 @@ use MSSTC4PHP\DtoGenerator\Domain\Model\ScalarType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\TypeModel;
 use MSSTC4PHP\DtoGenerator\Domain\Model\UnionType;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\Schema;
+use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaLocation;
 use MSSTC4PHP\DtoGenerator\Domain\Target\Capability;
 use MSSTC4PHP\DtoGenerator\Domain\Target\PhpVersion;
 use MSSTC4PHP\DtoGenerator\Domain\Target\TargetProfile;
@@ -68,8 +69,6 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
     private ComponentGate $gate;
 
     private Settings $settings;
-
-    private bool $checkedCollectionNormalizer = false;
 
     private bool $refusedToSpread = false;
 
@@ -215,14 +214,13 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
             return null;
         }
 
-        $at = $context->schema()->location();
         $target = $context->target();
-        $this->checkCollectionNormalizer($context);
         $item = $this->serializerType($value->list()->item(), $target);
-        if ($item === 'mixed' && $this->namesAClass($value->list()->item(), $target)) {
+        // Without a CollectionNormalizer the run's one warning says it all.
+        if ($this->readsCollections($context) && $item === 'mixed' && $this->namesAClass($value->list()->item(), $target)) {
             $context->diagnostics()->warning(
                 sprintf('CollectionNormalizer cannot type the items of %s, %s: they stay as the data has them, not objects.', $value->className()->fqcn(), $value->list()->item()->describe()),
-                $at,
+                $context->schema()->location(),
             );
         }
 
@@ -233,27 +231,34 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
     }
 
     /**
-     * Once per run: without CollectionNormalizer the Serializer cannot build a collection from a list.
+     * Whether a CollectionNormalizer reads the collection objects: without one the Serializer cannot build them. The
+     * warning goes to the document, where Diagnostics keeps one of each, so a run hears it once.
      */
-    private function checkCollectionNormalizer(PropertyContext $context): void
+    private function readsCollections(PropertyContext $context): bool
     {
-        if ($this->checkedCollectionNormalizer) {
-            return;
-        }
-
-        $this->checkedCollectionNormalizer = true;
-        $at = $context->schema()->location();
+        $at = new SchemaLocation($context->schema()->location()->file());
         $php = $context->target()->php();
         if (!$php->isAtLeast(PhpVersion::fromString(self::COLLECTIONS_PHP))) {
             $context->diagnostics()->warning(sprintf('CollectionNormalizer, which builds collection objects, needs PHP %s; on PHP %s the Serializer cannot read them.', self::COLLECTIONS_PHP, $php->toString()), $at);
 
-            return;
+            return false;
         }
 
         $runtime = $context->packages()->version(self::RUNTIME);
-        if ($runtime === null || (preg_match('/^v?(\d+)\.(\d+)/', $runtime, $match) === 1 && version_compare($match[1] . '.' . $match[2], self::COLLECTIONS_SINCE, '<'))) {
+        if ($runtime === null) {
             $context->diagnostics()->warning(sprintf('CollectionNormalizer, which builds collection objects, comes with %s %s, which the project does not install; the Serializer cannot read them.', self::RUNTIME, self::COLLECTIONS_SINCE), $at);
+
+            return false;
         }
+
+        // A branch (dev-main) counts as new: it is what a project tries before a release.
+        if (preg_match('/^v?(\d+)\.(\d+)/', $runtime, $match) === 1 && version_compare($match[1] . '.' . $match[2], self::COLLECTIONS_SINCE, '<')) {
+            $context->diagnostics()->warning(sprintf('CollectionNormalizer, which builds collection objects, comes with %s %s; the project has %s, so the Serializer cannot read them.', self::RUNTIME, self::COLLECTIONS_SINCE, $runtime), $at);
+
+            return false;
+        }
+
+        return true;
     }
 
     /**

@@ -148,7 +148,8 @@ final class SerializerEnricherTest extends TestCase
         ]], [
             'Tag' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]],
             'Colour' => ['type' => 'string', 'enum' => ['red']],
-        ], '8.0', self::ONLY_SERIALIZER, null, self::SERIALIZER, true, [], [], [], ['collections' => ['class' => 'App\\Collection\\{item}List']]);
+        ], '8.0', self::ONLY_SERIALIZER, null, self::COLLECTIONS, true, [], [], [], ['collections' => ['class' => 'App\\Collection\\{item}List']]);
+        self::assertSame([], $this->messages($output));
         $code = $this->code($output, 'Pet.php');
         $context = static fn (string $class, string $item): string => sprintf("Serializer\\Context(context: ['dto_generator_collection' => ['class' => '%s', 'item' => '%s']])", $class, $item);
 
@@ -188,7 +189,7 @@ final class SerializerEnricherTest extends TestCase
             // The one warning of the run, though the runtime is missing too.
             'php 7.4' => ['7.4', ['symfony/serializer' => 'v6.4.0', 'doctrine/annotations' => '2.0.0'], 'needs PHP 8.0; on PHP 7.4 the Serializer cannot read them.'],
             'no runtime' => ['8.2', self::SERIALIZER, 'comes with msstc4symfony/dto-generator-bridge-runtime 1.4, which the project does not install; the Serializer cannot read them.'],
-            'old runtime' => ['8.2', self::SERIALIZER + ['msstc4symfony/dto-generator-bridge-runtime' => 'v1.3.2'], 'comes with msstc4symfony/dto-generator-bridge-runtime 1.4, which the project does not install; the Serializer cannot read them.'],
+            'old runtime' => ['8.2', self::SERIALIZER + ['msstc4symfony/dto-generator-bridge-runtime' => 'v1.3.2'], 'comes with msstc4symfony/dto-generator-bridge-runtime 1.4; the project has v1.3.2, so the Serializer cannot read them.'],
         ];
     }
 
@@ -202,9 +203,10 @@ final class SerializerEnricherTest extends TestCase
         $output = $this->generate(['type' => 'object', 'properties' => [
             'labels' => ['type' => 'array', 'items' => ['type' => 'string'], 'x-php-collection' => 'App\\Bag'],
             'codes' => ['type' => 'array', 'items' => ['type' => 'integer'], 'x-php-collection' => 'App\\Bag'],
-        ]], [], $php, self::ONLY_SERIALIZER, null, $packages);
+            'maybe' => ['type' => 'array', 'items' => ['oneOf' => [['$ref' => '#/components/schemas/Tag'], ['type' => 'null']]], 'x-php-collection' => 'App\\Bag'],
+        ]], ['Tag' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]]], $php, self::ONLY_SERIALIZER, null, $packages);
 
-        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/labels: CollectionNormalizer, which builds collection objects, ' . $message], $this->messages($output));
+        self::assertSame(['warning /api.yaml#: CollectionNormalizer, which builds collection objects, ' . $message], $this->messages($output));
     }
 
     public function testWritesTheCollectionInAnAnnotation(): void

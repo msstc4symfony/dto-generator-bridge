@@ -12,7 +12,7 @@ All notable changes to this package are documented here. The format follows
   and the type of its items for the runtime's `CollectionNormalizer` (runtime 1.4), in the one Context that also
   carries a date format; `Count`, `Unique`, `All` and `Valid` apply to the collection as to the list.
   Items that are a map of classes are read as `Tag[]`; items it cannot type (`?Tag`, a union) stay as decoded, with
-  a warning, as does a target below PHP 8.0 or a runtime below 1.4, once per run.
+  a warning on the property. A target below PHP 8.0, or a runtime missing or below 1.4, gets one warning per run.
 
 ### Changed
 

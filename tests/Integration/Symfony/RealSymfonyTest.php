@@ -790,6 +790,18 @@ final class RealSymfonyTest extends TestCase
             self::assertInstanceOf(DateTimeInterface::class, $day);
             self::assertSame('2026-10-27 00:00:00', $day->format('Y-m-d H:i:s'));
             self::assertSame(['days' => ['2026-10-27']], $serializer->normalize($diary));
+
+            // A map of classes is an item ArrayDenormalizer reads, keys kept.
+            $places = [['home' => ['name' => 'ann'], 'work' => ['name' => 'bo']]];
+            $atlas = $serializer->denormalize(['places' => $places], $namespace . '\Atlas');
+            self::assertIsObject($atlas);
+            $bag = (new ReflectionProperty($atlas, 'places'))->getValue($atlas);
+            self::assertInstanceOf(Bag::class, $bag);
+            $first = iterator_to_array($bag, false)[0];
+            self::assertIsArray($first);
+            self::assertSame(['home', 'work'], array_keys($first));
+            self::assertIsObject($first['home']);
+            self::assertSame(['places' => $places], $serializer->normalize($atlas));
         }, 'collections');
     }
 
@@ -951,6 +963,8 @@ final class RealSymfonyTest extends TestCase
         $output = DtoGenerator::generator()(new Input($dir . '/dto-generator.yaml', Mode::from(Mode::WRITE)));
         $messages = array_map(static fn (Diagnostic $diagnostic): string => str_replace($dir, '', $diagnostic->toString()), $output->diagnostics()->all());
         self::assertSame([], array_values(array_filter($messages, static fn (string $message): bool => strncmp($message, 'error', 5) === 0)));
+        // The project has the runtime that reads collection objects.
+        self::assertSame([], array_values(array_filter($messages, static fn (string $message): bool => strpos($message, 'CollectionNormalizer') !== false)));
         $dropped = array_values(array_filter($messages, static fn (string $message): bool => strpos($message, 'inside All') !== false));
         // The read and write models of a class repeat its warnings under their own names.
         if ($variant !== 'views') {
