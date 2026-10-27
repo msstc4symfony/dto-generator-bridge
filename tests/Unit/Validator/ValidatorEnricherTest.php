@@ -428,6 +428,58 @@ final class ValidatorEnricherTest extends TestCase
         self::assertSame([], $this->messages($output));
     }
 
+    public function testChecksAPhoneNumberWithTheLibraryWhenTheConfigSaysStrict(): void
+    {
+        $schema = ['type' => 'object', 'properties' => [
+            'phone' => ['type' => 'string', 'format' => 'tel'],
+            'other' => ['type' => 'string', 'not' => ['format' => 'phone']],
+        ]];
+        $settings = ['formats' => ['phone' => 'strict']];
+        $code = $this->code($this->generate($schema, [], '8.2', $settings, 'v7.1.0', ['msstc4symfony/dto-generator-bridge-runtime' => 'v1.3.0', 'odolbeau/phone-number-bundle' => 'v4.2.5']), 'Pet.php');
+
+        self::assertSame(['PhoneAssert\\PhoneNumber'], $this->attributesOf($code, 'phone'));
+        self::assertStringContainsString('use Misd\\PhoneNumberBundle\\Validator\\Constraints as PhoneAssert;', $code);
+        self::assertStringContainsString('new \\Misd\\PhoneNumberBundle\\Validator\\Constraints\\PhoneNumber', $code);
+    }
+
+    public function testChecksAPhoneNumberWithItsRegexWithoutTheLibrary(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'phone' => ['type' => 'string', 'format' => 'phone'],
+        ]], [], '8.2', ['formats' => ['phone' => 'strict']]);
+
+        self::assertMatchesRegularExpression('/Regex\\(\\s*pattern: ' . preg_quote("'" . str_replace("'", "\\'", FormatPatterns::PHONE) . "'", '/') . '/', $this->code($output, 'Pet.php'));
+        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/phone: "format: phone" is set to strict, which needs odolbeau/phone-number-bundle; the project does not install it, so a Regex checks the number.'], $this->messages($output));
+    }
+
+    public function testTurnsTheFormatsOfAPropertyOnAndOffByItsSchema(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'phone' => ['type' => 'string', 'format' => 'phone', 'x-validator-format' => false],
+            'phones' => ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'phone'], 'x-validator-format' => false],
+            'guid' => ['type' => 'string', 'format' => 'uuid', 'x-validator-format' => true],
+            'mail' => ['type' => 'string', 'format' => 'email'],
+            'odd' => ['type' => 'string', 'format' => 'uuid', 'x-validator-format' => 'no'],
+        ]], [], '8.2', ['formats' => ['phone' => 'strict', 'uuid' => false, 'email' => false]]);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame([], $this->attributesOf($code, 'phone'));
+        self::assertSame([], $this->attributesOf($code, 'phones'));
+        self::assertSame(['Assert\\Uuid'], $this->attributesOf($code, 'guid'));
+        self::assertSame([], $this->attributesOf($code, 'mail'));
+        self::assertSame([], $this->attributesOf($code, 'odd'));
+        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/odd: x-validator-format must be true or false; it is ignored.'], $this->messages($output));
+    }
+
+    public function testKeepsAStrictCheckOfAFormatAPropertyTurnsOn(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'phone' => ['type' => 'string', 'format' => 'phone', 'x-validator-format' => true],
+        ]], [], '8.2', ['formats' => ['phone' => 'strict', 'email' => true]], 'v7.1.0', ['odolbeau/phone-number-bundle' => 'v4.2.5']);
+
+        self::assertSame(['PhoneAssert\\PhoneNumber'], $this->attributesOf($this->code($output, 'Pet.php'), 'phone'));
+    }
+
     public function testChecksOnlyTheFormatsTheConfigLists(): void
     {
         $output = $this->generate(['type' => 'object', 'properties' => [

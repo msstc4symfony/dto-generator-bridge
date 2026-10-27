@@ -17,7 +17,7 @@ use Msstc4Symfony\DtoGeneratorBridge\Validator\FormatConstraints;
  */
 final class Settings
 {
-    private const FORMATS_SHAPE = 'extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true or false.';
+    private const FORMATS_SHAPE = 'extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true, false or strict.';
 
     private const KEYS = ['validator', 'serializer', 'version', 'groups', 'additionalProperties', 'formats'];
 
@@ -211,7 +211,7 @@ final class Settings
 
     /**
      * `true` checks every format, `false` none, a list only those, a map of formats to true or false turns them on or
-     * off, the others checked.
+     * off, the others checked; `strict` checks a format with a library rather than a Regex.
      *
      * @param array<int|string, JsonValue> $config
      * @param list<string> $problems
@@ -232,18 +232,21 @@ final class Settings
 
         $list = array_values($value) === $value;
         $switches = [];
+        $strict = [];
         $shaped = true;
         foreach ($value as $key => $item) {
             $written = $list ? $item : $key;
             $switch = $list ? true : $item;
-            if (!is_string($written) || !is_bool($switch)) {
+            if (!is_string($written) || (!is_bool($switch) && $switch !== 'strict')) {
                 $shaped = false;
 
                 continue;
             }
 
             $format = Formats::normalize($written);
-            if (!FormatConstraints::known($format)) {
+            if ($switch === 'strict' && !FormatConstraints::hasStrictCheck($format)) {
+                $problems[] = sprintf('extensionConfig.symfony.formats sets "%s" to strict, which only %s takes.', $written, implode(', ', FormatConstraints::STRICT_FORMATS));
+            } elseif (!FormatConstraints::known($format)) {
                 $problems[] = sprintf(
                     'extensionConfig.symfony.formats names "%s", which the bridge does not check%s.',
                     $written,
@@ -252,7 +255,10 @@ final class Settings
             } elseif (array_key_exists($format, $switches)) {
                 $problems[] = sprintf('extensionConfig.symfony.formats names "%s" more than once.', $written);
             } else {
-                $switches[$format] = $switch;
+                $switches[$format] = $switch !== false;
+                if ($switch === 'strict') {
+                    $strict[] = $format;
+                }
             }
         }
 
@@ -260,6 +266,6 @@ final class Settings
             $problems[] = self::FORMATS_SHAPE;
         }
 
-        return new FormatChecks(!$list, $switches);
+        return new FormatChecks(!$list, $switches, $strict);
     }
 }

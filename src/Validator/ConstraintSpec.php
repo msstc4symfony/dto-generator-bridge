@@ -11,8 +11,9 @@ use MSSTC4PHP\DtoGenerator\Domain\Model\ClassName;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ImportAlias;
 
 /**
- * One Validator constraint to write: as an attribute, or as `new` inside a composite constraint. Symfony's, or one of
- * msstc4symfony/dto-generator-bridge-runtime for the keywords Symfony has none for.
+ * One Validator constraint to write: as an attribute, or as `new` inside a composite constraint. Symfony's, one of
+ * msstc4symfony/dto-generator-bridge-runtime for the keywords Symfony has none for, or the phone number one of
+ * odolbeau/phone-number-bundle.
  *
  * @internal
  */
@@ -24,6 +25,7 @@ final class ConstraintSpec
     private const NAMESPACES = [
         'Assert' => 'Symfony\Component\Validator\Constraints',
         'RuntimeAssert' => 'Msstc4Symfony\DtoGeneratorBridge\Runtime\Constraints',
+        'PhoneAssert' => 'Misd\PhoneNumberBundle\Validator\Constraints',
     ];
 
     /** @var non-empty-string */
@@ -53,6 +55,17 @@ final class ConstraintSpec
     {
         $spec = new self($name, $arguments);
         $spec->alias = 'RuntimeAssert';
+
+        return $spec;
+    }
+
+    /**
+     * The constraint of odolbeau/phone-number-bundle, which checks a number with libphonenumber.
+     */
+    public static function phoneNumber(): self
+    {
+        $spec = new self('PhoneNumber');
+        $spec->alias = 'PhoneAssert';
 
         return $spec;
     }

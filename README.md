@@ -73,7 +73,7 @@ extensionConfig:
     version: auto        # auto | '6.4' … — quote it: YAML reads 6.4 as a number
     groups: []           # validation groups for every constraint, plus Default
     additionalProperties: ignore   # ignore | spread — see "Undeclared properties"
-    formats: true        # true | false | [uuid, email] | {phone: false} — see "Format checks"
+    formats: true        # true | false | [uuid, email] | {phone: false} | {phone: strict} — see "Format checks"
 ```
 
 The Symfony version is read per component from the project's `composer.lock`.
@@ -95,6 +95,16 @@ A format turned off stays an annotation, as JSON Schema has it; inside `not`, `i
 unchecked, with a warning. An empty `formats: []` is an error: it and `{}` both arrive as one empty array, and the
 two would mean the opposite. A format the bridge does not check is an error here, and so are the dates: `date`,
 `date-time` and `date-time-rfc-2822` give the property its `DateTimeInterface` type, which no setting changes.
+
+`phone: strict` checks a phone number with `PhoneNumber` of
+[odolbeau/phone-number-bundle](https://github.com/odolbeau/phone-number-bundle) (libphonenumber) instead of the
+`Regex`, which takes any number as people write it. Without a region the library takes only international numbers
+(`+15017122661`): the bundle's `default_region` sets one when the bundle is registered. Without the package installed
+the `Regex` stays, with a warning on each property. Only `phone` takes `strict`.
+
+`x-validator-format: false` on a property's schema leaves its formats, its items' included, unchecked whatever the
+config says, and `true` checks them (each as strictly as the config sets it); the property's schema only, not one its
+`$ref` points to.
 
 ## Validator constraints
 
@@ -486,6 +496,7 @@ dto_generator:
 | `x-validator-groups: [api]` | property | Validation groups of its constraints instead of `groups` from the config |
 | `x-validator-groups-exclusive: true` | property | Leaves out the `Default` group otherwise added |
 | `x-validator-skip: true` | property | No constraints |
+| `x-validator-format: false` | property | Its formats unchecked; `true` checks them though the config turns them off |
 | `x-serializer-groups: [api]` | property | `Groups(['api'])` |
 | `x-serializer-ignore: true` | property | `Ignore` |
 | `x-serializer-skip: true` | property | No serializer attributes |

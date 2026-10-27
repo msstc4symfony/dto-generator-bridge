@@ -118,7 +118,8 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         $extensions = new ExtensionReader($schema, $diagnostics);
         $skipped = $extensions->flag('x-validator-skip');
         $groups = $this->groups($extensions);
-        $builder = new ConstraintBuilder($context->references(), $context->target(), $diagnostics, new RuntimeConstraints($context->packages(), $diagnostics), $context->packages(), $this->settings->formatChecks(), $context->keywordChecks(), $groups);
+        $formatChecks = $extensions->setting('x-validator-format');
+        $builder = new ConstraintBuilder($context->references(), $context->target(), $diagnostics, new RuntimeConstraints($context->packages(), $diagnostics), $context->packages(), $formatChecks === null ? $this->settings->formatChecks() : $this->settings->formatChecks()->turned($formatChecks), $context->keywordChecks(), $groups);
         $type = $property->type();
         if ($skipped) {
             $constraints = [];

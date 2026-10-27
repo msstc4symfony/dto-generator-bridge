@@ -63,6 +63,16 @@ final class SettingsTest extends TestCase
         self::assertTrue($formatChecks->allows('email'));
     }
 
+    public function testChecksAFormatStrictlyWhenTheConfigSaysSo(): void
+    {
+        $formatChecks = Settings::fromConfig(['formats' => ['phone_number' => 'strict', 'uuid' => true]])->formatChecks();
+
+        self::assertTrue($formatChecks->allows('phone'));
+        self::assertTrue($formatChecks->isStrict('phone'));
+        self::assertFalse($formatChecks->isStrict('uuid'));
+        self::assertFalse(Settings::fromConfig([])->formatChecks()->isStrict('phone'));
+    }
+
     public function testChecksOnlyTheListedFormats(): void
     {
         $formatChecks = Settings::fromConfig(['formats' => ['GUID', 'int8']])->formatChecks();
@@ -94,12 +104,15 @@ final class SettingsTest extends TestCase
         yield 'groups item' => [['groups' => ['api', '']], 'extensionConfig.symfony.groups must be a list of group names.'];
         yield 'groups map' => [['groups' => ['a' => 'api']], 'extensionConfig.symfony.groups must be a list of group names.'];
         yield 'groups items' => [['groups' => [1, 2]], 'extensionConfig.symfony.groups must be a list of group names.'];
-        yield 'formats type' => [['formats' => 'phone'], 'extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true or false.'];
-        yield 'formats empty' => [['formats' => []], 'extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true or false.'];
-        yield 'formats switch' => [['formats' => ['phone' => 'no']], 'extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true or false.'];
-        yield 'formats item' => [['formats' => ['phone', 1]], 'extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true or false.'];
-        yield 'formats item among unknown ones' => [['formats' => ['odd', 1, 'zzz']], 'extensionConfig.symfony.formats names "odd", which the bridge does not check. extensionConfig.symfony.formats names "zzz", which the bridge does not check. extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true or false.'];
+        yield 'formats type' => [['formats' => 'phone'], 'extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true, false or strict.'];
+        yield 'formats empty' => [['formats' => []], 'extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true, false or strict.'];
+        yield 'formats switch' => [['formats' => ['phone' => 'no']], 'extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true, false or strict.'];
+        yield 'formats item' => [['formats' => ['phone', 1]], 'extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true, false or strict.'];
+        yield 'formats item among unknown ones' => [['formats' => ['odd', 1, 'zzz']], 'extensionConfig.symfony.formats names "odd", which the bridge does not check. extensionConfig.symfony.formats names "zzz", which the bridge does not check. extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true, false or strict.'];
         yield 'formats unknown' => [['formats' => ['ssh-key' => false, 'odd' => true]], 'extensionConfig.symfony.formats names "ssh-key", which the bridge does not check. extensionConfig.symfony.formats names "odd", which the bridge does not check.'];
+        yield 'formats strict without a library' => [['formats' => ['uuid' => 'strict', 'Phone' => 'strict']], 'extensionConfig.symfony.formats sets "uuid" to strict, which only phone takes.'];
+        yield 'formats strict in a list' => [['formats' => ['phone', 'strict']], 'extensionConfig.symfony.formats names "strict", which the bridge does not check.'];
+        yield 'formats strict of an unknown one' => [['formats' => ['odd' => 'strict']], 'extensionConfig.symfony.formats sets "odd" to strict, which only phone takes.'];
         yield 'formats date' => [['formats' => ['DateTime' => false]], 'extensionConfig.symfony.formats names "DateTime", which the bridge does not check: a date is a DateTimeInterface.'];
         yield 'formats repeated' => [['formats' => ['phone', 'tel', 'uuid', 'GUID']], 'extensionConfig.symfony.formats names "tel" more than once. extensionConfig.symfony.formats names "GUID" more than once.'];
         yield 'groups repeated thrice' => [['groups' => ['api', 'api', 'api']], 'extensionConfig.symfony.groups names "api" more than once.'];
