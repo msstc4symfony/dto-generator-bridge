@@ -27,13 +27,13 @@ final class ExtensionReader
 
     public function flag(string $key): bool
     {
-        return $this->setting($key) === true;
+        return $this->optionalFlag($key) === true;
     }
 
     /**
      * The flag under the key; null when the schema does not set it, or sets something else.
      */
-    public function setting(string $key): ?bool
+    public function optionalFlag(string $key): ?bool
     {
         $flag = $this->value($key);
         if ($flag !== null && !is_bool($flag)) {

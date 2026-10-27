@@ -88,11 +88,10 @@ final class FormatPatterns
 
     /**
      * Linode's `ipv4|ipv6/prefix_length`: an address or a range, of either version, as its examples have no prefix.
-     * Symfony's Ip and Cidr take one of the two each. An IPv6 address is checked for its alphabet only, as IP literals
-     * of a URI are.
+     * Symfony's Ip and Cidr take one of the two each. The groups of an IPv6 address ending in an IPv4 one and holding
+     * "::" are not counted exactly.
      */
-    public const IP_OR_CIDR = '/^(?:' . self::IPV4_OCTET . '(?:\.' . self::IPV4_OCTET . '){3}(?:\/(?:3[0-2]|[12]?[0-9]))?'
-        . '|(?=[0-9A-Fa-f.]*+:)[0-9A-Fa-f:.]{2,45}+(?:\/(?:12[0-8]|1[01][0-9]|[1-9]?[0-9]))?)$/D';
+    public const IP_OR_CIDR = '/^(?:' . self::IPV4 . '(?:\/(?:3[0-2]|[12]?[0-9]))?|' . self::IPV6 . '(?:\/(?:12[0-8]|1[01][0-9]|[1-9]?[0-9]))?)$/D';
 
     /** RFC 3986 unreserved characters and sub-delims. */
     private const CHARS = "A-Za-z0-9\\-._~!$&'()*+,;=";
@@ -111,6 +110,23 @@ final class FormatPatterns
     private const QUERY = '[' . self::CHARS . ':@\/?]*+(?:' . self::OCTET . '[' . self::CHARS . ':@\/?]*+)*+';
 
     private const IPV4_OCTET = '(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])';
+
+    private const IPV4 = self::IPV4_OCTET . '(?:\\.' . self::IPV4_OCTET . '){3}';
+
+    private const HEXTET = '[0-9A-Fa-f]{1,4}';
+
+    /** RFC 4291: eight groups, fewer around one "::", or six and an IPv4 address. */
+    private const IPV6 = '(?:(?:' . self::HEXTET . ':){7}' . self::HEXTET
+        . '|(?:' . self::HEXTET . ':){1,7}:'
+        . '|(?:' . self::HEXTET . ':){1,6}:' . self::HEXTET
+        . '|(?:' . self::HEXTET . ':){1,5}(?::' . self::HEXTET . '){1,2}'
+        . '|(?:' . self::HEXTET . ':){1,4}(?::' . self::HEXTET . '){1,3}'
+        . '|(?:' . self::HEXTET . ':){1,3}(?::' . self::HEXTET . '){1,4}'
+        . '|(?:' . self::HEXTET . ':){1,2}(?::' . self::HEXTET . '){1,5}'
+        . '|' . self::HEXTET . ':(?::' . self::HEXTET . '){1,6}'
+        . '|:(?:(?::' . self::HEXTET . '){1,7}|:)'
+        . '|(?:' . self::HEXTET . ':){6}' . self::IPV4
+        . '|(?:(?:' . self::HEXTET . ':){1,5}|:):(?:' . self::HEXTET . ':){0,4}' . self::IPV4 . ')';
 
     private const HOUR = '(?:[01][0-9]|2[0-3])';
 

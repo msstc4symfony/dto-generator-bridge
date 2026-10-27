@@ -11,9 +11,10 @@ All notable changes to this package are documented here. The format follows
 - `format: ip-or-cidr` (Linode's `ipv4|ipv6/prefix_length`) is checked with a `Regex`: an IP address of either version,
   with a prefix length or without one (generator 1.17).
 - `extensionConfig.symfony.formats: {phone: strict}` checks phone numbers with `PhoneNumber` of
-  `odolbeau/phone-number-bundle` (libphonenumber) when the project installs it, and with the `Regex` otherwise, with
-  a warning.
-- `x-validator-format: false` on a property turns its format checks off, `true` on, whatever the config says.
+  `odolbeau/phone-number-bundle` (libphonenumber) when the project installs 3.5 or newer, and with the `Regex`
+  otherwise, with a warning.
+- `x-validator-format: false` on a property (or a child's declaration of an inherited one) turns its format checks
+  off, `true` on, whatever the config says.
 
 ### Changed
 

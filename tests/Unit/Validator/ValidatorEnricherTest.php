@@ -449,7 +449,30 @@ final class ValidatorEnricherTest extends TestCase
         ]], [], '8.2', ['formats' => ['phone' => 'strict']]);
 
         self::assertMatchesRegularExpression('/Regex\\(\\s*pattern: ' . preg_quote("'" . str_replace("'", "\\'", FormatPatterns::PHONE) . "'", '/') . '/', $this->code($output, 'Pet.php'));
-        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/phone: "format: phone" is set to strict, which needs odolbeau/phone-number-bundle; the project does not install it, so a Regex checks the number.'], $this->messages($output));
+        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/phone: "format: phone" is set to strict, which needs odolbeau/phone-number-bundle 3.5 or newer, which the project does not install; a Regex checks the number.'], $this->messages($output));
+    }
+
+    public function testChecksAPhoneNumberWithItsRegexWithALibraryTooOldForAttributes(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'phone' => ['type' => 'string', 'format' => 'phone'],
+        ]], [], '8.2', ['formats' => ['phone' => 'strict']], 'v7.1.0', ['odolbeau/phone-number-bundle' => 'v3.4.2']);
+
+        self::assertStringNotContainsString('PhoneNumber', $this->code($output, 'Pet.php'));
+        self::assertCount(1, $this->messages($output));
+    }
+
+    public function testChecksAPhoneNumberInASubschemaWithItsRegexWithoutTheLibrary(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'other' => ['type' => 'string', 'not' => ['format' => 'phone']],
+        ]], [], '8.2', ['formats' => ['phone' => 'strict']], 'v7.1.0', ['msstc4symfony/dto-generator-bridge-runtime' => 'v1.3.0']);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertCount(1, $this->attributesOf($code, 'other'));
+        self::assertStringContainsString('RuntimeAssert\\Not(', $this->attributesOf($code, 'other')[0]);
+        self::assertStringContainsString('Regex', $this->attributesOf($code, 'other')[0]);
+        self::assertSame([], $this->messages($output));
     }
 
     public function testTurnsTheFormatsOfAPropertyOnAndOffByItsSchema(): void

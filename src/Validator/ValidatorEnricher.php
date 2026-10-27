@@ -6,6 +6,7 @@ namespace Msstc4Symfony\DtoGeneratorBridge\Validator;
 
 use MSSTC4PHP\DtoGenerator\Contract\ClassContext;
 use MSSTC4PHP\DtoGenerator\Contract\ClassEnricher;
+use MSSTC4PHP\DtoGenerator\Contract\InstalledPackages;
 use MSSTC4PHP\DtoGenerator\Contract\PropertyContext;
 use MSSTC4PHP\DtoGenerator\Contract\PropertyEnricher;
 use MSSTC4PHP\DtoGenerator\Contract\SchemaReferences;
@@ -118,8 +119,12 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         $extensions = new ExtensionReader($schema, $diagnostics);
         $skipped = $extensions->flag('x-validator-skip');
         $groups = $this->groups($extensions);
-        $formatChecks = $extensions->setting('x-validator-format');
-        $builder = new ConstraintBuilder($context->references(), $context->target(), $diagnostics, new RuntimeConstraints($context->packages(), $diagnostics), $context->packages(), $formatChecks === null ? $this->settings->formatChecks() : $this->settings->formatChecks()->turned($formatChecks), $context->keywordChecks(), $groups);
+        $formatChecks = $this->formatChecks($context->packages());
+        if ($this->settings->formatChecks()->isStrict('phone') && !$formatChecks->isStrict('phone') && $extensions->optionalFlag('x-validator-format') !== false && in_array('phone', (new Keywords($schema, $context->references()))->formats(), true)) {
+            $diagnostics->warning(sprintf('"format: phone" is set to strict, which needs %s %s or newer, which the project does not install; a Regex checks the number.', FormatConstraints::PHONE_PACKAGE, FormatConstraints::PHONE_PACKAGE_MINIMUM), $schema->location());
+        }
+
+        $builder = new ConstraintBuilder($context->references(), $context->target(), $diagnostics, new RuntimeConstraints($context->packages(), $diagnostics), $context->packages(), $formatChecks, $context->keywordChecks(), $groups);
         $type = $property->type();
         if ($skipped) {
             $constraints = [];
@@ -178,7 +183,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
     private function classSpecs(ClassScope $context, Keywords $keywords, ClassProperties $properties, array $groups, array $patterns): array
     {
         $runtime = new RuntimeConstraints($context->packages(), $context->diagnostics());
-        $builder = new ConstraintBuilder($context->references(), $context->target(), $context->diagnostics(), $runtime, $context->packages(), $this->settings->formatChecks(), $context->keywordChecks(), $groups);
+        $builder = new ConstraintBuilder($context->references(), $context->target(), $context->diagnostics(), $runtime, $context->packages(), $this->formatChecks($context->packages()), $context->keywordChecks(), $groups);
         $constraints = array_merge(
             $this->requirements($context, $keywords, $runtime, $properties),
             $this->conditions($context, $keywords, $builder, $runtime, $groups, $properties),
@@ -222,6 +227,16 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         $properties = new ClassProperties($ancestor, $above, $keywords, $references);
 
         return array_map(static fn (ConstraintSpec $constraint): string => serialize($constraint), $this->classSpecs($quiet, $keywords, $properties, $groups, $this->patterns($quiet, $keywords)));
+    }
+
+    /**
+     * A strict check needs its library; without it the Regex checks the format, and the property says so.
+     */
+    private function formatChecks(InstalledPackages $packages): FormatChecks
+    {
+        $checks = $this->settings->formatChecks();
+
+        return !$checks->isStrict('phone') || PackageVersion::atLeast($packages, FormatConstraints::PHONE_PACKAGE, FormatConstraints::PHONE_PACKAGE_MINIMUM) ? $checks : $checks->withoutStrict();
     }
 
     private function keywordsOf(ClassScope $context): Keywords
@@ -405,17 +420,30 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             }
         }
 
-        // The generator lists what the class requires though an ancestor leaves it optional; the parent's own Present
-        // already checks those it lists itself.
-        $ancestors = $context->ancestors();
-        $required = [];
-        foreach (array_diff($context->class()->requiredInherited(), $ancestors === [] ? [] : $ancestors[0]->requiredInherited()) as $wireName) {
-            $property = $properties->find($wireName);
-            assert($property instanceof PropertyModel);
-            $required[] = $property->name();
+        // The generator lists what the class requires though an ancestor leaves it optional, from the root. A Present
+        // per ancestor, of what it adds to its parent's list, is the one the ancestor writes itself: the class leaves out
+        // those Symfony gives it, and keeps those of an ancestor that skips the validator or has groups of its own.
+        $lists = [$context->class()->requiredInherited()];
+        foreach ($context->ancestors() as $ancestor) {
+            $lists[] = $ancestor->requiredInherited();
         }
 
-        if (($added === [] && $required === []) || !$runtime->available('properties', $context->schema()->location())) {
+        $lists[] = [];
+        $presence = [];
+        for ($level = 0; $level < count($lists) - 1; $level++) {
+            $names = [];
+            foreach (array_intersect(array_diff($lists[$level], $lists[$level + 1]), $lists[0]) as $wireName) {
+                $property = $properties->find($wireName);
+                assert($property instanceof PropertyModel);
+                $names[] = ArgumentValue::literal($property->name());
+            }
+
+            if ($names !== []) {
+                $presence[] = ConstraintSpec::runtime('Present', [AttributeArgument::named('properties', ArgumentValue::listOf(...$names))]);
+            }
+        }
+
+        if (($added === [] && $presence === []) || !$runtime->available('properties', $context->schema()->location())) {
             return [];
         }
 
@@ -430,11 +458,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             }
         }
 
-        if ($required !== []) {
-            $constraints[] = ConstraintSpec::runtime('Present', [AttributeArgument::named('properties', ArgumentValue::listOf(...array_map(static fn (string $name): ArgumentValue => ArgumentValue::literal($name), $required)))]);
-        }
-
-        return $constraints;
+        return array_merge($constraints, $presence);
     }
 
     /**

@@ -24,8 +24,13 @@ use Msstc4Symfony\DtoGeneratorBridge\Keywords;
  */
 final class FormatConstraints
 {
-    /** @var list<non-empty-string> the formats `strict` checks with a library */
+    /** @var list<non-empty-string> the formats `strict` checks with a library; of() writes PhoneNumber for each */
     public const STRICT_FORMATS = ['phone'];
+
+    public const PHONE_PACKAGE = 'odolbeau/phone-number-bundle';
+
+    /** The first release whose PhoneNumber is an attribute. */
+    public const PHONE_PACKAGE_MINIMUM = '3.5';
 
     /**
      * Format → the constraint that checks it, and the option it needs.
@@ -90,8 +95,6 @@ final class FormatConstraints
     private const INTL = ['country' => 'Country', 'language' => 'Language', 'locale' => 'Locale', 'bic' => 'Bic'];
 
     private const INTL_PACKAGE = 'symfony/intl';
-
-    private const PHONE_PACKAGE = 'odolbeau/phone-number-bundle';
 
     /**
      * Format → the constraint, its option and the class constant the option takes.
@@ -169,7 +172,7 @@ final class FormatConstraints
         foreach ($keywords->formats() as $format) {
             if (!$this->formatChecks->allows($format)) {
                 $this->warnInSubschema($format, $at);
-            } elseif ($this->formatChecks->isStrict($format) && $this->phoneLibrary($at)) {
+            } elseif ($this->formatChecks->isStrict($format)) {
                 $constraints[] = ConstraintSpec::phoneNumber();
             } elseif (isset(self::CONSTRAINTS[$format])) {
                 [$name, $option, $setting] = self::CONSTRAINTS[$format];
@@ -214,20 +217,6 @@ final class FormatConstraints
                 $this->warnInSubschema($format, $at);
             }
         }
-    }
-
-    /**
-     * Whether the project installs the library of a strict phone check; without it, the Regex checks the number.
-     */
-    private function phoneLibrary(SchemaLocation $at): bool
-    {
-        if ($this->packages->has(self::PHONE_PACKAGE)) {
-            return true;
-        }
-
-        $this->diagnostics->warning(sprintf('"format: phone" is set to strict, which needs %s; the project does not install it, so a Regex checks the number.', self::PHONE_PACKAGE), $at);
-
-        return false;
     }
 
     /**

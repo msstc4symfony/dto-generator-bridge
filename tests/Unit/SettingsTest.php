@@ -110,7 +110,7 @@ final class SettingsTest extends TestCase
         yield 'formats item' => [['formats' => ['phone', 1]], 'extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true, false or strict.'];
         yield 'formats item among unknown ones' => [['formats' => ['odd', 1, 'zzz']], 'extensionConfig.symfony.formats names "odd", which the bridge does not check. extensionConfig.symfony.formats names "zzz", which the bridge does not check. extensionConfig.symfony.formats must be true, false, a list of formats or a map of formats to true, false or strict.'];
         yield 'formats unknown' => [['formats' => ['ssh-key' => false, 'odd' => true]], 'extensionConfig.symfony.formats names "ssh-key", which the bridge does not check. extensionConfig.symfony.formats names "odd", which the bridge does not check.'];
-        yield 'formats strict without a library' => [['formats' => ['uuid' => 'strict', 'Phone' => 'strict']], 'extensionConfig.symfony.formats sets "uuid" to strict, which only phone takes.'];
+        yield 'formats strict of a format without a strict check' => [['formats' => ['uuid' => 'strict', 'Phone' => 'strict']], 'extensionConfig.symfony.formats sets "uuid" to strict, which only phone takes.'];
         yield 'formats strict in a list' => [['formats' => ['phone', 'strict']], 'extensionConfig.symfony.formats names "strict", which the bridge does not check.'];
         yield 'formats strict of an unknown one' => [['formats' => ['odd' => 'strict']], 'extensionConfig.symfony.formats sets "odd" to strict, which only phone takes.'];
         yield 'formats date' => [['formats' => ['DateTime' => false]], 'extensionConfig.symfony.formats names "DateTime", which the bridge does not check: a date is a DateTimeInterface.'];

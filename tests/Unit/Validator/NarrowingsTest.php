@@ -97,6 +97,45 @@ final class NarrowingsTest extends TestCase
         self::assertSame(["RuntimeAssert\\Present(properties: ['late'])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
     }
 
+    /**
+     * @return iterable<string, array{array<string, bool|list<string>>, list<string>}>
+     */
+    public static function parentsThatCheckNothingInTheGroupsOfTheClass(): iterable
+    {
+        yield 'skips the validator' => [['x-validator-skip' => true], ["RuntimeAssert\\Present(properties: ['late'])", "RuntimeAssert\\Present(properties: ['early'])"]];
+        yield 'groups of its own' => [['x-validator-groups' => ['api'], 'x-validator-groups-exclusive' => true], ["RuntimeAssert\\Present(properties: ['late'])", "RuntimeAssert\\Present(properties: ['early'])"]];
+        yield 'the same groups' => [[], ["RuntimeAssert\\Present(properties: ['late'])"]];
+    }
+
+    /**
+     * @dataProvider parentsThatCheckNothingInTheGroupsOfTheClass
+     *
+     * @param array<string, bool|list<string>> $extensions
+     * @param list<string> $expected
+     */
+    public function testChecksThePresenceAParentLeavesUnchecked(array $extensions, array $expected): void
+    {
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Mid'],
+            ['type' => 'object', 'required' => ['late'], 'properties' => ['own' => ['type' => 'string']]],
+        ]], [
+            'Base' => ['type' => 'object', 'properties' => ['early' => ['type' => 'string'], 'late' => ['type' => 'string']]],
+            'Mid' => ['allOf' => [['$ref' => '#/components/schemas/Base'], ['type' => 'object', 'required' => ['early'], 'properties' => ['mid' => ['type' => 'string']]]]] + $extensions,
+        ]);
+
+        self::assertSame($expected, $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
+    public function testTurnsOffTheFormatOfADeclarationOfTheChild(): void
+    {
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['properties' => ['tel' => ['type' => 'string', 'format' => 'phone', 'x-validator-format' => false], 'code' => ['type' => 'string', 'format' => 'uuid']]],
+        ]], ['Base' => ['type' => 'object', 'properties' => ['tel' => ['type' => 'string'], 'code' => ['type' => 'string']]]]);
+
+        self::assertSame(["RuntimeAssert\\Property(name: 'code', constraints: [new " . self::ASSERT . 'Uuid()])'], $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
     public function testChecksEachConstraintOnceAndThoseOfAParentInGroupsOfItsOwn(): void
     {
         $output = $this->withRuntime(['allOf' => [

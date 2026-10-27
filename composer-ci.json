@@ -31,7 +31,7 @@
     ],
     "require": {
         "php": ">=7.4",
-        "msstc4php/dto-generator": "^1.16",
+        "msstc4php/dto-generator": "^1.17",
         "msstc4symfony/dto-generator-bridge-runtime": "^1.3"
     },
     "require-dev": {
@@ -58,7 +58,8 @@
     "suggest": {
         "symfony/validator": "To validate the generated DTOs",
         "symfony/serializer": "To (de)serialize the generated DTOs",
-        "symfony/framework-bundle": "To use DtoGeneratorBundle: the dto-generator:generate command and the warmup check"
+        "symfony/framework-bundle": "To use DtoGeneratorBundle: the dto-generator:generate command and the warmup check",
+        "odolbeau/phone-number-bundle": "To check phone numbers with libphonenumber: extensionConfig.symfony.formats {phone: strict}"
     },
     "conflict": {
         "symfony/framework-bundle": "<5.4",

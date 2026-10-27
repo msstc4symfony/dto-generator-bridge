@@ -99,12 +99,13 @@ two would mean the opposite. A format the bridge does not check is an error here
 `phone: strict` checks a phone number with `PhoneNumber` of
 [odolbeau/phone-number-bundle](https://github.com/odolbeau/phone-number-bundle) (libphonenumber) instead of the
 `Regex`, which takes any number as people write it. Without a region the library takes only international numbers
-(`+15017122661`): the bundle's `default_region` sets one when the bundle is registered. Without the package installed
-the `Regex` stays, with a warning on each property. Only `phone` takes `strict`.
+(`+15017122661`): the bundle's `default_region` sets one when the bundle is registered. Without the package (3.5 or
+newer, whose constraint is an attribute) the `Regex` stays, with a warning on each property that holds the format
+itself. Only `phone` takes `strict`.
 
-`x-validator-format: false` on a property's schema leaves its formats, its items' included, unchecked whatever the
-config says, and `true` checks them (each as strictly as the config sets it); the property's schema only, not one its
-`$ref` points to.
+`x-validator-format: false` on a property's schema, or on a child's declaration of an inherited one, leaves its
+formats, its items' and subschemas' included, unchecked whatever the config says, and `true` checks them (each as
+strictly as the config sets it); not on a schema its `$ref` points to.
 
 ## Validator constraints
 
@@ -250,7 +251,10 @@ They follow JSON Schema with these limits:
   generator lets no child narrow its type); the child checks the constraints of its declaration that the parent's
   lack with `Property` (a missing value passes them), and with `Present` that it is set when the child requires what an
   ancestor leaves optional, as the generator lists it (`ClassModel::requiredInherited()`: no declaration admits
-  `null`; a property of any type counts). A parent's declaration in groups of its own does not count.
+  `null`). A property of any type counts too, so a child that requires it turns `null` away, as its constructor does,
+  where the class that declares it required takes `null`. A requirement an ancestor checks with `Present` itself is
+  left to it, unless it skips the validator or checks it in groups of its own. A parent's declaration in groups of
+  its own does not count.
 - **`dependentRequired`** reads a property as present when it is not `null`: like the rest of the DTO, it cannot tell
   a missing key from `null`, so a pair whose first property has a default is not checked (it is always present),
   with a warning. A name that is not a property of the class gives a warning and leaves its pair out. A class that

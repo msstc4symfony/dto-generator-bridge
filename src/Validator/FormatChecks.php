@@ -41,9 +41,17 @@ final class FormatChecks
      * The checks of a property whose schema turns every format on or off (`x-validator-format`), each as strict as the
      * config sets it.
      */
-    public function turned(bool $checked): self
+    public function allSwitched(bool $checked): self
     {
         return new self($checked, [], $this->strict);
+    }
+
+    /**
+     * The checks without a library, which the project does not install: each format by its Regex.
+     */
+    public function withoutStrict(): self
+    {
+        return new self($this->default, $this->switches);
     }
 
     public function isStrict(string $format): bool
