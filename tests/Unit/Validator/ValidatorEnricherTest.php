@@ -309,6 +309,7 @@ final class ValidatorEnricherTest extends TestCase
             'net' => ['type' => 'string', 'format' => 'ip/netmask'],
             'net4' => ['type' => 'string', 'format' => 'ipv4/prefix_length'],
             'net6' => ['type' => 'string', 'format' => 'ipv6/128'],
+            'span' => ['type' => 'string', 'format' => 'ipv4|ipv6/prefix_length'],
             'guid' => ['type' => 'string', 'format' => 'GUID'],
             'ulid' => ['type' => 'string', 'format' => 'ulid'],
             'mail' => ['type' => 'string', 'format' => 'e-mail'],
@@ -360,6 +361,7 @@ final class ValidatorEnricherTest extends TestCase
         self::assertMatchesRegularExpression($regex(FormatPatterns::DIGITS, 'pin'), $code);
         self::assertMatchesRegularExpression($regex(FormatPatterns::DURATION, 'period'), $code);
         self::assertMatchesRegularExpression($regex(FormatPatterns::MAC_ADDRESS, 'mac'), $code);
+        self::assertMatchesRegularExpression($regex(FormatPatterns::IP_OR_CIDR, 'span'), $code);
         self::assertMatchesRegularExpression($regex(FormatPatterns::HTTP_METHOD, 'method'), $code);
         self::assertMatchesRegularExpression($regex(FormatPatterns::MONTH_YEAR, 'expiry'), $code);
         self::assertMatchesRegularExpression($regex(FormatPatterns::HEX_COLOR, 'shade'), $code);
@@ -441,6 +443,111 @@ final class ValidatorEnricherTest extends TestCase
         self::assertSame([], $this->messages($output));
     }
 
+    public function testChecksAPhoneNumberWithTheLibraryWhenTheConfigSaysStrict(): void
+    {
+        $schema = ['type' => 'object', 'properties' => [
+            'phone' => ['type' => 'string', 'format' => 'tel'],
+            'other' => ['type' => 'string', 'not' => ['format' => 'phone']],
+        ]];
+        $settings = ['formats' => ['phone' => 'strict']];
+        $code = $this->code($this->generate($schema, [], '8.2', $settings, 'v7.1.0', ['msstc4symfony/dto-generator-bridge-runtime' => 'v1.3.0', 'odolbeau/phone-number-bundle' => 'v4.2.5']), 'Pet.php');
+
+        self::assertSame(['PhoneAssert\\PhoneNumber'], $this->attributesOf($code, 'phone'));
+        self::assertStringContainsString('use Misd\\PhoneNumberBundle\\Validator\\Constraints as PhoneAssert;', $code);
+        self::assertStringContainsString('new \\Misd\\PhoneNumberBundle\\Validator\\Constraints\\PhoneNumber', $code);
+    }
+
+    public function testChecksAPhoneNumberWithItsRegexWithoutTheLibrary(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'phone' => ['type' => 'string', 'format' => 'phone'],
+        ]], [], '8.2', ['formats' => ['phone' => 'strict']]);
+
+        self::assertMatchesRegularExpression('/Regex\\(\\s*pattern: ' . preg_quote("'" . str_replace("'", "\\'", FormatPatterns::PHONE) . "'", '/') . '/', $this->code($output, 'Pet.php'));
+        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/phone: "format: phone" is set to strict, which needs odolbeau/phone-number-bundle 3.5 or newer, which the project does not install; a Regex checks the number.'], $this->messages($output));
+    }
+
+    public function testChecksAPhoneNumberWithItsRegexWithALibraryTooOldForAttributes(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'phone' => ['type' => 'string', 'format' => 'phone'],
+        ]], [], '8.2', ['formats' => ['phone' => 'strict']], 'v7.1.0', ['odolbeau/phone-number-bundle' => 'v3.4.2']);
+
+        self::assertStringNotContainsString('PhoneNumber', $this->code($output, 'Pet.php'));
+        self::assertCount(1, $this->messages($output));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function phoneLibraries(): iterable
+    {
+        yield 'the first with attributes' => ['v3.5.0'];
+        yield 'a branch' => ['dev-main'];
+    }
+
+    /**
+     * @dataProvider phoneLibraries
+     */
+    public function testChecksAPhoneNumberWithEveryLibraryThatHasTheAttribute(string $version): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'phone' => ['type' => 'string', 'format' => 'phone'],
+        ]], [], '8.2', ['formats' => ['phone' => 'strict']], 'v7.1.0', ['odolbeau/phone-number-bundle' => $version]);
+
+        self::assertSame(['PhoneAssert\\PhoneNumber'], $this->attributesOf($this->code($output, 'Pet.php'), 'phone'));
+    }
+
+    public function testSaysNothingOfTheLibraryForAPropertyTheValidatorSkips(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'phone' => ['type' => 'string', 'format' => 'phone', 'x-validator-skip' => true],
+        ]], [], '8.2', ['formats' => ['phone' => 'strict']]);
+
+        self::assertSame([], $this->messages($output));
+    }
+
+    public function testChecksAPhoneNumberInASubschemaWithItsRegexWithoutTheLibrary(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'other' => ['type' => 'string', 'not' => ['format' => 'phone']],
+        ]], [], '8.2', ['formats' => ['phone' => 'strict']], 'v7.1.0', ['msstc4symfony/dto-generator-bridge-runtime' => 'v1.3.0']);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertCount(1, $this->attributesOf($code, 'other'));
+        self::assertStringContainsString('RuntimeAssert\\Not(', $this->attributesOf($code, 'other')[0]);
+        self::assertStringContainsString('Regex', $this->attributesOf($code, 'other')[0]);
+        self::assertSame([], $this->messages($output));
+    }
+
+    public function testTurnsTheFormatsOfAPropertyOnAndOffByItsSchema(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'phone' => ['type' => 'string', 'format' => 'phone', 'x-validator-format' => false],
+            'phones' => ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'phone'], 'x-validator-format' => false],
+            'guid' => ['type' => 'string', 'format' => 'uuid', 'x-validator-format' => true],
+            'mail' => ['type' => 'string', 'format' => 'email'],
+            'odd' => ['type' => 'string', 'format' => 'uuid', 'x-validator-format' => 'no'],
+        ]], [], '8.2', ['formats' => ['phone' => 'strict', 'uuid' => false, 'email' => false]]);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame([], $this->attributesOf($code, 'phone'));
+        self::assertSame([], $this->attributesOf($code, 'phones'));
+        self::assertSame(['Assert\\Uuid'], $this->attributesOf($code, 'guid'));
+        self::assertSame([], $this->attributesOf($code, 'mail'));
+        self::assertSame([], $this->attributesOf($code, 'odd'));
+        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/odd: x-validator-format must be true or false; it is ignored.'], $this->messages($output));
+    }
+
+    public function testKeepsAStrictCheckOfAFormatAPropertyTurnsOn(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'phone' => ['type' => 'string', 'format' => 'phone', 'x-validator-format' => true],
+        ]], [], '8.2', ['formats' => ['phone' => 'strict', 'email' => true]], 'v7.1.0', ['odolbeau/phone-number-bundle' => 'v4.2.5']);
+
+        self::assertSame(['PhoneAssert\\PhoneNumber'], $this->attributesOf($this->code($output, 'Pet.php'), 'phone'));
+    }
+
     public function testChecksOnlyTheFormatsTheConfigLists(): void
     {
         $output = $this->generate(['type' => 'object', 'properties' => [
@@ -473,6 +580,15 @@ final class ValidatorEnricherTest extends TestCase
         $output = $this->generate(['type' => 'object', 'properties' => ['count' => ['type' => 'integer', 'format' => 'int32']]], [], '7.4', [], 'v6.4.1', ['doctrine/annotations' => '2.0.2']);
 
         self::assertStringContainsString("     * @Assert\\Range(min=-2147483648, max=2147483647)\n", $this->code($output, 'Pet.php'));
+    }
+
+    public function testWritesTheStrictPhoneCheckAsAnAnnotationForPhp74(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => ['phone' => ['type' => 'string', 'format' => 'phone']]], [], '7.4', ['formats' => ['phone' => 'strict']], 'v6.4.1', ['doctrine/annotations' => '2.0.2', 'odolbeau/phone-number-bundle' => 'v3.10.0']);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertStringContainsString("     * @PhoneAssert\\PhoneNumber\n", $code);
+        self::assertStringContainsString('use Misd\\PhoneNumberBundle\\Validator\\Constraints as PhoneAssert;', $code);
     }
 
     public function testChecksBase64OfByteStrings(): void

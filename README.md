@@ -73,7 +73,7 @@ extensionConfig:
     version: auto        # auto | '6.4' … — quote it: YAML reads 6.4 as a number
     groups: []           # validation groups for every constraint, plus Default
     additionalProperties: ignore   # ignore | spread — see "Undeclared properties"
-    formats: true        # true | false | [uuid, email] | {phone: false} — see "Format checks"
+    formats: true        # true | false | [uuid, email] | {phone: false} | {phone: strict} — see "Format checks"
 ```
 
 The Symfony version is read per component from the project's `composer.lock`.
@@ -96,6 +96,19 @@ unchecked, with a warning. An empty `formats: []` is an error: it and `{}` both 
 two would mean the opposite. A format the bridge does not check is an error here, and so are the dates: `date`,
 `date-time` and `date-time-rfc-2822` give the property its `DateTimeInterface` type, which no setting changes.
 
+`phone: strict` checks a phone number with `PhoneNumber` of
+[odolbeau/phone-number-bundle](https://github.com/odolbeau/phone-number-bundle) (libphonenumber) instead of the
+`Regex`, which takes any number as people write it. Without a region the library takes only international numbers
+(`+15017122661`): the bundle's `default_region` sets one when the bundle is registered. Without the package (3.5 or
+newer, whose constraint is an attribute) the `Regex` stays, with a warning on each property, or child's declaration
+of one, that holds the format itself. Only `phone` takes `strict`.
+
+`x-validator-format: false` on a property's schema, or on a child's declaration of an inherited one, leaves its
+formats, its items' and subschemas' included, unchecked whatever the config says, and `true` checks them (each as
+strictly as the config sets it); not on a schema its `$ref` points to, and not on the schema of a class, whose
+properties take their own, nor inside a subschema (`not`, `oneOf`…), which follows the property's. A format turned off
+inside `not`, `if` or `oneOf` leaves that keyword unchecked, with a warning, as the config's switch does.
+
 ## Validator constraints
 
 From the schema of each property, of the schema its `$ref` points to, of its `allOf` branches and of the one member of a
@@ -114,6 +127,7 @@ nullable `oneOf`/`anyOf` (all apply, as in JSON Schema 2020-12):
 | `const` | `IdenticalTo`, `IsNull` |
 | `format`: `email`, `ip`, `ipv4`, `ipv6`, `hostname`, `uuid` (`guid`) | `Email(mode: 'html5')`, `Ip(version: 'all')`, `Ip(version: '4')`, `Ip(version: '6')`, `Hostname(requireTld: false)`, `Uuid` (RFC 4122 versions in their canonical form: the nil UUID and `{…}` fail) |
 | `format`: `cidr`, `ipv4-cidr`, `ipv6-cidr` (Linode's `ip/netmask`, `ipv4/prefix_length`, `ipv6/128`) | `Cidr`, with the version |
+| `format`: `ip-or-cidr` (Linode's `ipv4\|ipv6/prefix_length`) | `Regex` for an address or a range of either version (the prefix optional; IPv6 in its RFC 4291 forms, the groups of one ending in an IPv4 address and holding `::` not counted exactly) |
 | `format`: `ulid`, `json`, `color` (`css-color`), `iban`, `isbn`, `issn`, `isin` | `Ulid`, `Json`, `CssColor`, `Iban`, `Isbn`, `Issn`, `Isin` |
 | `format: timezone` | `Timezone(zone: \DateTimeZone::ALL_WITH_BC)`: the names PHP keeps for compatibility (`Asia/Calcutta`, `US/Pacific`, `GMT`) pass too |
 | `format`: `country`, `language`, `locale`, `bic` | `Country`, `Language`, `Locale`, `Bic` when the project installs `symfony/intl`, whose data they need (`Bic` fails without it when the class is loaded); a warning otherwise. They take upper-case codes only: `us` or a lower-case BIC fail |
@@ -237,9 +251,12 @@ They follow JSON Schema with these limits:
   out.
 - **A property of the parent declared again** in a child's schema, narrowing only its values, stays the parent's (the
   generator lets no child narrow its type); the child checks the constraints of its declaration that the parent's
-  lack with `Property` (a missing value passes them), and with `Present` that it is set when the child's schema
-  requires what the parent's leaves optional and no declaration admits `null`. A parent's declaration in groups of its
-  own does not count.
+  lack with `Property` (a missing value passes them), and with `Present` that it is set when the child requires what an
+  ancestor leaves optional, as the generator lists it (`ClassModel::requiredInherited()`: no declaration admits
+  `null`). A property of any type counts too, so a child that requires it turns `null` away, as its constructor does,
+  where the class that declares it required takes `null`. A requirement an ancestor checks with `Present` itself is
+  left to it, unless it skips the validator or checks it in groups of its own. A parent's declaration in groups of
+  its own does not count.
 - **`dependentRequired`** reads a property as present when it is not `null`: like the rest of the DTO, it cannot tell
   a missing key from `null`, so a pair whose first property has a default is not checked (it is always present),
   with a warning. A name that is not a property of the class gives a warning and leaves its pair out. A class that
@@ -393,7 +410,7 @@ serialize the read model in the response.
 
 ## Collection objects
 
-With the generator's `dto.collections` (generator 1.17), a list property is a collection object (`TagList $tags`).
+With the generator's `dto.collections` (generator 1.18), a list property is a collection object (`TagList $tags`).
 The bridge writes its `#[Serializer\Context]` with `dto_generator_collection: {class, item}`, which the runtime's
 `CollectionNormalizer` reads to build the object from the list and to write it back (see
 [the runtime's README](https://github.com/msstc4symfony/dto-generator-bridge-runtime#collection-objects)); a date
@@ -502,6 +519,7 @@ dto_generator:
 | `x-validator-groups: [api]` | property | Validation groups of its constraints instead of `groups` from the config |
 | `x-validator-groups-exclusive: true` | property | Leaves out the `Default` group otherwise added |
 | `x-validator-skip: true` | property | No constraints |
+| `x-validator-format: false` | property | Its formats unchecked; `true` checks them though the config turns them off |
 | `x-serializer-groups: [api]` | property | `Groups(['api'])` |
 | `x-serializer-ignore: true` | property | `Ignore` |
 | `x-serializer-skip: true` | property | No serializer attributes |

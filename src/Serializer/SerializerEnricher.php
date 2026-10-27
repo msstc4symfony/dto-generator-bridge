@@ -36,6 +36,7 @@ use Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalProperties;
 use Msstc4Symfony\DtoGeneratorBridge\Runtime\CollectionNormalizer;
 use Msstc4Symfony\DtoGeneratorBridge\Settings;
 use Msstc4Symfony\DtoGeneratorBridge\SymfonyVersion;
+use Msstc4Symfony\DtoGeneratorBridge\Validator\PackageVersion;
 
 /**
  * Symfony Serializer attributes for classes and their properties (bridge spec §6). One instance, and so one gate,
@@ -251,8 +252,7 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
             return false;
         }
 
-        // A branch (dev-main) counts as new: it is what a project tries before a release.
-        if (preg_match('/^v?(\d+)\.(\d+)/', $runtime, $match) === 1 && version_compare($match[1] . '.' . $match[2], self::COLLECTIONS_SINCE, '<')) {
+        if (!PackageVersion::atLeast($context->packages(), self::RUNTIME, self::COLLECTIONS_SINCE)) {
             $context->diagnostics()->warning(sprintf('CollectionNormalizer, which builds collection objects, comes with %s %s; the project has %s, so the Serializer cannot read them.', self::RUNTIME, self::COLLECTIONS_SINCE, $runtime), $at);
 
             return false;

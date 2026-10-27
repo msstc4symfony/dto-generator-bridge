@@ -8,7 +8,7 @@ All notable changes to this package are documented here. The format follows
 
 ### Added
 
-- Collection objects (generator 1.17 `dto.collections`): the property's Serializer Context names the collection class
+- Collection objects (generator 1.18 `dto.collections`): the property's Serializer Context names the collection class
   and the type of its items for the runtime's `CollectionNormalizer` (runtime 1.4), in the one Context that also
   carries a date format; `Count`, `Unique`, `All` and `Valid` apply to the collection as to the list.
   Items that are a map of classes are read as `Tag[]`; items it cannot type (`?Tag`, a union) stay as decoded, with
@@ -16,7 +16,29 @@ All notable changes to this package are documented here. The format follows
 
 ### Changed
 
-- Requires `msstc4php/dto-generator` ^1.17 and `msstc4symfony/dto-generator-bridge-runtime` ^1.4.
+- Requires `msstc4php/dto-generator` ^1.18 and `msstc4symfony/dto-generator-bridge-runtime` ^1.4.
+
+## [1.9.0] - 2026-10-27
+
+### Added
+
+- `format: ip-or-cidr` (Linode's `ipv4|ipv6/prefix_length`) is checked with a `Regex`: an IP address of either version,
+  with a prefix length or without one (generator 1.17).
+- `extensionConfig.symfony.formats: {phone: strict}` checks phone numbers with `PhoneNumber` of
+  `odolbeau/phone-number-bundle` (libphonenumber) when the project installs 3.5 or newer, and with the `Regex`
+  otherwise, with a warning.
+- `x-validator-format: false` on a property (or a child's declaration of an inherited one) turns its format checks
+  off, `true` on, whatever the config says.
+
+### Changed
+
+- Requires generator 1.17.
+- `Present` for an inherited property the child requires follows the generator's `ClassModel::requiredInherited()`:
+  a declaration through `allOf` (no `type` of its own) and a property of any type are checked too, a requirement of
+  a grandparent's property as well. None repeats what an ancestor's `Present` or a required base property checks; one
+  an ancestor skips, or checks in groups of its own, stays on the child.
+- `x-validator-skip: true` on a child's declaration of an inherited property leaves out the constraints of that
+  declaration too.
 
 ## [1.8.0] - 2026-10-26
 
@@ -304,7 +326,8 @@ First release.
   annotations for PHP 7.4 targets.
 - `DtoGeneratorBundle`: the `dto-generator:generate` console command and an optional check on cache warmup.
 
-[Unreleased]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.7.1...v1.8.0
 [1.7.1]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.6.0...v1.7.0

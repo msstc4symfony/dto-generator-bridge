@@ -63,7 +63,7 @@ final class NarrowingsTest extends TestCase
         ], $this->classAttributesOf($this->code($output, 'Pet.php')));
     }
 
-    public function testLeavesNullAndWhatTheParentRequiresAlone(): void
+    public function testLeavesNullAndWhatTheParentRequiresAloneButNotAPropertyOfAnyType(): void
     {
         $output = $this->withRuntime(['allOf' => [
             ['$ref' => '#/components/schemas/Base'],
@@ -79,7 +79,123 @@ final class NarrowingsTest extends TestCase
             'Maybe' => ['type' => ['integer', 'null']],
         ]);
 
-        self::assertSame([], $this->classAttributesOf($this->code($output, 'Pet.php')));
+        // The constructor turns null away from a property of any type the class requires, as the generator reads it.
+        self::assertSame(["RuntimeAssert\\Present(properties: ['any'])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
+    public function testLeavesToTheParentThePresenceItChecks(): void
+    {
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Mid'],
+            ['type' => 'object', 'required' => ['late'], 'properties' => ['own' => ['type' => 'string']]],
+        ]], [
+            'Base' => ['type' => 'object', 'properties' => ['early' => ['type' => 'string'], 'late' => ['type' => 'string']]],
+            'Mid' => ['allOf' => [['$ref' => '#/components/schemas/Base'], ['type' => 'object', 'required' => ['early'], 'properties' => ['mid' => ['type' => 'string']]]]],
+        ]);
+
+        self::assertSame(["RuntimeAssert\\Present(properties: ['early'])"], $this->classAttributesOf($this->code($output, 'Mid.php')));
+        self::assertSame(["RuntimeAssert\\Present(properties: ['late'])"], $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
+    /**
+     * @return iterable<string, array{array<string, bool|list<string>>, list<string>}>
+     */
+    public static function parentsThatCheckNothingInTheGroupsOfTheClass(): iterable
+    {
+        yield 'skips the validator' => [['x-validator-skip' => true], ["RuntimeAssert\\Present(properties: ['late'])", "RuntimeAssert\\Present(properties: ['early'])"]];
+        yield 'groups of its own' => [['x-validator-groups' => ['api'], 'x-validator-groups-exclusive' => true], ["RuntimeAssert\\Present(properties: ['late'])", "RuntimeAssert\\Present(properties: ['early'])"]];
+        yield 'the same groups' => [[], ["RuntimeAssert\\Present(properties: ['late'])"]];
+    }
+
+    /**
+     * @dataProvider parentsThatCheckNothingInTheGroupsOfTheClass
+     *
+     * @param array<string, bool|list<string>> $extensions
+     * @param list<string> $expected
+     */
+    public function testChecksThePresenceAParentLeavesUnchecked(array $extensions, array $expected): void
+    {
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Mid'],
+            ['type' => 'object', 'required' => ['late'], 'properties' => ['own' => ['type' => 'string']]],
+        ]], [
+            'Base' => ['type' => 'object', 'properties' => ['early' => ['type' => 'string'], 'late' => ['type' => 'string']]],
+            'Mid' => ['allOf' => [['$ref' => '#/components/schemas/Base'], ['type' => 'object', 'required' => ['early'], 'properties' => ['mid' => ['type' => 'string']]]]] + $extensions,
+        ]);
+
+        self::assertSame($expected, $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
+    public function testTurnsOffTheFormatOfADeclarationOfTheChild(): void
+    {
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['properties' => ['tel' => ['type' => 'string', 'format' => 'phone', 'x-validator-format' => false], 'code' => ['type' => 'string', 'format' => 'uuid']]],
+        ]], ['Base' => ['type' => 'object', 'properties' => ['tel' => ['type' => 'string'], 'code' => ['type' => 'string']]]]);
+
+        self::assertSame(["RuntimeAssert\\Property(name: 'code', constraints: [new " . self::ASSERT . 'Uuid()])'], $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
+    public function testSaysTheChildChecksAPhoneNumberWithItsRegexWithoutTheLibrary(): void
+    {
+        $output = $this->generate(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['properties' => ['tel' => ['type' => 'string', 'format' => 'phone']]],
+        ]], ['Base' => ['type' => 'object', 'properties' => ['tel' => ['type' => 'string']]]], '8.2', ['formats' => ['phone' => 'strict']], 'v7.1.0', self::RUNTIME);
+
+        self::assertContains('warning /api.yaml#/components/schemas/Pet/allOf/1/properties/tel: "format: phone" is set to strict, which needs odolbeau/phone-number-bundle 3.5 or newer, which the project does not install; a Regex checks the number.', $this->messages($output));
+    }
+
+    /**
+     * @return iterable<string, array{array<string, bool>, ?list<string>}>
+     */
+    public static function quietDeclarations(): iterable
+    {
+        yield 'formats turned off' => [['x-validator-format' => false], []];
+        yield 'skipped' => [['x-validator-skip' => true], null];
+    }
+
+    /**
+     * @dataProvider quietDeclarations
+     *
+     * @param array<string, bool> $extensions
+     * @param list<string>|null $attributes the class's, null for none at all
+     */
+    public function testSaysNothingOfTheLibraryForADeclarationThatChecksNoPhoneNumber(array $extensions, ?array $attributes): void
+    {
+        $output = $this->generate(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['properties' => ['tel' => ['type' => 'string', 'format' => 'phone', 'minLength' => 3] + $extensions]],
+        ]], ['Base' => ['type' => 'object', 'properties' => ['tel' => ['type' => 'string']]]], '8.2', ['formats' => ['phone' => 'strict']], 'v7.1.0', self::RUNTIME);
+
+        self::assertSame([], array_values(array_filter($this->messages($output), static fn (string $m): bool => strpos($m, 'strict') !== false)));
+        $class = $this->classAttributesOf($this->code($output, 'Pet.php'));
+        if ($attributes === null) {
+            self::assertSame([], $class);
+        } else {
+            self::assertSame(["RuntimeAssert\\Property(name: 'tel', constraints: [new " . self::ASSERT . 'Length(min: 3)])'], $class);
+        }
+    }
+
+    public function testChecksTheDeclarationsOfTheChildAfterOneItSkips(): void
+    {
+        $output = $this->withRuntime(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['properties' => ['tel' => ['type' => 'string', 'maxLength' => 9, 'x-validator-skip' => true]]],
+            ['properties' => ['tel' => ['type' => 'string', 'minLength' => 3]]],
+        ]], ['Base' => ['type' => 'object', 'properties' => ['tel' => ['type' => 'string']]]]);
+
+        self::assertSame(["RuntimeAssert\\Property(name: 'tel', constraints: [new " . self::ASSERT . 'Length(min: 3)])'], $this->classAttributesOf($this->code($output, 'Pet.php')));
+    }
+
+    public function testSaysNothingOfTheLibraryWhenTheChildChecksNothingWithoutTheRuntime(): void
+    {
+        $output = $this->generate(['allOf' => [
+            ['$ref' => '#/components/schemas/Base'],
+            ['properties' => ['tel' => ['type' => 'string', 'format' => 'phone']]],
+        ]], ['Base' => ['type' => 'object', 'properties' => ['tel' => ['type' => 'string']]]], '8.2', ['formats' => ['phone' => 'strict']]);
+
+        self::assertSame([], array_values(array_filter($this->messages($output), static fn (string $m): bool => strpos($m, 'strict') !== false)));
     }
 
     public function testChecksEachConstraintOnceAndThoseOfAParentInGroupsOfItsOwn(): void
@@ -105,7 +221,8 @@ final class NarrowingsTest extends TestCase
             ['Cat' => $variant, 'Dog' => $variant, 'Cfg' => ['type' => 'object', 'properties' => ['on' => ['type' => 'boolean']]]],
         );
 
-        self::assertSame(["RuntimeAssert\\Present(properties: ['kind'])"], $this->classAttributesOf($this->code($output, 'Cat.php')));
+        // Both variants require the discriminator, so the base declares it required.
+        self::assertSame([], $this->classAttributesOf($this->code($output, 'Cat.php')));
         self::assertSame(['Assert\\Valid'], $this->attributesOf($this->code($output, 'Pet.php'), 'cfg'));
         self::assertSame(['Assert\\Valid'], $this->attributesOf($this->code($output, 'Pet.php'), 'tags'));
         self::assertSame([], array_values(array_filter($this->messages($output), static fn (string $m): bool => strpos($m, 'may go unvalidated') !== false || strpos($m, 'are not checked') !== false)));

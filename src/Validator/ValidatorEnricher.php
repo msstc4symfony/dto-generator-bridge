@@ -6,9 +6,11 @@ namespace Msstc4Symfony\DtoGeneratorBridge\Validator;
 
 use MSSTC4PHP\DtoGenerator\Contract\ClassContext;
 use MSSTC4PHP\DtoGenerator\Contract\ClassEnricher;
+use MSSTC4PHP\DtoGenerator\Contract\InstalledPackages;
 use MSSTC4PHP\DtoGenerator\Contract\PropertyContext;
 use MSSTC4PHP\DtoGenerator\Contract\PropertyEnricher;
 use MSSTC4PHP\DtoGenerator\Contract\SchemaReferences;
+use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostics;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ArgumentValue;
 use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeArgument;
 use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeModel;
@@ -118,7 +120,11 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         $extensions = new ExtensionReader($schema, $diagnostics);
         $skipped = $extensions->flag('x-validator-skip');
         $groups = $this->groups($extensions);
-        $builder = new ConstraintBuilder($context->references(), $context->target(), $diagnostics, new RuntimeConstraints($context->packages(), $diagnostics), $context->packages(), $this->settings->formatChecks(), $context->keywordChecks(), $groups);
+        if (!$skipped) {
+            $this->warnAboutAStrictCheckWithoutItsLibrary($schema, $context->packages(), $context->references(), $diagnostics);
+        }
+
+        $builder = new ConstraintBuilder($context->references(), $context->target(), $diagnostics, new RuntimeConstraints($context->packages(), $diagnostics), $context->packages(), $this->formatChecks($context->packages()), $context->keywordChecks(), $groups);
         $type = $property->type();
         if ($skipped) {
             $constraints = [];
@@ -177,7 +183,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
     private function classSpecs(ClassScope $context, Keywords $keywords, ClassProperties $properties, array $groups, array $patterns): array
     {
         $runtime = new RuntimeConstraints($context->packages(), $context->diagnostics());
-        $builder = new ConstraintBuilder($context->references(), $context->target(), $context->diagnostics(), $runtime, $context->packages(), $this->settings->formatChecks(), $context->keywordChecks(), $groups);
+        $builder = new ConstraintBuilder($context->references(), $context->target(), $context->diagnostics(), $runtime, $context->packages(), $this->formatChecks($context->packages()), $context->keywordChecks(), $groups);
         $constraints = array_merge(
             $this->requirements($context, $keywords, $runtime, $properties),
             $this->conditions($context, $keywords, $builder, $runtime, $groups, $properties),
@@ -221,6 +227,30 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         $properties = new ClassProperties($ancestor, $above, $keywords, $references);
 
         return array_map(static fn (ConstraintSpec $constraint): string => serialize($constraint), $this->classSpecs($quiet, $keywords, $properties, $groups, $this->patterns($quiet, $keywords)));
+    }
+
+    /**
+     * A strict check needs its library; without it the Regex checks the format, and the property says so.
+     */
+    private function formatChecks(InstalledPackages $packages): FormatChecks
+    {
+        $checks = $this->settings->formatChecks();
+
+        return !$checks->isStrict(FormatConstraints::PHONE) || PackageVersion::atLeast($packages, FormatConstraints::PHONE_PACKAGE, FormatConstraints::PHONE_PACKAGE_MINIMUM) ? $checks : $checks->withoutStrict();
+    }
+
+    /**
+     * Said where a declaration holds `format: phone` itself; one inside its items or subschemas gets the Regex quietly.
+     */
+    private function warnAboutAStrictCheckWithoutItsLibrary(Schema $schema, InstalledPackages $packages, SchemaReferences $references, Diagnostics $diagnostics): void
+    {
+        if (!$this->settings->formatChecks()->isStrict(FormatConstraints::PHONE) || $this->formatChecks($packages)->isStrict(FormatConstraints::PHONE)) {
+            return;
+        }
+
+        if ((new ExtensionReader($schema, $diagnostics))->optionalFlag('x-validator-format') !== false && in_array(FormatConstraints::PHONE, (new Keywords($schema, $references))->formats(), true)) {
+            $diagnostics->warning(sprintf('"format: phone" is set to strict, which needs %s %s or newer, which the project does not install; a Regex checks the number.', FormatConstraints::PHONE_PACKAGE, FormatConstraints::PHONE_PACKAGE_MINIMUM), $schema->location());
+        }
     }
 
     private function keywordsOf(ClassScope $context): Keywords
@@ -375,6 +405,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         }
 
         $added = [];
+        $declarations = [];
         foreach ($own as $name => $schemas) {
             $property = $properties->find((string) $name);
             assert($property instanceof PropertyModel);
@@ -387,6 +418,11 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             }
 
             foreach ($schemas as $schema) {
+                if ((new ExtensionReader($schema, $context->diagnostics()))->flag('x-validator-skip')) {
+                    continue;
+                }
+
+                $declarations[] = $schema;
                 foreach ($builder->build($schema, $property->type()) as $spec) {
                     if (in_array(serialize($spec), $checked, true)) {
                         continue;
@@ -404,26 +440,35 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             }
         }
 
-        // The parent leaves a property optional that the class's schema requires: the class checks it is set, unless a
-        // declaration admits null, which then stands for a value.
-        $parentRequired = [];
-        foreach ($keywords->schemas() as $place) {
-            array_push($parentRequired, ...$properties->ofAncestor($place) ? $place->required() : []);
+        // The generator lists what the class requires though an ancestor leaves it optional, from the root. A Present
+        // per ancestor, of what it adds to its parent's list, is the one the ancestor writes itself: the class leaves out
+        // those Symfony gives it, and keeps those of an ancestor that skips the validator or has groups of its own.
+        $lists = [$context->class()->requiredInherited()];
+        foreach ($context->ancestors() as $ancestor) {
+            $lists[] = $ancestor->requiredInherited();
         }
 
-        $required = [];
-        foreach ($keywords->schemas() as $place) {
-            foreach ($properties->ofAncestor($place) ? [] : array_diff(array_intersect($place->required(), $inherited), $parentRequired) as $name) {
-                $property = $properties->find($name);
+        // The root's list is empty: it has no ancestor.
+        $presence = [];
+        for ($level = 0; $level < count($lists) - 1; $level++) {
+            $names = [];
+            foreach (array_diff($lists[$level], $lists[$level + 1]) as $wireName) {
+                $property = $properties->find($wireName);
                 assert($property instanceof PropertyModel);
-                if (!$this->admitsNull(array_merge($parents[$name] ?? [], $own[$name] ?? []), $context->references()) && !in_array($property->name(), $required, true)) {
-                    $required[] = $property->name();
-                }
+                $names[] = ArgumentValue::literal($property->name());
+            }
+
+            if ($names !== []) {
+                $presence[] = ConstraintSpec::runtime('Present', [AttributeArgument::named('properties', ArgumentValue::listOf(...$names))]);
             }
         }
 
-        if (($added === [] && $required === []) || !$runtime->available('properties', $context->schema()->location())) {
+        if (($added === [] && $presence === []) || !$runtime->available('properties', $context->schema()->location())) {
             return [];
+        }
+
+        foreach ($declarations as $declaration) {
+            $this->warnAboutAStrictCheckWithoutItsLibrary($declaration, $context->packages(), $context->references(), $context->diagnostics());
         }
 
         $constraints = [];
@@ -437,11 +482,7 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
             }
         }
 
-        if ($required !== []) {
-            $constraints[] = ConstraintSpec::runtime('Present', [AttributeArgument::named('properties', ArgumentValue::listOf(...array_map(static fn (string $name): ArgumentValue => ArgumentValue::literal($name), $required)))]);
-        }
-
-        return $constraints;
+        return array_merge($constraints, $presence);
     }
 
     /**
@@ -488,23 +529,6 @@ final class ValidatorEnricher implements ClassEnricher, PropertyEnricher
         // A null list of groups stands for the default ones, as ExtensionReader::groups() reads it.
         return ($extensions->has('x-validator-groups') && $extensions->get('x-validator-groups') !== null)
             || ($extensions->has('x-validator-skip') && $extensions->get('x-validator-skip') === true);
-    }
-
-    /**
-     * Whether a declaration lets null through: no type, or a type that lists it.
-     *
-     * @param list<Schema> $declarations
-     */
-    private function admitsNull(array $declarations, SchemaReferences $references): bool
-    {
-        foreach ($declarations as $declaration) {
-            $resolved = $references->resolve($declaration);
-            if ($resolved->types() === [] || $resolved->isNullable()) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**
