@@ -3,7 +3,7 @@
 - Спецификация: `docs/internal/specs/2026-10-02-bridge-symfony-design.md`; планы этапов — `docs/internal/plans/`.
 - Пользовательская документация (английский, входит в пакет): `README.md`, `CHANGELOG.md`, `SECURITY.md`. `docs/internal/` и dev-файлы исключены из архива пакета (`export-ignore` в `.gitattributes`; `docker/build.sh` ядра собирает образ из `git archive` моста — экспорт тоже без них).
 - Пакет `msstc4symfony/dto-generator-bridge`, namespace `Msstc4Symfony\DtoGeneratorBridge`; репозиторий живёт в `~/PhpstormProjects/msstc4symfony/` рядом с остальными Symfony-бандлами.
-- Соответствует `bundle-standard` (линия сброшена пользователем 2026-10-04: `checks.yml` → `@v1.0.0`) с профилем `php74`: шаблоны `templates/php74/` (PHPStan 70400, PHPUnit 9.6, Rector PHP_74, CS-Fixer без запятых после параметров), задание `minimal` CI само идёт на PHP 7.4 по профилю из `composer.json`; в `checks.yml` четыре записи `symfony-versions` (7.4 первой: ячейка prefer-lowest берёт первую, а ранние 5.4/6.4 не чисты на PHP 8.4). Проверка: `php ../bundle-standard/bin/verify-standard.php .`.
+- Соответствует `bundle-standard` (`checks.yml` → `@v3.1.0` с 2026-10-22 UTC; у каждой записи `symfony-versions` есть `php` — нижняя PHP этой линии Symfony: 8.2, у Symfony 8 — 8.4) с профилем `php74`: шаблоны `templates/php74/` (PHPStan 70400, PHPUnit 9.6, Rector PHP_74, CS-Fixer без запятых после параметров), задание `minimal` CI само идёт на PHP 7.4 по профилю из `composer.json`; в `checks.yml` четыре записи `symfony-versions` (7.4 первой: ячейка prefer-lowest берёт первую, а ранние 5.4/6.4 не чисты на PHP 8.4). Проверка: `php ../bundle-standard/bin/verify-standard.php .`.
 - Ядро — `msstc4php/dto-generator ^1.2` (`DtoGenerator::prepareProcess()`; с 1.1 — `PropertyModel::isAdditionalProperties()`): в `composer.json`/`composer-ci.json` из VCS GitHub, локально — `COMPOSER=composer-local.json composer install` (path `../../msstc4php/dto-generator`, версия 1.2.0; та же в `run-matrix.sh`). `composer-local.json` не в git — версию в нём правят руками. Его SPI — `src/Contract`, IR — `src/Domain/Model`.
 
 ## Архитектура (B1)
@@ -146,3 +146,23 @@
 - Повтор class-constraint'а у потомка: `writtenBy()` симулирует обогащение каждого предка (`ClassScope::ancestor()` с отдельными `Diagnostics`/`KeywordChecks`, `ClassProperties` с его предками, `x-validator-skip`, его группы; гейт уже решён настоящим классом) с группами **потомка** и собирает `serialize(ConstraintSpec)`; потомок отбрасывает совпавшие, если его группы (пусто = `Default`) — подмножество групп предка (иначе в лишних группах проверку никто не сделает). Без кэша (ревью M-2: квадрат по глубине, 25 уровней ≈ 10 с): кэш давал эквивалентных мутантов (Rector возвращает `??=`), а реальная глубина (GitHub, OpenAI) — 3–4. `nullable` (OAS 3.0) в цели не склеивается — блокирует, чтобы не ужесточить молча. Порядок обогащения классов ядро не гарантирует (Hierarchy сохраняет порядок Build), поэтому запоминать выпущенное предком нельзя. Ревью (CR-005): подавление по сырому JSON глушило условие, которое предок не может проверить (имя не его свойство), и не видело пропуска у деда/других групп; (CR-004) `Property` шаблона промежуточного класса повторялся у потомка. `RawSchema::METADATA` (`example`, `readOnly`, `xml`…) цели не склеивается.
 - Сужение у потомка (ядро 1.6 оставляет свойство родителю — `Hierarchy::checkRedeclarations`): `ValidatorEnricher::narrowings()` — для унаследованных имён, объявленных в своих местах класса (не `ofAncestor`), `ConstraintBuilder::build(схема потомка, тип родителя)` минус то, что даёт `build` по местам предка (сравнение `serialize` целых спецификаций: `Length(min,max)` против `Length(max)` не совпадает — повтор `max` возможен), → `Property(name, …)`; гейт рантайма по слову `properties` (1.1).
 - Несколько объявлений одного свойства в ветках `allOf`: ядро типизирует по одному (`PropertyModel::source()`), мост в `enrichProperty` добавляет `otherDeclarations()` — `build()` каждого другого объявления в местах класса (`ClassKeywords::keywords()`), без повторов по `serialize`. Компаньоны слитых inline-объектов (ядро `Composition::withCompanions`) в `Keywords` не видны — их повторные объявления не добавляются (ядро сливает только «пустые» компаньоны без ключевых слов класса). `narrowings()` теперь ещё `Present` для обязательности, которую требует место класса, а родитель — нет; объявление родителя с `x-validator-groups`/`x-validator-skip` не вычитается; `available('properties')` — только если есть что писать.
+
+## Коллекции (C3, 2026-10-26 UTC, ветка `feat/collections`, не слита)
+
+- Спецификация: `~/PhpstormProjects/msstc4php/dto-generator/docs/internal/specs/2026-10-26-collections-design.md` §5.
+- `SerializerEnricher`: один `Context` на свойство — Symfony хранит один контекст на группу (`AttributeMetadata::
+  setNormalizationContextForGroups` перезаписывает), поэтому ключ коллекции и формат даты сливаются в одну карту;
+  при одних только «ненаправленных» ключах — `context:`, иначе ключ дублируется в normalization/denormalization.
+- Тип элемента для Serializer (`serializerType()`): класс/enum → FQCN, enum до 8.1 → скаляр, скаляр → kind, список
+  или map классов → `Fqcn[]` (ArrayDenormalizer сохраняет ключи), остальное → `mixed` (runtime пропускает как есть);
+  `mixed` при классе внутри элемента (`?Tag`, union) — warning на свойстве.
+- `checkCollectionNormalizer()` — раз за запуск (флаг на enricher, как `refusedToSpread`): warning при цели < PHP 8.0
+  или runtime < 1.4 / не установлен (ветка `dev-*` считается новой). Поэтому юнит-тесты коллекций передают
+  `self::COLLECTIONS` (runtime v1.4.0), а фиктивный `composer.lock` интеграции — v1.4.0.
+- Сборка Context вынесена в `SerializerEnricher::context()`; общий `context:` — отдельная `$shared` (ленивый ключ
+  `$contexts['context']` PHPStan не принимает, а ранний пустой ключ давал эквивалентный мутант).
+- Валидатор: `CollectionType` = `'collection'` в `KindConstraints`, элементы через `ConstraintBuilder::nested()`.
+- Интеграционный вариант `collections` в `RealSymfonyTest` (класс `tests/Integration/Symfony/Bag.php`) нашёл, что
+  обобщённый `@var Bag<T>` Symfony читает как CollectionType и не строит объект → ядро пишет аргументы только в
+  `@phpstan-var`.
+- Ветка ждёт публикации ядра 1.18.0 (1.17.0 вышел без коллекций) и runtime 1.4.0: composer.json уже требует их, а ядро берётся из GitHub (vcs).

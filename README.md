@@ -37,7 +37,7 @@ Symfony versions in your `composer.lock`.
 ## Requirements
 
 - PHP >= 7.4 (the bridge runs inside the generator, which supports PHP 7.4).
-- `msstc4php/dto-generator` ^1.11 and `msstc4symfony/dto-generator-bridge-runtime` ^1.3 (both installed with the
+- `msstc4php/dto-generator` ^1.17 and `msstc4symfony/dto-generator-bridge-runtime` ^1.4 (both installed with the
   bridge).
 - In the application that uses the DTOs: `symfony/validator` and/or `symfony/serializer` 5.4, 6.4, 7.x or 8.x. By
   default the bridge writes constraints and attributes only for the components it finds in `composer.lock`.
@@ -407,6 +407,23 @@ gives two classes, such as `AccountRead` (responses, no `writeOnly` properties) 
 properties, so a `writeOnly` password is validated in `AccountWrite` only, and a discriminated base maps the variants
 of its own model. Deserialize a request body into the write model (`#[MapRequestPayload] AccountWrite $account`) and
 serialize the read model in the response.
+
+## Collection objects
+
+With the generator's `dto.collections` (generator 1.18), a list property is a collection object (`TagList $tags`).
+The bridge writes its `#[Serializer\Context]` with `dto_generator_collection: {class, item}`, which the runtime's
+`CollectionNormalizer` reads to build the object from the list and to write it back (see
+[the runtime's README](https://github.com/msstc4symfony/dto-generator-bridge-runtime#collection-objects)); a date
+format of the items goes into the same Context, because Symfony keeps one per property. The list's constraints stay:
+`minItems`/`maxItems` as `Count`, `uniqueItems` as `Unique`, the items' as `All` and `Valid`. Symfony checks them on
+an object only when it is `Countable` (Count), an `IteratorAggregate` (Unique) and `Traversable` (All, Valid), as
+dto-collection's lists are. `contains`, `prefixItems` and `unevaluatedItems` are checked on arrays only, as before
+(with a warning on a collection).
+
+The item type the Serializer reads is the class or enum (an enum below PHP 8.1 as its scalar), the scalar, or
+`Tag[]` for a list or map of classes. Items it cannot type, such as nullable objects (`?Tag`) or a union, stay as
+the data has them, with a warning. `CollectionNormalizer` needs PHP 8.0 and dto-generator-bridge-runtime 1.4: on an
+older target or runtime the bridge warns once, since the Serializer cannot build the collection then.
 
 ## Symfony bundle
 

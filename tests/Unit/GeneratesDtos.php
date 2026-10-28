@@ -48,6 +48,7 @@ trait GeneratesDtos
      * @param array<string, array<string, string>> $formats
      * @param array<string, string> $target more target settings
      * @param array<string, array<string, mixed>> $documents more documents, each with its own Pet schema
+     * @param array<string, mixed> $dto the dto section of the config
      */
     private function generate(
         array $pet,
@@ -59,7 +60,8 @@ trait GeneratesDtos
         bool $strict = true,
         array $formats = [],
         array $target = [],
-        array $documents = []
+        array $documents = [],
+        array $dto = []
     ): Output {
         $locked = $validator === null ? $packages : ['symfony/validator' => $validator] + $packages;
         file_put_contents($this->root . '/composer.json', '{}');
@@ -81,6 +83,7 @@ trait GeneratesDtos
             'verifyClasses' => false,
             'discoverExtensions' => false,
             'formats' => $formats === [] ? new stdClass() : $formats,
+            'dto' => $dto === [] ? new stdClass() : $dto,
             'extensions' => [SymfonyExtension::class],
             'extensionConfig' => ['symfony' => $settings],
             'sources' => $sources,

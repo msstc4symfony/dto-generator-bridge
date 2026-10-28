@@ -14,20 +14,29 @@ use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeArgument;
 use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeModel;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ClassName;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ClassType;
+use MSSTC4PHP\DtoGenerator\Domain\Model\CollectionType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\DiscriminatorModel;
+use MSSTC4PHP\DtoGenerator\Domain\Model\EnumType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ImportAlias;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ListType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\MapType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\NullableType;
+use MSSTC4PHP\DtoGenerator\Domain\Model\ScalarType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\TypeModel;
+use MSSTC4PHP\DtoGenerator\Domain\Model\UnionType;
 use MSSTC4PHP\DtoGenerator\Domain\Schema\Schema;
+use MSSTC4PHP\DtoGenerator\Domain\Schema\SchemaLocation;
+use MSSTC4PHP\DtoGenerator\Domain\Target\Capability;
+use MSSTC4PHP\DtoGenerator\Domain\Target\PhpVersion;
 use MSSTC4PHP\DtoGenerator\Domain\Target\TargetProfile;
 use Msstc4Symfony\DtoGeneratorBridge\ComponentGate;
 use Msstc4Symfony\DtoGeneratorBridge\ExtensionReader;
 use Msstc4Symfony\DtoGeneratorBridge\Keywords;
 use Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalProperties;
+use Msstc4Symfony\DtoGeneratorBridge\Runtime\CollectionNormalizer;
 use Msstc4Symfony\DtoGeneratorBridge\Settings;
 use Msstc4Symfony\DtoGeneratorBridge\SymfonyVersion;
+use Msstc4Symfony\DtoGeneratorBridge\Validator\PackageVersion;
 
 /**
  * Symfony Serializer attributes for classes and their properties (bridge spec §6). One instance, and so one gate,
@@ -46,6 +55,17 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
 
     /** The Serializer whose DiscriminatorMap takes a default type. */
     private const DEFAULT_TYPE_SINCE = '7.3';
+
+    private const RUNTIME = 'msstc4symfony/dto-generator-bridge-runtime';
+
+    /** The runtime release that brought CollectionNormalizer. */
+    private const COLLECTIONS_SINCE = '1.4';
+
+    /** CollectionNormalizer's signatures need PHP 8.0. */
+    private const COLLECTIONS_PHP = '8.0';
+
+    /** Items CollectionNormalizer checks or takes as they are: inside a list they have no Serializer type. */
+    private const UNTYPED_ITEMS = ['mixed', 'int', 'float', 'string', 'bool'];
 
     private ComponentGate $gate;
 
@@ -127,32 +147,176 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
             $attributes[] = $this->attribute($version, 'Groups', [AttributeArgument::positional(ArgumentValue::listOf(...$names))]);
         }
 
+        $contextAttribute = $this->context($context, $version);
+        if ($contextAttribute instanceof AttributeModel) {
+            $attributes[] = $contextAttribute;
+        }
+
+        return $attributes;
+    }
+
+    /**
+     * The one Context of the property: Symfony keeps only the last one for a group.
+     */
+    private function context(PropertyContext $context, SymfonyVersion $version): ?AttributeModel
+    {
+        $schema = $context->schema();
+        $type = $context->property()->type();
         $references = $context->references();
         $target = $context->target();
-        if ($this->holds('date', $schema, $property->type(), $references, $target)) {
-            $attributes[] = $this->attribute($version, 'Context', [
-                AttributeArgument::named('normalizationContext', ArgumentValue::mapOf([self::FORMAT_KEY => ArgumentValue::literal('Y-m-d')])),
-                // "!" resets the time; createFromFormat() would take it from the clock otherwise.
-                AttributeArgument::named('denormalizationContext', ArgumentValue::mapOf([self::FORMAT_KEY => ArgumentValue::literal('!Y-m-d')])),
-            ]);
+        $shared = [];
+        $contexts = ['normalizationContext' => [], 'denormalizationContext' => []];
+        if ($this->holds('date', $schema, $type, $references, $target)) {
+            $contexts['normalizationContext'][self::FORMAT_KEY] = ArgumentValue::literal('Y-m-d');
+            // "!" resets the time; createFromFormat() would take it from the clock otherwise.
+            $contexts['denormalizationContext'][self::FORMAT_KEY] = ArgumentValue::literal('!Y-m-d');
         }
 
         // Twilio's dates: `Mon, 16 Aug 2010 03:45:01 +0000`.
-        if ($this->holds('date-time-rfc-2822', $schema, $property->type(), $references, $target)) {
-            $attributes[] = $this->attribute($version, 'Context', [
-                AttributeArgument::named('context', ArgumentValue::mapOf([self::FORMAT_KEY => ArgumentValue::literal(self::RFC_2822)])),
-            ]);
+        if ($this->holds('date-time-rfc-2822', $schema, $type, $references, $target)) {
+            $shared[self::FORMAT_KEY] = ArgumentValue::literal(self::RFC_2822);
         }
 
         // Serializer 8.1 deprecates reading a date-time off its default format, such as RFC 3339 with fractions of a
         // second, unless the context asks for the loose parser; 9.0 rejects it.
-        if ($version->isAtLeast(SymfonyVersion::fromString(self::LOOSE_DATE_TIME_SINCE)) && $this->holds('date-time', $schema, $property->type(), $references, $target)) {
-            $attributes[] = $this->attribute($version, 'Context', [
-                AttributeArgument::named('denormalizationContext', ArgumentValue::mapOf([self::FORMAT_KEY => ArgumentValue::literal(null)])),
-            ]);
+        if ($version->isAtLeast(SymfonyVersion::fromString(self::LOOSE_DATE_TIME_SINCE)) && $this->holds('date-time', $schema, $type, $references, $target)) {
+            $contexts['denormalizationContext'][self::FORMAT_KEY] = ArgumentValue::literal(null);
         }
 
-        return $attributes;
+        $collection = $this->collection($context);
+        if ($collection instanceof ArgumentValue) {
+            if ($contexts['normalizationContext'] !== [] || $contexts['denormalizationContext'] !== []) {
+                $contexts['normalizationContext'][CollectionNormalizer::CONTEXT] = $collection;
+                $contexts['denormalizationContext'][CollectionNormalizer::CONTEXT] = $collection;
+            } else {
+                $shared[CollectionNormalizer::CONTEXT] = $collection;
+            }
+        }
+
+        $arguments = $shared === [] ? [] : [AttributeArgument::named('context', ArgumentValue::mapOf($shared))];
+        foreach ($contexts as $name => $entries) {
+            if ($entries !== []) {
+                $arguments[] = AttributeArgument::named($name, ArgumentValue::mapOf($entries));
+            }
+        }
+
+        return $arguments === [] ? null : $this->attribute($version, 'Context', $arguments);
+    }
+
+    /**
+     * What CollectionNormalizer reads for a list held by a collection object: the class and the Serializer type of an
+     * item.
+     */
+    private function collection(PropertyContext $context): ?ArgumentValue
+    {
+        $type = $context->property()->type();
+        $value = $type instanceof NullableType ? $type->inner() : $type;
+        if (!$value instanceof CollectionType) {
+            return null;
+        }
+
+        $target = $context->target();
+        $item = $this->serializerType($value->list()->item(), $target);
+        // Without a CollectionNormalizer the run's one warning says it all.
+        if ($this->readsCollections($context) && $item === 'mixed' && $this->namesAClass($value->list()->item(), $target)) {
+            $context->diagnostics()->warning(
+                sprintf('CollectionNormalizer cannot type the items of %s, %s: they stay as the data has them, not objects.', $value->className()->fqcn(), $value->list()->item()->describe()),
+                $context->schema()->location(),
+            );
+        }
+
+        return ArgumentValue::mapOf([
+            'class' => ArgumentValue::literal($value->className()->fqcn()),
+            'item' => ArgumentValue::literal($item),
+        ]);
+    }
+
+    /**
+     * Whether a CollectionNormalizer reads the collection objects: without one the Serializer cannot build them. The
+     * warning goes to the document, where Diagnostics keeps one of each, so a run hears it once.
+     */
+    private function readsCollections(PropertyContext $context): bool
+    {
+        $at = new SchemaLocation($context->schema()->location()->file());
+        $php = $context->target()->php();
+        if (!$php->isAtLeast(PhpVersion::fromString(self::COLLECTIONS_PHP))) {
+            $context->diagnostics()->warning(sprintf('CollectionNormalizer, which builds collection objects, needs PHP %s; on PHP %s the Serializer cannot read them.', self::COLLECTIONS_PHP, $php->toString()), $at);
+
+            return false;
+        }
+
+        $runtime = $context->packages()->version(self::RUNTIME);
+        if ($runtime === null) {
+            $context->diagnostics()->warning(sprintf('CollectionNormalizer, which builds collection objects, comes with %s %s, which the project does not install; the Serializer cannot read them.', self::RUNTIME, self::COLLECTIONS_SINCE), $at);
+
+            return false;
+        }
+
+        if (!PackageVersion::atLeast($context->packages(), self::RUNTIME, self::COLLECTIONS_SINCE)) {
+            $context->diagnostics()->warning(sprintf('CollectionNormalizer, which builds collection objects, comes with %s %s; the project has %s, so the Serializer cannot read them.', self::RUNTIME, self::COLLECTIONS_SINCE, $runtime), $at);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Whether the type holds an object somewhere, which data the Serializer does not type stays without.
+     */
+    private function namesAClass(TypeModel $type, TargetProfile $target): bool
+    {
+        if ($type instanceof ClassType) {
+            return true;
+        }
+
+        if ($type instanceof EnumType) {
+            return $target->supports(Capability::from(Capability::ENUMS));
+        }
+
+        if ($type instanceof NullableType) {
+            return $this->namesAClass($type->inner(), $target);
+        }
+
+        if ($type instanceof ListType) {
+            return $this->namesAClass($type->item(), $target);
+        }
+
+        if ($type instanceof MapType) {
+            return $this->namesAClass($type->value(), $target);
+        }
+
+        return $type instanceof UnionType && array_filter($type->members(), fn (TypeModel $member): bool => $this->namesAClass($member, $target)) !== [];
+    }
+
+    /**
+     * The type the Serializer denormalizes an item as; "mixed" for one it has no type for (a union, a list of scalars),
+     * which CollectionNormalizer takes as it is.
+     */
+    private function serializerType(TypeModel $item, TargetProfile $target): string
+    {
+        if ($item instanceof EnumType && !$target->supports(Capability::from(Capability::ENUMS))) {
+            return $item->backing()->value();
+        }
+
+        if ($item instanceof ClassType || $item instanceof EnumType) {
+            return $item->className()->fqcn();
+        }
+
+        if ($item instanceof ScalarType) {
+            return $item->kind();
+        }
+
+        // ArrayDenormalizer reads `Tag[]` for a list and a map alike, keeping the keys.
+        if ($item instanceof ListType) {
+            $inner = $this->serializerType($item->item(), $target);
+        } elseif ($item instanceof MapType) {
+            $inner = $this->serializerType($item->value(), $target);
+        } else {
+            return 'mixed';
+        }
+
+        return in_array($inner, self::UNTYPED_ITEMS, true) ? 'mixed' : $inner . '[]';
     }
 
     /**
@@ -221,6 +385,8 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
     private function holds(string $format, Schema $schema, TypeModel $type, SchemaReferences $references, TargetProfile $target): bool
     {
         $value = $type instanceof NullableType ? $type->inner() : $type;
+        $value = $value instanceof CollectionType ? $value->list() : $value;
+
         $resolved = (new Keywords($schema, $references))->resolved();
         if ($value instanceof ListType) {
             $items = $resolved->items();

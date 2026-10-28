@@ -6,7 +6,6 @@
 /.gitignore              export-ignore
 /.php-cs-fixer.dist.php  export-ignore
 /CLAUDE.md               export-ignore
-/codecov.yml             export-ignore
 /composer-ci.json        export-ignore
 /deptrac.yaml            export-ignore
 /docs/internal           export-ignore

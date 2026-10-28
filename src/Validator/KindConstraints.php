@@ -7,6 +7,7 @@ namespace Msstc4Symfony\DtoGeneratorBridge\Validator;
 use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostics;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ArgumentValue;
 use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeArgument;
+use MSSTC4PHP\DtoGenerator\Domain\Model\CollectionType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ListType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\MapType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\MixedType;
@@ -131,7 +132,8 @@ final class KindConstraints
             return $kinds[$value->kind()];
         }
 
-        if ($value instanceof ListType || $value instanceof MapType) {
+        // Count, Unique and All take a Countable IteratorAggregate as they take an array.
+        if ($value instanceof ListType || $value instanceof MapType || $value instanceof CollectionType) {
             return 'collection';
         }
 

@@ -10,6 +10,7 @@ use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\Diagnostics;
 use MSSTC4PHP\DtoGenerator\Domain\Diagnostic\KeywordChecks;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ArgumentValue;
 use MSSTC4PHP\DtoGenerator\Domain\Model\AttributeArgument;
+use MSSTC4PHP\DtoGenerator\Domain\Model\CollectionType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\EnumBacking;
 use MSSTC4PHP\DtoGenerator\Domain\Model\EnumType;
 use MSSTC4PHP\DtoGenerator\Domain\Model\ListType;
@@ -319,6 +320,7 @@ final class ConstraintBuilder
         }
 
         $resolved = $keywords->resolved();
+        $value = $value instanceof CollectionType ? $value->list() : $value;
         if ($value instanceof ListType) {
             [$item, $itemSchema] = [$value->item(), $resolved->items()];
         } elseif ($value instanceof MapType) {

@@ -73,6 +73,21 @@ final class ValidatorEnricherTest extends TestCase
         self::assertSame(['Assert\\Count(max: 4)', 'Assert\\All(constraints: [new \\Symfony\\Component\\Validator\\Constraints\\GreaterThanOrEqual(value: 0)])'], $this->attributesOf($code, 'scores'));
     }
 
+    public function testConstrainsCollectionObjectsAsTheirLists(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'tags' => ['type' => 'array', 'minItems' => 1, 'uniqueItems' => true, 'items' => ['type' => 'string', 'maxLength' => 8]],
+            'friends' => ['type' => 'array', 'maxItems' => 2, 'items' => ['$ref' => '#/components/schemas/Owner']],
+            'nearby' => ['type' => 'array', 'contains' => ['type' => 'string'], 'items' => ['type' => 'string']],
+        ]], ['Owner' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]]], '8.2', [], 'v7.1.0', [], true, [], [], [], ['collections' => ['class' => 'App\\Collection\\{item}List']]);
+        $code = $this->code($output, 'Pet.php');
+
+        self::assertSame(['Assert\\Count(min: 1)', 'Assert\\Unique', 'Assert\\All(constraints: [new \\Symfony\\Component\\Validator\\Constraints\\Length(max: 8)])'], $this->attributesOf($code, 'tags'));
+        self::assertSame(['Assert\\Count(max: 2)', 'Assert\\Valid'], $this->attributesOf($code, 'friends'));
+        self::assertSame([], $this->attributesOf($code, 'nearby'));
+        self::assertSame(['warning /api.yaml#/components/schemas/Pet/properties/nearby: "contains" is checked on arrays only; it is not checked here.'], $this->messages($output));
+    }
+
     public function testConstrainsTheValuesOfUndeclaredProperties(): void
     {
         $strings = $this->pet(['type' => 'object', 'properties' => ['name' => ['type' => 'string']], 'additionalProperties' => ['type' => 'string', 'maxLength' => 8, 'pattern' => '^[a-z]+$']]);
