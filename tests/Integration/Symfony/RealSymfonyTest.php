@@ -53,6 +53,9 @@ use TypeError;
  */
 final class RealSymfonyTest extends TestCase
 {
+    /** The Serializer that passes a property's Context to its constructor argument. */
+    private const CONSTRUCTOR_CONTEXT_SINCE = 6.2;
+
     private const VALID = [
         'name' => 'rex',
         'kind' => 'pet',
@@ -761,6 +764,10 @@ final class RealSymfonyTest extends TestCase
     public function testReadsWritesAndValidatesListsHeldByCollectionObjects(string $php): void
     {
         $this->runTarget($php, function (string $namespace, bool $annotations) use ($php): void {
+            if ($this->symfony() < self::CONSTRUCTOR_CONTEXT_SINCE) {
+                self::markTestSkipped(sprintf('Symfony %.1F denormalizes a constructor argument without its Context; generate() checks the warning.', $this->symfony()));
+            }
+
             $serializer = $this->serializer($annotations, false, true);
             $pet = $serializer->denormalize(self::VALID, $namespace . '\Pet');
             self::assertIsObject($pet);
@@ -963,8 +970,11 @@ final class RealSymfonyTest extends TestCase
         $output = DtoGenerator::generator()(new Input($dir . '/dto-generator.yaml', Mode::from(Mode::WRITE)));
         $messages = array_map(static fn (Diagnostic $diagnostic): string => str_replace($dir, '', $diagnostic->toString()), $output->diagnostics()->all());
         self::assertSame([], array_values(array_filter($messages, static fn (string $message): bool => strncmp($message, 'error', 5) === 0)));
-        // The project has the runtime that reads collection objects.
-        self::assertSame([], array_values(array_filter($messages, static fn (string $message): bool => strpos($message, 'CollectionNormalizer') !== false)));
+        // The project has the runtime that reads collection objects; Symfony before 6.2 cannot use it.
+        $unread = $variant === 'collections' && $this->symfony() < self::CONSTRUCTOR_CONTEXT_SINCE
+            ? [sprintf('warning /api.yaml#: CollectionNormalizer, which builds collection objects, needs Symfony 6.2 to get the Context of a constructor argument; Symfony %.1F makes them without their items.', $this->symfony())]
+            : [];
+        self::assertSame($unread, array_values(array_filter($messages, static fn (string $message): bool => strpos($message, 'CollectionNormalizer') !== false)));
         $dropped = array_values(array_filter($messages, static fn (string $message): bool => strpos($message, 'inside All') !== false));
         // The read and write models of a class repeat its warnings under their own names.
         if ($variant !== 'views') {

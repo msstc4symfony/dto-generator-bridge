@@ -190,6 +190,9 @@ final class SerializerEnricherTest extends TestCase
             'php 7.4' => ['7.4', ['symfony/serializer' => 'v6.4.0', 'doctrine/annotations' => '2.0.0'], 'needs PHP 8.0; on PHP 7.4 the Serializer cannot read them.'],
             'no runtime' => ['8.2', self::SERIALIZER, 'comes with msstc4symfony/dto-generator-bridge-runtime 1.4, which the project does not install; the Serializer cannot read them.'],
             'old runtime' => ['8.2', self::SERIALIZER + ['msstc4symfony/dto-generator-bridge-runtime' => 'v1.3.2'], 'comes with msstc4symfony/dto-generator-bridge-runtime 1.4; the project has v1.3.2, so the Serializer cannot read them.'],
+            // Generated DTOs take every property through the constructor.
+            'symfony 5.4' => ['8.2', ['symfony/serializer' => 'v5.4.55', 'msstc4symfony/dto-generator-bridge-runtime' => 'v1.4.0'], 'needs Symfony 6.2 to get the Context of a constructor argument; Symfony 5.4 makes them without their items.'],
+            'symfony 6.1' => ['8.2', ['symfony/serializer' => 'v6.1.0', 'msstc4symfony/dto-generator-bridge-runtime' => 'v1.4.0'], 'needs Symfony 6.2 to get the Context of a constructor argument; Symfony 6.1 makes them without their items.'],
         ];
     }
 
@@ -207,6 +210,15 @@ final class SerializerEnricherTest extends TestCase
         ]], ['Tag' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]]], $php, self::ONLY_SERIALIZER, null, $packages);
 
         self::assertSame(['warning /api.yaml#: CollectionNormalizer, which builds collection objects, ' . $message], $this->messages($output));
+    }
+
+    public function testSymfony62ReadsTheCollections(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'labels' => ['type' => 'array', 'items' => ['type' => 'string'], 'x-php-collection' => 'App\\Bag'],
+        ]], [], '8.2', self::ONLY_SERIALIZER, null, ['symfony/serializer' => 'v6.2.0', 'msstc4symfony/dto-generator-bridge-runtime' => 'v1.4.0']);
+
+        self::assertSame([], $this->messages($output));
     }
 
     public function testWritesTheCollectionInAnAnnotation(): void

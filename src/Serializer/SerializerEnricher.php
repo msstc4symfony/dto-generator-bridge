@@ -33,7 +33,6 @@ use Msstc4Symfony\DtoGeneratorBridge\ComponentGate;
 use Msstc4Symfony\DtoGeneratorBridge\ExtensionReader;
 use Msstc4Symfony\DtoGeneratorBridge\Keywords;
 use Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalProperties;
-use Msstc4Symfony\DtoGeneratorBridge\Runtime\CollectionNormalizer;
 use Msstc4Symfony\DtoGeneratorBridge\Settings;
 use Msstc4Symfony\DtoGeneratorBridge\SymfonyVersion;
 use Msstc4Symfony\DtoGeneratorBridge\Validator\PackageVersion;
@@ -57,6 +56,12 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
     private const DEFAULT_TYPE_SINCE = '7.3';
 
     private const RUNTIME = 'msstc4symfony/dto-generator-bridge-runtime';
+
+    /** CollectionNormalizer::CONTEXT; reading the constant would load the class, which needs symfony/serializer. */
+    private const COLLECTION_KEY = 'dto_generator_collection';
+
+    /** The Serializer that passes a property's Context to its constructor argument, where generated DTOs take it. */
+    private const CONSTRUCTOR_CONTEXT_SINCE = '6.2';
 
     /** The runtime release that brought CollectionNormalizer. */
     private const COLLECTIONS_SINCE = '1.4';
@@ -183,13 +188,13 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
             $contexts['denormalizationContext'][self::FORMAT_KEY] = ArgumentValue::literal(null);
         }
 
-        $collection = $this->collection($context);
+        $collection = $this->collection($context, $version);
         if ($collection instanceof ArgumentValue) {
             if ($contexts['normalizationContext'] !== [] || $contexts['denormalizationContext'] !== []) {
-                $contexts['normalizationContext'][CollectionNormalizer::CONTEXT] = $collection;
-                $contexts['denormalizationContext'][CollectionNormalizer::CONTEXT] = $collection;
+                $contexts['normalizationContext'][self::COLLECTION_KEY] = $collection;
+                $contexts['denormalizationContext'][self::COLLECTION_KEY] = $collection;
             } else {
-                $shared[CollectionNormalizer::CONTEXT] = $collection;
+                $shared[self::COLLECTION_KEY] = $collection;
             }
         }
 
@@ -207,7 +212,7 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
      * What CollectionNormalizer reads for a list held by a collection object: the class and the Serializer type of an
      * item.
      */
-    private function collection(PropertyContext $context): ?ArgumentValue
+    private function collection(PropertyContext $context, SymfonyVersion $version): ?ArgumentValue
     {
         $type = $context->property()->type();
         $value = $type instanceof NullableType ? $type->inner() : $type;
@@ -218,7 +223,7 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
         $target = $context->target();
         $item = $this->serializerType($value->list()->item(), $target);
         // Without a CollectionNormalizer the run's one warning says it all.
-        if ($this->readsCollections($context) && $item === 'mixed' && $this->namesAClass($value->list()->item(), $target)) {
+        if ($this->readsCollections($context, $version) && $item === 'mixed' && $this->namesAClass($value->list()->item(), $target)) {
             $context->diagnostics()->warning(
                 sprintf('CollectionNormalizer cannot type the items of %s, %s: they stay as the data has them, not objects.', $value->className()->fqcn(), $value->list()->item()->describe()),
                 $context->schema()->location(),
@@ -235,9 +240,15 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
      * Whether a CollectionNormalizer reads the collection objects: without one the Serializer cannot build them. The
      * warning goes to the document, where Diagnostics keeps one of each, so a run hears it once.
      */
-    private function readsCollections(PropertyContext $context): bool
+    private function readsCollections(PropertyContext $context, SymfonyVersion $version): bool
     {
         $at = new SchemaLocation($context->schema()->location()->file());
+        if (!$version->isAtLeast(SymfonyVersion::fromString(self::CONSTRUCTOR_CONTEXT_SINCE))) {
+            $context->diagnostics()->warning(sprintf('CollectionNormalizer, which builds collection objects, needs Symfony %s to get the Context of a constructor argument; Symfony %s makes them without their items.', self::CONSTRUCTOR_CONTEXT_SINCE, $version->toString()), $at);
+
+            return false;
+        }
+
         $php = $context->target()->php();
         if (!$php->isAtLeast(PhpVersion::fromString(self::COLLECTIONS_PHP))) {
             $context->diagnostics()->warning(sprintf('CollectionNormalizer, which builds collection objects, needs PHP %s; on PHP %s the Serializer cannot read them.', self::COLLECTIONS_PHP, $php->toString()), $at);

@@ -6,6 +6,13 @@ All notable changes to this package are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A collection property no longer fails generation where `symfony/serializer` is missing: the bridge read the context
+  key off `CollectionNormalizer`, which loaded a class that needs the Serializer.
+- Symfony before 6.2 gets the one warning that the Serializer cannot read collection objects: it gives a constructor
+  argument no Context, so `CollectionNormalizer` never saw the collection and `ObjectNormalizer` made it empty.
+
 ## [1.10.0] - 2026-10-28
 
 ### Added
