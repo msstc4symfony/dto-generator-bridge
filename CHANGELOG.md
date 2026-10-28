@@ -6,6 +6,8 @@ All notable changes to this package are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-10-28
+
 ### Fixed
 
 - A collection property no longer fails generation where `symfony/serializer` is missing: the bridge read the context
@@ -335,7 +337,8 @@ First release.
   annotations for PHP 7.4 targets.
 - `DtoGeneratorBundle`: the `dto-generator:generate` console command and an optional check on cache warmup.
 
-[Unreleased]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.10.1...HEAD
+[1.10.1]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.7.1...v1.8.0
