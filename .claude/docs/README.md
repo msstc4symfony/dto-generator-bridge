@@ -165,4 +165,4 @@
 - Интеграционный вариант `collections` в `RealSymfonyTest` (класс `tests/Integration/Symfony/Bag.php`) нашёл, что
   обобщённый `@var Bag<T>` Symfony читает как CollectionType и не строит объект → ядро пишет аргументы только в
   `@phpstan-var`.
-- Ветка ждёт публикации ядра 1.18.0 (1.17.0 вышел без коллекций) и runtime 1.4.0: composer.json уже требует их, а ядро берётся из GitHub (vcs).
+- Коллекции вышли в 1.10.0 (2026-10-28 UTC) вместе с ядром 1.18.0 и runtime 1.4.0; ядро берётся из GitHub (vcs).

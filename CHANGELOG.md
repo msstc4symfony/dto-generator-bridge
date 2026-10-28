@@ -6,6 +6,8 @@ All notable changes to this package are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-10-28
+
 ### Added
 
 - Collection objects (generator 1.18 `dto.collections`): the property's Serializer Context names the collection class
@@ -326,7 +328,8 @@ First release.
   annotations for PHP 7.4 targets.
 - `DtoGeneratorBundle`: the `dto-generator:generate` console command and an optional check on cache warmup.
 
-[Unreleased]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.10.0...HEAD
+[1.10.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.7.1...v1.8.0
 [1.7.1]: https://github.com/msstc4symfony/dto-generator-bridge/compare/v1.7.0...v1.7.1
