@@ -423,7 +423,9 @@ dto-collection's lists are. `contains`, `prefixItems` and `unevaluatedItems` are
 The item type the Serializer reads is the class or enum (an enum below PHP 8.1 as its scalar), the scalar, or
 `Tag[]` for a list or map of classes. Items it cannot type, such as nullable objects (`?Tag`) or a union, stay as
 the data has them, with a warning. `CollectionNormalizer` needs PHP 8.0 and dto-generator-bridge-runtime 1.4: on an
-older target or runtime the bridge warns once, since the Serializer cannot build the collection then.
+older target or runtime the bridge warns once, since the Serializer cannot build the collection then. It warns once
+for Symfony before 6.2 too: that Serializer gives a constructor argument, which every property of a generated DTO
+is, no Context, so `ObjectNormalizer` makes the collection without its items.
 
 ## Symfony bundle
 
