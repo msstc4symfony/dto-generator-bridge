@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Msstc4Symfony\DtoGeneratorBridge\Test\Unit\Serializer;
 
 use Msstc4Symfony\DtoGeneratorBridge\Runtime\AdditionalProperties;
+use Msstc4Symfony\DtoGeneratorBridge\Runtime\CollectionNormalizer;
 use Msstc4Symfony\DtoGeneratorBridge\Test\Unit\GeneratesDtos;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
 
 final class SerializerEnricherTest extends TestCase
 {
@@ -219,6 +221,40 @@ final class SerializerEnricherTest extends TestCase
         ]], [], '8.2', self::ONLY_SERIALIZER, null, ['symfony/serializer' => 'v6.2.0', 'msstc4symfony/dto-generator-bridge-runtime' => 'v1.4.0']);
 
         self::assertSame([], $this->messages($output));
+    }
+
+    /**
+     * Symfony 5.4 writes the collection through the Context; only reading it fails.
+     */
+    public function testWritesTheContextWhereTheSerializerCannotReadTheCollection(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'labels' => ['type' => 'array', 'items' => ['type' => 'string'], 'x-php-collection' => 'App\\Bag'],
+        ]], [], '8.2', self::ONLY_SERIALIZER, null, ['symfony/serializer' => 'v5.4.55', 'msstc4symfony/dto-generator-bridge-runtime' => 'v1.4.0']);
+
+        self::assertSame(["Serializer\\Context(context: ['dto_generator_collection' => ['class' => 'App\\Bag', 'item' => 'string']])"], $this->attributesOf($this->code($output, 'Pet.php'), 'labels'));
+    }
+
+    public function testTheConfiguredSymfonyDecidesWhetherTheCollectionsAreRead(): void
+    {
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'labels' => ['type' => 'array', 'items' => ['type' => 'string'], 'x-php-collection' => 'App\\Bag'],
+        ]], [], '8.2', self::ONLY_SERIALIZER + ['version' => '5.4'], null, self::COLLECTIONS);
+
+        self::assertSame(['warning /api.yaml#: CollectionNormalizer, which builds collection objects, needs Symfony 6.2 to get the Context of a constructor argument; Symfony 5.4 makes them without their items.'], $this->messages($output));
+    }
+
+    public function testWritesTheKeyCollectionNormalizerReads(): void
+    {
+        if (!interface_exists(NormalizerInterface::class)) {
+            self::markTestSkipped('CollectionNormalizer loads only with symfony/serializer.');
+        }
+
+        $output = $this->generate(['type' => 'object', 'properties' => [
+            'labels' => ['type' => 'array', 'items' => ['type' => 'string'], 'x-php-collection' => 'App\\Bag'],
+        ]], [], '8.2', self::ONLY_SERIALIZER, null, self::COLLECTIONS);
+
+        self::assertStringContainsString(sprintf("context: ['%s' => ", CollectionNormalizer::CONTEXT), $this->code($output, 'Pet.php'));
     }
 
     public function testWritesTheCollectionInAnAnnotation(): void

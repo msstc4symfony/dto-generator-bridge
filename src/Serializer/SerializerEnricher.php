@@ -238,7 +238,8 @@ final class SerializerEnricher implements ClassEnricher, PropertyEnricher
 
     /**
      * Whether a CollectionNormalizer reads the collection objects: without one the Serializer cannot build them. The
-     * warning goes to the document, where Diagnostics keeps one of each, so a run hears it once.
+     * warning goes to the document, where Diagnostics keeps one of each, so a run hears it once: the first reason only,
+     * the Symfony version, then PHP, then the runtime.
      */
     private function readsCollections(PropertyContext $context, SymfonyVersion $version): bool
     {

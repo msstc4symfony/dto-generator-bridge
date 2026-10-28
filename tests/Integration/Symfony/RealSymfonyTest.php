@@ -972,7 +972,7 @@ final class RealSymfonyTest extends TestCase
         self::assertSame([], array_values(array_filter($messages, static fn (string $message): bool => strncmp($message, 'error', 5) === 0)));
         // The project has the runtime that reads collection objects; Symfony before 6.2 cannot use it.
         $unread = $variant === 'collections' && $this->symfony() < self::CONSTRUCTOR_CONTEXT_SINCE
-            ? [sprintf('warning /api.yaml#: CollectionNormalizer, which builds collection objects, needs Symfony 6.2 to get the Context of a constructor argument; Symfony %.1F makes them without their items.', $this->symfony())]
+            ? [sprintf('warning /api.yaml#: CollectionNormalizer, which builds collection objects, needs Symfony %.1F to get the Context of a constructor argument; Symfony %.1F makes them without their items.', self::CONSTRUCTOR_CONTEXT_SINCE, $this->symfony())]
             : [];
         self::assertSame($unread, array_values(array_filter($messages, static fn (string $message): bool => strpos($message, 'CollectionNormalizer') !== false)));
         $dropped = array_values(array_filter($messages, static fn (string $message): bool => strpos($message, 'inside All') !== false));
