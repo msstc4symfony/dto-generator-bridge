@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   standard:
-    uses: msstc4symfony/bundle-standard/.github/workflows/php-bundle.yml@v4.2.0
+    uses: msstc4symfony/bundle-standard/.github/workflows/php-bundle.yml@v4.3.0
     with:
       # The bridge writes for Symfony 5.4 to 8: the integration suite checks the generated DTOs with each line's
       # Validator and Serializer. 7.4 comes first because the prefer-lowest cell takes the first entry, and early 5.4
