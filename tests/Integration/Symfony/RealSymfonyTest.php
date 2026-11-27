@@ -6,6 +6,7 @@ namespace Msstc4Symfony\DtoGeneratorBridge\Test\Integration\Symfony;
 
 use Composer\InstalledVersions;
 use DateTimeInterface;
+use DateTimeZone;
 use Doctrine\Common\Annotations\AnnotationReader;
 use FilesystemIterator;
 use InvalidArgumentException;
@@ -518,7 +519,7 @@ final class RealSymfonyTest extends TestCase
     {
         $this->runTarget($php, function (string $namespace, bool $annotations): void {
             $serializer = $this->serializer($annotations);
-            $good = ['phone' => '(800) 555-1234', 'amount' => '-1.50', 'tiny' => 127, 'net' => '10.0.0.1/24', 'currency' => 'usd', 'created' => 'Mon, 16 Aug 2010 03:45:01 +0000', 'zone' => 'Asia/Calcutta', 'shade' => 'ff0000', 'method' => 'get', 'period' => 'P1DT12H', 'id' => '0bcd1f8e-6a1f-4c9b-9a4b-0b8e5c2f1a3d'];
+            $good = ['phone' => '(800) 555-1234', 'amount' => '-1.50', 'tiny' => 127, 'net' => '10.0.0.1/24', 'currency' => 'usd', 'created' => 'Mon, 16 Aug 2010 03:45:01 +0000', 'zone' => $this->backwardCompatibleZone(), 'shade' => 'ff0000', 'method' => 'get', 'period' => 'P1DT12H', 'id' => '0bcd1f8e-6a1f-4c9b-9a4b-0b8e5c2f1a3d'];
             $reachable = $serializer->denormalize($good, $namespace . '\Reachable');
 
             self::assertIsObject($reachable);
@@ -833,6 +834,17 @@ final class RealSymfonyTest extends TestCase
             self::assertSame(['password'], $this->violationPaths($write, $annotations));
             self::assertFalse(class_exists($namespace . '\Account'));
         }, 'views');
+    }
+
+    /**
+     * A zone name PHP keeps only for compatibility, as the system timezone database provides it: Ubuntu ships
+     * `Asia/Calcutta` and the like in `tzdata-legacy`, so a runner without that package has fewer of them.
+     */
+    private function backwardCompatibleZone(): string
+    {
+        $legacy = array_values(array_diff(DateTimeZone::listIdentifiers(DateTimeZone::ALL_WITH_BC), DateTimeZone::listIdentifiers()));
+
+        return \in_array('Asia/Calcutta', $legacy, true) ? 'Asia/Calcutta' : ($legacy[0] ?? 'Asia/Kolkata');
     }
 
     /**
